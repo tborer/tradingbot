@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/components/ui/use-toast";
-import { parseFinnhubMessage, shouldSellStock, StockPrice } from "@/lib/finnhub";
+import { parseFinnhubMessage, shouldSellStock, shouldBuyStock, StockPrice } from "@/lib/finnhub";
 import SortableStockList from "@/components/SortableStockList";
 import { Stock, StockWithPrice as StockWithCurrentPrice, Settings } from "@/types/stock";
 
@@ -162,8 +162,12 @@ export default function Dashboard() {
             ? ((priceData.price - stock.purchasePrice) / stock.purchasePrice) * 100 
             : 0;
             
-          const shouldSell = settings 
+          const shouldSell = settings && stock.autoSell
             ? shouldSellStock(priceData.price, stock.purchasePrice, settings.sellThresholdPercent) 
+            : false;
+            
+          const shouldBuy = settings && stock.autoBuy
+            ? shouldBuyStock(priceData.price, stock.purchasePrice, settings.buyThresholdPercent)
             : false;
             
           return {
@@ -171,6 +175,7 @@ export default function Dashboard() {
             currentPrice: priceData.price,
             percentChange,
             shouldSell,
+            shouldBuy,
           };
         }
         
@@ -340,7 +345,10 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sellThresholdPercent: settings.sellThresholdPercent,
+          buyThresholdPercent: settings.buyThresholdPercent,
           checkFrequencySeconds: settings.checkFrequencySeconds,
+          tradePlatformApiKey: settings.tradePlatformApiKey,
+          tradePlatformApiSecret: settings.tradePlatformApiSecret,
         }),
       });
       
@@ -372,6 +380,97 @@ export default function Dashboard() {
         title: "Error",
         description: "Failed to update settings. Please try again.",
       });
+    }
+  };
+  
+  // Toggle auto sell for a stock
+  const handleToggleAutoSell = async (id: string, value: boolean) => {
+    try {
+      const stock = stocks.find(s => s.id === id);
+      if (!stock) return;
+      
+      const response = await fetch(`/api/stocks/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ticker: stock.ticker,
+          purchasePrice: stock.purchasePrice,
+          autoSell: value,
+        }),
+      });
+      
+      if (response.ok) {
+        const updatedStock = await response.json();
+        setStocks(prev => prev.map(s => s.id === id ? { ...s, autoSell: updatedStock.autoSell } : s));
+        
+        toast({
+          title: "Success",
+          description: `Auto sell ${value ? 'enabled' : 'disabled'} for ${stock.ticker}.`,
+        });
+      } else {
+        throw new Error("Failed to update stock");
+      }
+    } catch (error) {
+      console.error("Error updating auto sell:", error);
+      throw error;
+    }
+  };
+  
+  // Toggle auto buy for a stock
+  const handleToggleAutoBuy = async (id: string, value: boolean) => {
+    try {
+      const stock = stocks.find(s => s.id === id);
+      if (!stock) return;
+      
+      const response = await fetch(`/api/stocks/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ticker: stock.ticker,
+          purchasePrice: stock.purchasePrice,
+          autoBuy: value,
+        }),
+      });
+      
+      if (response.ok) {
+        const updatedStock = await response.json();
+        setStocks(prev => prev.map(s => s.id === id ? { ...s, autoBuy: updatedStock.autoBuy } : s));
+        
+        toast({
+          title: "Success",
+          description: `Auto buy ${value ? 'enabled' : 'disabled'} for ${stock.ticker}.`,
+        });
+      } else {
+        throw new Error("Failed to update stock");
+      }
+    } catch (error) {
+      console.error("Error updating auto buy:", error);
+      throw error;
+    }
+  };
+  
+  // Execute a trade (buy or sell)
+  const handleTrade = async (id: string, ticker: string, action: 'buy' | 'sell', shares: number) => {
+    try {
+      const response = await fetch("/api/stocks/trade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stockId: id,
+          action,
+          shares,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to ${action} stock`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`Error ${action}ing stock:`, error);
+      throw error;
     }
   };
 
@@ -468,6 +567,9 @@ export default function Dashboard() {
                   stocks={stocks} 
                   onDelete={handleDeleteStock}
                   onReorder={handleReorderStocks}
+                  onToggleAutoSell={handleToggleAutoSell}
+                  onToggleAutoBuy={handleToggleAutoBuy}
+                  onTrade={handleTrade}
                 />
               </CardContent>
             </Card>
@@ -523,6 +625,26 @@ export default function Dashboard() {
                       </div>
                       
                       <div>
+                        <Label htmlFor="buyThreshold">
+                          Buy Threshold: {settings.buyThresholdPercent}%
+                        </Label>
+                        <Slider
+                          id="buyThreshold"
+                          min={1}
+                          max={50}
+                          step={0.5}
+                          value={[settings.buyThresholdPercent]}
+                          onValueChange={(value) => 
+                            setSettings({ ...settings, buyThresholdPercent: value[0] })
+                          }
+                          className="mt-2"
+                        />
+                        <p className="text-sm text-muted-foreground mt-1">
+                          You'll be alerted when a stock's price decreases by this percentage.
+                        </p>
+                      </div>
+                      
+                      <div>
                         <Label htmlFor="checkFrequency">
                           Check Frequency: {settings.checkFrequencySeconds} seconds
                         </Label>
@@ -540,6 +662,39 @@ export default function Dashboard() {
                         <p className="text-sm text-muted-foreground mt-1">
                           How often the app should reconnect if the connection is lost.
                         </p>
+                      </div>
+                      
+                      <div className="border-t pt-4">
+                        <h3 className="text-lg font-medium mb-2">Trading Platform Integration</h3>
+                        <div className="space-y-4">
+                          <div>
+                            <Label htmlFor="tradePlatformApiKey">API Key</Label>
+                            <Input
+                              id="tradePlatformApiKey"
+                              type="password"
+                              placeholder="Enter your trading platform API key"
+                              value={settings.tradePlatformApiKey || ""}
+                              onChange={(e) => 
+                                setSettings({ ...settings, tradePlatformApiKey: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="tradePlatformApiSecret">API Secret</Label>
+                            <Input
+                              id="tradePlatformApiSecret"
+                              type="password"
+                              placeholder="Enter your trading platform API secret"
+                              value={settings.tradePlatformApiSecret || ""}
+                              onChange={(e) => 
+                                setSettings({ ...settings, tradePlatformApiSecret: e.target.value })
+                              }
+                            />
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            These credentials are required for automatic and manual trading functionality.
+                          </p>
+                        </div>
                       </div>
                     </div>
                     

@@ -21,6 +21,8 @@ model Stock {
   ticker       String
   purchasePrice Float
   priority     Int      @default(0)
+  autoSell     Boolean  @default(false)
+  autoBuy      Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   userId       String   @db.Uuid
@@ -32,7 +34,10 @@ model Stock {
 model Settings {
   id                String   @id @default(uuid())
   sellThresholdPercent Float   @default(5.0)
+  buyThresholdPercent Float   @default(5.0)
   checkFrequencySeconds Int    @default(60)
+  tradePlatformApiKey String?
+  tradePlatformApiSecret String?
   userId            String   @unique @db.Uuid
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

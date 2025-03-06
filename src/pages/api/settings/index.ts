@@ -36,16 +36,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     // PUT - Update user settings
     if (req.method === 'PUT') {
-      const { sellThresholdPercent, checkFrequencySeconds } = req.body;
+      const { 
+        sellThresholdPercent, 
+        buyThresholdPercent, 
+        checkFrequencySeconds,
+        tradePlatformApiKey,
+        tradePlatformApiSecret
+      } = req.body;
       
-      if (sellThresholdPercent === undefined || checkFrequencySeconds === undefined) {
-        return res.status(400).json({ error: 'Sell threshold and check frequency are required' });
+      if (sellThresholdPercent === undefined || buyThresholdPercent === undefined || checkFrequencySeconds === undefined) {
+        return res.status(400).json({ error: 'Sell threshold, buy threshold, and check frequency are required' });
       }
       
       // Validate input values
-      if (sellThresholdPercent < 0 || checkFrequencySeconds < 10) {
+      if (sellThresholdPercent < 0 || buyThresholdPercent < 0 || checkFrequencySeconds < 10) {
         return res.status(400).json({ 
-          error: 'Invalid settings values. Sell threshold must be positive and check frequency must be at least 10 seconds.' 
+          error: 'Invalid settings values. Thresholds must be positive and check frequency must be at least 10 seconds.' 
         });
       }
       
@@ -53,12 +59,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         where: { userId: user.id },
         update: {
           sellThresholdPercent: parseFloat(sellThresholdPercent),
+          buyThresholdPercent: parseFloat(buyThresholdPercent),
           checkFrequencySeconds: parseInt(checkFrequencySeconds),
+          ...(tradePlatformApiKey !== undefined && { tradePlatformApiKey }),
+          ...(tradePlatformApiSecret !== undefined && { tradePlatformApiSecret }),
         },
         create: {
           userId: user.id,
           sellThresholdPercent: parseFloat(sellThresholdPercent),
+          buyThresholdPercent: parseFloat(buyThresholdPercent),
           checkFrequencySeconds: parseInt(checkFrequencySeconds),
+          ...(tradePlatformApiKey !== undefined && { tradePlatformApiKey }),
+          ...(tradePlatformApiSecret !== undefined && { tradePlatformApiSecret }),
         },
       });
       

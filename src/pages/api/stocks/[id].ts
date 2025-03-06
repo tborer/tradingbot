@@ -43,7 +43,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     // PUT - Update a stock
     if (req.method === 'PUT') {
-      const { ticker, purchasePrice } = req.body;
+      const { ticker, purchasePrice, autoSell, autoBuy } = req.body;
       
       if (!ticker || !purchasePrice) {
         return res.status(400).json({ error: 'Ticker and purchase price are required' });
@@ -54,6 +54,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         data: {
           ticker: ticker.toUpperCase(),
           purchasePrice: parseFloat(purchasePrice),
+          ...(autoSell !== undefined && { autoSell }),
+          ...(autoBuy !== undefined && { autoBuy }),
         },
       });
       

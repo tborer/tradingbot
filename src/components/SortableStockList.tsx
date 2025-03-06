@@ -18,16 +18,31 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Trash2, GripVertical } from "lucide-react";
+import { Trash2, GripVertical, ShoppingCart, DollarSign } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { StockWithPrice } from "@/types/stock";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface SortableStockItemProps {
   stock: StockWithPrice;
   onDelete: (id: string, ticker: string) => void;
+  onToggleAutoSell: (id: string, value: boolean) => void;
+  onToggleAutoBuy: (id: string, value: boolean) => void;
+  onBuy: (id: string, ticker: string) => void;
+  onSell: (id: string, ticker: string) => void;
 }
 
-function SortableStockItem({ stock, onDelete }: SortableStockItemProps) {
+function SortableStockItem({ 
+  stock, 
+  onDelete, 
+  onToggleAutoSell, 
+  onToggleAutoBuy, 
+  onBuy, 
+  onSell 
+}: SortableStockItemProps) {
   const { 
     attributes, 
     listeners, 
@@ -70,11 +85,46 @@ function SortableStockItem({ stock, onDelete }: SortableStockItemProps) {
         )}
       </TableCell>
       <TableCell>
-        {stock.shouldSell && (
-          <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-300">
-            SELL
-          </span>
-        )}
+        <div className="flex items-center space-x-2">
+          <Checkbox 
+            id={`auto-sell-${stock.id}`} 
+            checked={stock.autoSell} 
+            onCheckedChange={(checked) => onToggleAutoSell(stock.id, checked as boolean)}
+          />
+          <Label htmlFor={`auto-sell-${stock.id}`} className="text-xs">Auto Sell</Label>
+        </div>
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center space-x-2">
+          <Checkbox 
+            id={`auto-buy-${stock.id}`} 
+            checked={stock.autoBuy} 
+            onCheckedChange={(checked) => onToggleAutoBuy(stock.id, checked as boolean)}
+          />
+          <Label htmlFor={`auto-buy-${stock.id}`} className="text-xs">Auto Buy</Label>
+        </div>
+      </TableCell>
+      <TableCell>
+        <div className="flex space-x-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 px-2"
+            onClick={() => onBuy(stock.id, stock.ticker)}
+          >
+            <ShoppingCart className="h-3 w-3 mr-1" />
+            Buy
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 px-2"
+            onClick={() => onSell(stock.id, stock.ticker)}
+          >
+            <DollarSign className="h-3 w-3 mr-1" />
+            Sell
+          </Button>
+        </div>
       </TableCell>
       <TableCell>
         <Button
@@ -93,11 +143,26 @@ interface SortableStockListProps {
   stocks: StockWithPrice[];
   onDelete: (id: string, ticker: string) => void;
   onReorder: (stocks: StockWithPrice[]) => void;
+  onToggleAutoSell?: (id: string, value: boolean) => Promise<void>;
+  onToggleAutoBuy?: (id: string, value: boolean) => Promise<void>;
+  onTrade?: (id: string, ticker: string, action: 'buy' | 'sell', shares: number) => Promise<void>;
 }
 
-export default function SortableStockList({ stocks, onDelete, onReorder }: SortableStockListProps) {
+export default function SortableStockList({ 
+  stocks, 
+  onDelete, 
+  onReorder,
+  onToggleAutoSell,
+  onToggleAutoBuy,
+  onTrade
+}: SortableStockListProps) {
   const { toast } = useToast();
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [tradeDialogOpen, setTradeDialogOpen] = useState(false);
+  const [tradeAction, setTradeAction] = useState<'buy' | 'sell'>('buy');
+  const [selectedStock, setSelectedStock] = useState<{ id: string; ticker: string } | null>(null);
+  const [shares, setShares] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -120,6 +185,82 @@ export default function SortableStockList({ stocks, onDelete, onReorder }: Sorta
     setActiveId(null);
   }
 
+  const handleToggleAutoSell = async (id: string, value: boolean) => {
+    if (onToggleAutoSell) {
+      try {
+        await onToggleAutoSell(id, value);
+      } catch (error) {
+        console.error('Error toggling auto sell:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to update auto sell setting.",
+        });
+      }
+    }
+  };
+
+  const handleToggleAutoBuy = async (id: string, value: boolean) => {
+    if (onToggleAutoBuy) {
+      try {
+        await onToggleAutoBuy(id, value);
+      } catch (error) {
+        console.error('Error toggling auto buy:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to update auto buy setting.",
+        });
+      }
+    }
+  };
+
+  const handleBuy = (id: string, ticker: string) => {
+    setSelectedStock({ id, ticker });
+    setTradeAction('buy');
+    setShares('');
+    setTradeDialogOpen(true);
+  };
+
+  const handleSell = (id: string, ticker: string) => {
+    setSelectedStock({ id, ticker });
+    setTradeAction('sell');
+    setShares('');
+    setTradeDialogOpen(true);
+  };
+
+  const handleTrade = async () => {
+    if (!selectedStock || !shares || isNaN(Number(shares)) || Number(shares) <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Input",
+        description: "Please enter a valid number of shares.",
+      });
+      return;
+    }
+
+    if (onTrade) {
+      setIsSubmitting(true);
+      try {
+        await onTrade(selectedStock.id, selectedStock.ticker, tradeAction, Number(shares));
+        setTradeDialogOpen(false);
+        toast({
+          title: "Success",
+          description: `Successfully ${tradeAction === 'buy' ? 'bought' : 'sold'} ${shares} shares of ${selectedStock.ticker}.`,
+        });
+      } catch (error) {
+        console.error(`Error ${tradeAction}ing stock:`, error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: `Failed to ${tradeAction} stock. Please try again.`,
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
+  };
+
   if (stocks.length === 0) {
     return (
       <p className="text-center text-muted-foreground py-4">
@@ -129,41 +270,84 @@ export default function SortableStockList({ stocks, onDelete, onReorder }: Sorta
   }
 
   return (
-    <div className="overflow-x-auto">
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={(event) => setActiveId(event.active.id as string)}
-        onDragEnd={handleDragEnd}
-      >
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10"></TableHead>
-              <TableHead>Ticker</TableHead>
-              <TableHead>Purchase Price</TableHead>
-              <TableHead>Current Price</TableHead>
-              <TableHead>Change</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <SortableContext 
-              items={stocks.map(stock => stock.id)} 
-              strategy={verticalListSortingStrategy}
-            >
-              {stocks.map((stock) => (
-                <SortableStockItem 
-                  key={stock.id} 
-                  stock={stock} 
-                  onDelete={onDelete} 
-                />
-              ))}
-            </SortableContext>
-          </TableBody>
-        </Table>
-      </DndContext>
-    </div>
+    <>
+      <div className="overflow-x-auto">
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={(event) => setActiveId(event.active.id as string)}
+          onDragEnd={handleDragEnd}
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-10"></TableHead>
+                <TableHead>Ticker</TableHead>
+                <TableHead>Purchase Price</TableHead>
+                <TableHead>Current Price</TableHead>
+                <TableHead>Change</TableHead>
+                <TableHead>Auto Sell</TableHead>
+                <TableHead>Auto Buy</TableHead>
+                <TableHead>Actions</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <SortableContext 
+                items={stocks.map(stock => stock.id)} 
+                strategy={verticalListSortingStrategy}
+              >
+                {stocks.map((stock) => (
+                  <SortableStockItem 
+                    key={stock.id} 
+                    stock={stock} 
+                    onDelete={onDelete}
+                    onToggleAutoSell={handleToggleAutoSell}
+                    onToggleAutoBuy={handleToggleAutoBuy}
+                    onBuy={handleBuy}
+                    onSell={handleSell}
+                  />
+                ))}
+              </SortableContext>
+            </TableBody>
+          </Table>
+        </DndContext>
+      </div>
+
+      <Dialog open={tradeDialogOpen} onOpenChange={setTradeDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {tradeAction === 'buy' ? 'Buy' : 'Sell'} {selectedStock?.ticker}
+            </DialogTitle>
+            <DialogDescription>
+              Enter the number of shares you want to {tradeAction}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="shares">Number of Shares</Label>
+              <Input
+                id="shares"
+                type="number"
+                min="1"
+                step="1"
+                value={shares}
+                onChange={(e) => setShares(e.target.value)}
+                placeholder="Enter number of shares"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTradeDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleTrade} disabled={isSubmitting}>
+              {isSubmitting ? 'Processing...' : tradeAction === 'buy' ? 'Buy Shares' : 'Sell Shares'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

@@ -5,18 +5,18 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/componen
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/components/ui/use-toast";
 import { parseFinnhubMessage, shouldSellStock, StockPrice } from "@/lib/finnhub";
-import { Trash2 } from "lucide-react";
+import SortableStockList from "@/components/SortableStockList";
 
 // Types
 interface Stock {
   id: string;
   ticker: string;
   purchasePrice: number;
+  priority: number;
   createdAt: string;
 }
 
@@ -310,6 +310,45 @@ export default function Dashboard() {
       });
     }
   };
+  
+  // Reorder stocks (update priorities)
+  const handleReorderStocks = async (reorderedStocks: StockWithCurrentPrice[]) => {
+    try {
+      // Update local state immediately for a responsive UI
+      setStocks(reorderedStocks);
+      
+      // Send the updated order to the server
+      const response = await fetch("/api/stocks", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stocks: reorderedStocks.map(stock => ({
+            id: stock.id,
+            ticker: stock.ticker
+          }))
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to update stock order");
+      }
+      
+      toast({
+        title: "Success",
+        description: "Stock order updated successfully.",
+      });
+    } catch (error) {
+      console.error("Error reordering stocks:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to update stock order. Please try again.",
+      });
+      
+      // Refresh the stocks to get the original order
+      fetchStocks();
+    }
+  };
 
   // Update settings
   const handleUpdateSettings = async () => {
@@ -440,67 +479,16 @@ export default function Dashboard() {
             <Card>
               <CardHeader>
                 <CardTitle>Your Portfolio</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Drag stocks to reorder them by priority
+                </p>
               </CardHeader>
               <CardContent>
-                {stocks.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-4">
-                    You haven't added any stocks yet. Add your first stock above.
-                  </p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Ticker</TableHead>
-                          <TableHead>Purchase Price</TableHead>
-                          <TableHead>Current Price</TableHead>
-                          <TableHead>Change</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead></TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {stocks.map((stock) => (
-                          <TableRow key={stock.id}>
-                            <TableCell className="font-medium">{stock.ticker}</TableCell>
-                            <TableCell>${stock.purchasePrice.toFixed(2)}</TableCell>
-                            <TableCell>
-                              {stock.currentPrice 
-                                ? `$${stock.currentPrice.toFixed(2)}` 
-                                : "Waiting..."}
-                            </TableCell>
-                            <TableCell>
-                              {stock.percentChange !== undefined ? (
-                                <span className={stock.percentChange >= 0 ? "text-green-500" : "text-red-500"}>
-                                  {stock.percentChange >= 0 ? "+" : ""}
-                                  {stock.percentChange.toFixed(2)}%
-                                </span>
-                              ) : (
-                                "Waiting..."
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {stock.shouldSell && (
-                                <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-300">
-                                  SELL
-                                </span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDeleteStock(stock.id, stock.ticker)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
+                <SortableStockList 
+                  stocks={stocks} 
+                  onDelete={handleDeleteStock}
+                  onReorder={handleReorderStocks}
+                />
               </CardContent>
             </Card>
             

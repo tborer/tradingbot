@@ -18,7 +18,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'GET') {
       const stocks = await prisma.stock.findMany({
         where: { userId: user.id },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { priority: 'asc' },
       });
       
       return res.status(200).json(stocks);
@@ -44,15 +44,48 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ error: 'Stock already exists in your portfolio' });
       }
       
+      // Get the highest priority to add the new stock at the end
+      const highestPriorityStock = await prisma.stock.findFirst({
+        where: { userId: user.id },
+        orderBy: { priority: 'desc' },
+      });
+      
+      const newPriority = highestPriorityStock ? highestPriorityStock.priority + 1 : 0;
+      
       const stock = await prisma.stock.create({
         data: {
           ticker: ticker.toUpperCase(),
           purchasePrice: parseFloat(purchasePrice),
+          priority: newPriority,
           userId: user.id,
         },
       });
       
       return res.status(201).json(stock);
+    }
+    
+    // PUT - Update stock priorities (for reordering)
+    if (req.method === 'PUT') {
+      const { stocks } = req.body;
+      
+      if (!stocks || !Array.isArray(stocks)) {
+        return res.status(400).json({ error: 'Invalid stocks data' });
+      }
+      
+      // Update each stock's priority in a transaction
+      const updates = await prisma.$transaction(
+        stocks.map((stock, index) => 
+          prisma.stock.update({
+            where: { 
+              id: stock.id,
+              userId: user.id // Ensure user can only update their own stocks
+            },
+            data: { priority: index }
+          })
+        )
+      );
+      
+      return res.status(200).json(updates);
     }
     
     return res.status(405).json({ error: 'Method not allowed' });

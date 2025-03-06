@@ -29,6 +29,7 @@ interface Stock {
   percentChange?: number;
   shouldSell?: boolean;
   priority: number;
+  createdAt?: string;
 }
 
 interface SortableStockItemProps {

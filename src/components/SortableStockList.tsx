@@ -21,7 +21,8 @@ import { Button } from "@/components/ui/button";
 import { Trash2, GripVertical } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
-interface Stock {
+// Import the Stock type from the dashboard
+interface StockWithPrice {
   id: string;
   ticker: string;
   purchasePrice: number;
@@ -33,7 +34,7 @@ interface Stock {
 }
 
 interface SortableStockItemProps {
-  stock: Stock;
+  stock: StockWithPrice;
   onDelete: (id: string, ticker: string) => void;
 }
 
@@ -100,9 +101,9 @@ function SortableStockItem({ stock, onDelete }: SortableStockItemProps) {
 }
 
 interface SortableStockListProps {
-  stocks: Stock[];
+  stocks: StockWithPrice[];
   onDelete: (id: string, ticker: string) => void;
-  onReorder: (stocks: Stock[]) => void;
+  onReorder: (stocks: StockWithPrice[]) => void;
 }
 
 export default function SortableStockList({ stocks, onDelete, onReorder }: SortableStockListProps) {

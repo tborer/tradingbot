@@ -312,7 +312,7 @@ export default function Dashboard() {
   };
   
   // Reorder stocks (update priorities)
-  const handleReorderStocks = async (reorderedStocks: Stock[]) => {
+  const handleReorderStocks = async (reorderedStocks: StockWithCurrentPrice[]) => {
     try {
       // Update local state immediately for a responsive UI
       setStocks(reorderedStocks);

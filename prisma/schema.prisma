@@ -12,4 +12,26 @@ model User {
   id         String   @id @db.Uuid
   email      String   @unique
   createdAt  DateTime @default(now())
+  stocks     Stock[]
+  settings   Settings?
+}
+
+model Stock {
+  id           String   @id @default(uuid())
+  ticker       String
+  purchasePrice Float
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  userId       String   @db.Uuid
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, ticker])
+}
+
+model Settings {
+  id                String   @id @default(uuid())
+  sellThresholdPercent Float   @default(5.0)
+  checkFrequencySeconds Int    @default(60)
+  userId            String   @unique @db.Uuid
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

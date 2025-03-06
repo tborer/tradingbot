@@ -10,27 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/components/ui/use-toast";
 import { parseFinnhubMessage, shouldSellStock, StockPrice } from "@/lib/finnhub";
 import SortableStockList from "@/components/SortableStockList";
-
-// Types
-interface Stock {
-  id: string;
-  ticker: string;
-  purchasePrice: number;
-  priority: number;
-  createdAt: string;
-}
-
-interface Settings {
-  id: string;
-  sellThresholdPercent: number;
-  checkFrequencySeconds: number;
-}
-
-interface StockWithCurrentPrice extends Stock {
-  currentPrice?: number;
-  percentChange?: number;
-  shouldSell?: boolean;
-}
+import { Stock, StockWithPrice as StockWithCurrentPrice, Settings } from "@/types/stock";
 
 export default function Dashboard() {
   const { signOut, user } = useAuth();

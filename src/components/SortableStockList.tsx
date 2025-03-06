@@ -20,18 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Trash2, GripVertical } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
-
-// Import the Stock type from the dashboard
-interface StockWithPrice {
-  id: string;
-  ticker: string;
-  purchasePrice: number;
-  currentPrice?: number;
-  percentChange?: number;
-  shouldSell?: boolean;
-  priority: number;
-  createdAt?: string;
-}
+import { StockWithPrice } from "@/types/stock";
 
 interface SortableStockItemProps {
   stock: StockWithPrice;

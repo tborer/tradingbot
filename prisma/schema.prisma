@@ -38,6 +38,7 @@ model Settings {
   checkFrequencySeconds Int    @default(60)
   tradePlatformApiKey String?
   tradePlatformApiSecret String?
+  finnhubApiKey     String?
   userId            String   @unique @db.Uuid
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

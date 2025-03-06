@@ -349,6 +349,7 @@ export default function Dashboard() {
           checkFrequencySeconds: settings.checkFrequencySeconds,
           tradePlatformApiKey: settings.tradePlatformApiKey,
           tradePlatformApiSecret: settings.tradePlatformApiSecret,
+          finnhubApiKey: settings.finnhubApiKey,
         }),
       });
       
@@ -665,6 +666,27 @@ export default function Dashboard() {
                       </div>
                       
                       <div className="border-t pt-4">
+                        <h3 className="text-lg font-medium mb-2">Finnhub API Integration</h3>
+                        <div className="space-y-4">
+                          <div>
+                            <Label htmlFor="finnhubApiKey">Finnhub API Key</Label>
+                            <Input
+                              id="finnhubApiKey"
+                              type="password"
+                              placeholder="Enter your Finnhub API key"
+                              value={settings.finnhubApiKey || ""}
+                              onChange={(e) => 
+                                setSettings({ ...settings, finnhubApiKey: e.target.value })
+                              }
+                            />
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            This API key is required for real-time stock price updates. You can get a free API key from <a href="https://finnhub.io/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Finnhub.io</a>.
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="border-t pt-4 mt-4">
                         <h3 className="text-lg font-medium mb-2">Trading Platform Integration</h3>
                         <div className="space-y-4">
                           <div>

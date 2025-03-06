@@ -24,4 +24,5 @@ export interface Settings {
   checkFrequencySeconds: number;
   tradePlatformApiKey?: string;
   tradePlatformApiSecret?: string;
+  finnhubApiKey?: string;
 }

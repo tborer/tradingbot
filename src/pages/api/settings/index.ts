@@ -41,7 +41,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         buyThresholdPercent, 
         checkFrequencySeconds,
         tradePlatformApiKey,
-        tradePlatformApiSecret
+        tradePlatformApiSecret,
+        finnhubApiKey
       } = req.body;
       
       if (sellThresholdPercent === undefined || buyThresholdPercent === undefined || checkFrequencySeconds === undefined) {
@@ -63,6 +64,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           checkFrequencySeconds: parseInt(checkFrequencySeconds),
           ...(tradePlatformApiKey !== undefined && { tradePlatformApiKey }),
           ...(tradePlatformApiSecret !== undefined && { tradePlatformApiSecret }),
+          ...(finnhubApiKey !== undefined && { finnhubApiKey }),
         },
         create: {
           userId: user.id,
@@ -71,6 +73,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           checkFrequencySeconds: parseInt(checkFrequencySeconds),
           ...(tradePlatformApiKey !== undefined && { tradePlatformApiKey }),
           ...(tradePlatformApiSecret !== undefined && { tradePlatformApiSecret }),
+          ...(finnhubApiKey !== undefined && { finnhubApiKey }),
         },
       });
       

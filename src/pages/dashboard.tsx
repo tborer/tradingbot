@@ -75,23 +75,30 @@ export default function Dashboard() {
 
   // Connect to Finnhub websocket
   const connectWebSocket = useCallback(() => {
-    if (!process.env.NEXT_PUBLIC_FINNHUB_API_KEY) {
+    // Check if we have a Finnhub API key from environment or settings
+    const apiKey = process.env.NEXT_PUBLIC_FINNHUB_API_KEY || (settings?.finnhubApiKey || "");
+    
+    if (!apiKey) {
+      console.error("Finnhub API key is missing");
       toast({
         variant: "destructive",
         title: "Configuration Error",
-        description: "Finnhub API key is not configured.",
+        description: "Finnhub API key is not configured. Please add it in the settings tab.",
       });
       return;
     }
 
+    // Don't create a new connection if one is already open
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       return;
     }
 
     try {
-      const ws = new WebSocket(`wss://ws.finnhub.io?token=${process.env.NEXT_PUBLIC_FINNHUB_API_KEY}`);
+      console.log("Attempting to connect to Finnhub WebSocket...");
+      const ws = new WebSocket(`wss://ws.finnhub.io?token=${apiKey}`);
       
       ws.onopen = () => {
+        console.log("WebSocket connection established successfully");
         setConnected(true);
         toast({
           title: "Connected",
@@ -99,22 +106,53 @@ export default function Dashboard() {
         });
         
         // Subscribe to all stocks
-        stocks.forEach(stock => {
-          ws.send(JSON.stringify({ type: "subscribe", symbol: stock.ticker }));
-        });
+        if (stocks.length > 0) {
+          console.log(`Subscribing to ${stocks.length} stocks`);
+          stocks.forEach(stock => {
+            try {
+              ws.send(JSON.stringify({ type: "subscribe", symbol: stock.ticker }));
+              console.log(`Subscribed to ${stock.ticker}`);
+            } catch (subError) {
+              console.error(`Error subscribing to ${stock.ticker}:`, subError);
+            }
+          });
+        } else {
+          console.log("No stocks to subscribe to");
+        }
       };
       
       ws.onmessage = (event) => {
-        const stockPrices = parseFinnhubMessage(event.data);
-        
-        if (stockPrices.length > 0) {
-          updateStockPrices(stockPrices);
-          setLastUpdated(new Date());
+        try {
+          // Log the raw message for debugging
+          if (typeof event.data === 'string') {
+            // Only parse if it's a string (could be binary data)
+            const stockPrices = parseFinnhubMessage(event.data);
+            
+            if (stockPrices.length > 0) {
+              updateStockPrices(stockPrices);
+              setLastUpdated(new Date());
+            }
+          } else {
+            console.log("Received non-string message from WebSocket");
+          }
+        } catch (parseError) {
+          console.error("Error processing WebSocket message:", parseError, "Raw message:", event.data);
         }
       };
       
       ws.onerror = (error) => {
+        // Log detailed error information
         console.error("WebSocket error:", error);
+        
+        // Try to extract more information from the error object
+        let errorDetails = "Unknown error";
+        try {
+          errorDetails = JSON.stringify(error);
+        } catch (e) {
+          errorDetails = "Error details could not be stringified";
+        }
+        
+        console.error("WebSocket error details:", errorDetails);
         setConnected(false);
         toast({
           variant: "destructive",
@@ -123,10 +161,14 @@ export default function Dashboard() {
         });
       };
       
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        console.log(`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason || "No reason provided"}, Clean: ${event.wasClean}`);
         setConnected(false);
+        
         // Attempt to reconnect after a delay
-        setTimeout(connectWebSocket, 5000);
+        const reconnectDelay = 5000;
+        console.log(`Will attempt to reconnect in ${reconnectDelay/1000} seconds`);
+        setTimeout(connectWebSocket, reconnectDelay);
       };
       
       wsRef.current = ws;
@@ -134,8 +176,14 @@ export default function Dashboard() {
       // Clean up on unmount
       return () => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
+          console.log("Cleaning up WebSocket connection");
           stocks.forEach(stock => {
-            wsRef.current?.send(JSON.stringify({ type: "unsubscribe", symbol: stock.ticker }));
+            try {
+              wsRef.current?.send(JSON.stringify({ type: "unsubscribe", symbol: stock.ticker }));
+              console.log(`Unsubscribed from ${stock.ticker}`);
+            } catch (unsubError) {
+              console.error(`Error unsubscribing from ${stock.ticker}:`, unsubError);
+            }
           });
           wsRef.current.close();
         }
@@ -149,7 +197,7 @@ export default function Dashboard() {
       });
       setTimeout(connectWebSocket, 5000);
     }
-  }, [stocks, toast]);
+  }, [stocks, toast, settings]);
 
   // Update stock prices from websocket data
   const updateStockPrices = (stockPrices: StockPrice[]) => {

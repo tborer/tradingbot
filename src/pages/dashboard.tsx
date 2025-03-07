@@ -10,15 +10,19 @@ import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/components/ui/use-toast";
 import { parseFinnhubMessage, shouldSellStock, shouldBuyStock, StockPrice } from "@/lib/finnhub";
 import SortableStockList from "@/components/SortableStockList";
+import SortableCryptoList from "@/components/SortableCryptoList";
 import TransactionHistory from "@/components/TransactionHistory";
-import { Stock, StockWithPrice as StockWithCurrentPrice, Settings } from "@/types/stock";
+import CryptoTransactionHistory from "@/components/CryptoTransactionHistory";
+import { Stock, StockWithPrice as StockWithCurrentPrice, Settings, Crypto, CryptoWithPrice } from "@/types/stock";
 
 export default function Dashboard() {
   const { signOut, user } = useAuth();
   const { toast } = useToast();
   const [stocks, setStocks] = useState<StockWithCurrentPrice[]>([]);
+  const [cryptos, setCryptos] = useState<CryptoWithPrice[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [newStock, setNewStock] = useState({ ticker: "", purchasePrice: "", shares: "" });
+  const [newCrypto, setNewCrypto] = useState({ symbol: "", purchasePrice: "", shares: "" });
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -41,6 +45,26 @@ export default function Dashboard() {
         variant: "destructive",
         title: "Error",
         description: "Failed to load your stocks. Please try again.",
+      });
+    }
+  }, [toast]);
+  
+  // Fetch cryptos
+  const fetchCryptos = useCallback(async () => {
+    try {
+      const response = await fetch("/api/cryptos");
+      if (response.ok) {
+        const data = await response.json();
+        setCryptos(data);
+      } else {
+        throw new Error("Failed to fetch cryptos");
+      }
+    } catch (error) {
+      console.error("Error fetching cryptos:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load your cryptocurrencies. Please try again.",
       });
     }
   }, [toast]);
@@ -70,9 +94,10 @@ export default function Dashboard() {
   useEffect(() => {
     if (user) {
       fetchStocks();
+      fetchCryptos();
       fetchSettings();
     }
-  }, [user, fetchStocks, fetchSettings]);
+  }, [user, fetchStocks, fetchCryptos, fetchSettings]);
 
   // Connect to Finnhub websocket
   const connectWebSocket = useCallback(() => {
@@ -120,6 +145,23 @@ export default function Dashboard() {
         } else {
           console.log("No stocks to subscribe to");
         }
+        
+        // Subscribe to all cryptos
+        if (cryptos.length > 0) {
+          console.log(`Subscribing to ${cryptos.length} cryptos`);
+          cryptos.forEach(crypto => {
+            try {
+              // For crypto, we need to use the format BINANCE:BTCUSDT or similar
+              const symbol = `BINANCE:${crypto.symbol}USDT`;
+              ws.send(JSON.stringify({ type: "subscribe", symbol }));
+              console.log(`Subscribed to ${symbol}`);
+            } catch (subError) {
+              console.error(`Error subscribing to ${crypto.symbol}:`, subError);
+            }
+          });
+        } else {
+          console.log("No cryptos to subscribe to");
+        }
       };
       
       ws.onmessage = (event) => {
@@ -131,6 +173,7 @@ export default function Dashboard() {
             
             if (stockPrices.length > 0) {
               updateStockPrices(stockPrices);
+              updateCryptoPrices(stockPrices);
               setLastUpdated(new Date());
             }
           } else {
@@ -229,6 +272,43 @@ export default function Dashboard() {
         }
         
         return stock;
+      });
+    });
+  };
+  
+  // Update crypto prices from websocket data
+  const updateCryptoPrices = (stockPrices: StockPrice[]) => {
+    setCryptos(prevCryptos => {
+      return prevCryptos.map(crypto => {
+        // For crypto, we need to check for the format BINANCE:BTCUSDT or similar
+        const priceData = stockPrices.find(sp => {
+          const cryptoSymbol = `BINANCE:${crypto.symbol}USDT`;
+          return sp.ticker === cryptoSymbol;
+        });
+        
+        if (priceData) {
+          const percentChange = crypto.purchasePrice > 0 
+            ? ((priceData.price - crypto.purchasePrice) / crypto.purchasePrice) * 100 
+            : 0;
+            
+          const shouldSell = settings && crypto.autoSell
+            ? shouldSellStock(priceData.price, crypto.purchasePrice, settings.sellThresholdPercent) 
+            : false;
+            
+          const shouldBuy = settings && crypto.autoBuy
+            ? shouldBuyStock(priceData.price, crypto.purchasePrice, settings.buyThresholdPercent)
+            : false;
+            
+          return {
+            ...crypto,
+            currentPrice: priceData.price,
+            percentChange,
+            shouldSell,
+            shouldBuy,
+          };
+        }
+        
+        return crypto;
       });
     });
   };
@@ -524,6 +604,213 @@ export default function Dashboard() {
       throw error;
     }
   };
+  
+  // Add a new crypto
+  const handleAddCrypto = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!newCrypto.symbol || !newCrypto.purchasePrice) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please enter both crypto symbol and purchase price.",
+      });
+      return;
+    }
+    
+    try {
+      const response = await fetch("/api/cryptos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: newCrypto.symbol.toUpperCase(),
+          purchasePrice: parseFloat(newCrypto.purchasePrice),
+          shares: parseFloat(newCrypto.shares) || 0,
+        }),
+      });
+      
+      if (response.ok) {
+        const newCryptoData = await response.json();
+        setCryptos(prev => [...prev, newCryptoData]);
+        setNewCrypto({ symbol: "", purchasePrice: "", shares: "" });
+        
+        toast({
+          title: "Success",
+          description: `Added ${newCryptoData.symbol} to your portfolio.`,
+        });
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to add crypto");
+      }
+    } catch (error: any) {
+      console.error("Error adding crypto:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to add crypto. Please try again.",
+      });
+    }
+  };
+
+  // Delete a crypto
+  const handleDeleteCrypto = async (id: string, symbol: string) => {
+    try {
+      const response = await fetch(`/api/cryptos/${id}`, {
+        method: "DELETE",
+      });
+      
+      if (response.ok) {
+        setCryptos(prev => prev.filter(crypto => crypto.id !== id));
+        
+        toast({
+          title: "Success",
+          description: `Removed ${symbol} from your portfolio.`,
+        });
+      } else {
+        throw new Error("Failed to delete crypto");
+      }
+    } catch (error) {
+      console.error("Error deleting crypto:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete crypto. Please try again.",
+      });
+    }
+  };
+  
+  // Reorder cryptos (update priorities)
+  const handleReorderCryptos = async (reorderedCryptos: CryptoWithPrice[]) => {
+    try {
+      // Update local state immediately for a responsive UI
+      setCryptos(reorderedCryptos);
+      
+      // Send the updated order to the server
+      const response = await fetch("/api/cryptos", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cryptos: reorderedCryptos.map(crypto => ({
+            id: crypto.id,
+            symbol: crypto.symbol
+          }))
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to update crypto order");
+      }
+      
+      toast({
+        title: "Success",
+        description: "Crypto order updated successfully.",
+      });
+    } catch (error) {
+      console.error("Error reordering cryptos:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to update crypto order. Please try again.",
+      });
+      
+      // Refresh the cryptos to get the original order
+      fetchCryptos();
+    }
+  };
+  
+  // Toggle auto sell for a crypto
+  const handleToggleCryptoAutoSell = async (id: string, value: boolean) => {
+    try {
+      const crypto = cryptos.find(c => c.id === id);
+      if (!crypto) return;
+      
+      const response = await fetch(`/api/cryptos/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: crypto.symbol,
+          purchasePrice: crypto.purchasePrice,
+          autoSell: value,
+        }),
+      });
+      
+      if (response.ok) {
+        const updatedCrypto = await response.json();
+        setCryptos(prev => prev.map(c => c.id === id ? { ...c, autoSell: updatedCrypto.autoSell } : c));
+        
+        toast({
+          title: "Success",
+          description: `Auto sell ${value ? 'enabled' : 'disabled'} for ${crypto.symbol}.`,
+        });
+      } else {
+        throw new Error("Failed to update crypto");
+      }
+    } catch (error) {
+      console.error("Error updating auto sell:", error);
+      throw error;
+    }
+  };
+  
+  // Toggle auto buy for a crypto
+  const handleToggleCryptoAutoBuy = async (id: string, value: boolean) => {
+    try {
+      const crypto = cryptos.find(c => c.id === id);
+      if (!crypto) return;
+      
+      const response = await fetch(`/api/cryptos/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: crypto.symbol,
+          purchasePrice: crypto.purchasePrice,
+          autoBuy: value,
+        }),
+      });
+      
+      if (response.ok) {
+        const updatedCrypto = await response.json();
+        setCryptos(prev => prev.map(c => c.id === id ? { ...c, autoBuy: updatedCrypto.autoBuy } : c));
+        
+        toast({
+          title: "Success",
+          description: `Auto buy ${value ? 'enabled' : 'disabled'} for ${crypto.symbol}.`,
+        });
+      } else {
+        throw new Error("Failed to update crypto");
+      }
+    } catch (error) {
+      console.error("Error updating auto buy:", error);
+      throw error;
+    }
+  };
+  
+  // Execute a crypto trade (buy or sell)
+  const handleCryptoTrade = async (id: string, symbol: string, action: 'buy' | 'sell', shares: number) => {
+    try {
+      const response = await fetch("/api/cryptos/trade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cryptoId: id,
+          action,
+          shares,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to ${action} crypto`);
+      }
+      
+      // Update the crypto shares after successful trade
+      fetchCryptos();
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`Error ${action}ing crypto:`, error);
+      throw error;
+    }
+  };
 
   if (loading) {
     return (
@@ -553,6 +840,7 @@ export default function Dashboard() {
         <Tabs defaultValue="portfolio" className="w-full">
           <TabsList className="mb-6">
             <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
+            <TabsTrigger value="crypto">Crypto</TabsTrigger>
             <TabsTrigger value="reporting">Reporting</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
@@ -657,6 +945,98 @@ export default function Dashboard() {
                 </AlertDescription>
               </Alert>
             )}
+          </TabsContent>
+          
+          <TabsContent value="crypto" className="space-y-6">
+            {/* Connection Status */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className={`h-3 w-3 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <span className="text-sm text-muted-foreground">
+                  {connected ? 'Connected to Finnhub' : 'Disconnected'}
+                </span>
+              </div>
+              {lastUpdated && (
+                <span className="text-sm text-muted-foreground">
+                  Last updated: {lastUpdated.toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+            
+            {/* Add New Crypto Form */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Add Crypto to Portfolio</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleAddCrypto} className="flex flex-col gap-4 md:flex-row md:items-end">
+                  <div className="flex-1 space-y-2">
+                    <Label htmlFor="cryptoSymbol">Crypto Symbol</Label>
+                    <Input
+                      id="cryptoSymbol"
+                      placeholder="e.g. BTC"
+                      value={newCrypto.symbol}
+                      onChange={(e) => setNewCrypto({ ...newCrypto, symbol: e.target.value })}
+                    />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <Label htmlFor="cryptoPurchasePrice">Purchase Price ($)</Label>
+                    <Input
+                      id="cryptoPurchasePrice"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="e.g. 50000.00"
+                      value={newCrypto.purchasePrice}
+                      onChange={(e) => setNewCrypto({ ...newCrypto, purchasePrice: e.target.value })}
+                    />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <Label htmlFor="cryptoShares">Shares</Label>
+                    <Input
+                      id="cryptoShares"
+                      type="number"
+                      step="0.00000001"
+                      min="0"
+                      placeholder="e.g. 0.5"
+                      value={newCrypto.shares}
+                      onChange={(e) => setNewCrypto({ ...newCrypto, shares: e.target.value })}
+                    />
+                  </div>
+                  <Button type="submit" className="md:ml-2">Add Crypto</Button>
+                </form>
+              </CardContent>
+            </Card>
+            
+            {/* Crypto Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Your Crypto Portfolio</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Drag cryptocurrencies to reorder them by priority
+                </p>
+              </CardHeader>
+              <CardContent>
+                <SortableCryptoList 
+                  cryptos={cryptos} 
+                  onDelete={handleDeleteCrypto}
+                  onReorder={handleReorderCryptos}
+                  onToggleAutoSell={handleToggleCryptoAutoSell}
+                  onToggleAutoBuy={handleToggleCryptoAutoBuy}
+                  onTrade={handleCryptoTrade}
+                />
+              </CardContent>
+            </Card>
+            
+            {/* Crypto Transaction History */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Crypto Transaction History</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CryptoTransactionHistory />
+              </CardContent>
+            </Card>
           </TabsContent>
           
           <TabsContent value="reporting">

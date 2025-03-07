@@ -39,3 +39,33 @@ export interface Transaction {
   totalAmount: number;
   createdAt: string;
 }
+
+// Types for crypto data
+export interface Crypto {
+  id: string;
+  symbol: string;
+  purchasePrice: number;
+  shares: number;
+  priority: number;
+  autoSell: boolean;
+  autoBuy: boolean;
+  createdAt: string;
+}
+
+export interface CryptoWithPrice extends Crypto {
+  currentPrice?: number;
+  percentChange?: number;
+  shouldSell?: boolean;
+  shouldBuy?: boolean;
+}
+
+export interface CryptoTransaction {
+  id: string;
+  cryptoId: string;
+  symbol: string;
+  action: 'buy' | 'sell';
+  shares: number;
+  price: number;
+  totalAmount: number;
+  createdAt: string;
+}

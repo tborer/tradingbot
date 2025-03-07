@@ -13,6 +13,7 @@ model User {
   email      String   @unique
   createdAt  DateTime @default(now())
   stocks     Stock[]
+  cryptos    Crypto[]
   settings   Settings?
 }
 
@@ -49,6 +50,35 @@ model Transaction {
   id           String   @id @default(uuid())
   stockId      String
   stock        Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  action       String   // 'buy' or 'sell'
+  shares       Float
+  price        Float
+  totalAmount  Float
+  createdAt    DateTime @default(now())
+  userId       String   @db.Uuid
+}
+
+model Crypto {
+  id           String   @id @default(uuid())
+  symbol       String
+  purchasePrice Float
+  shares       Float    @default(0)
+  priority     Int      @default(0)
+  autoSell     Boolean  @default(false)
+  autoBuy      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  userId       String   @db.Uuid
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions CryptoTransaction[]
+
+  @@unique([userId, symbol])
+}
+
+model CryptoTransaction {
+  id           String   @id @default(uuid())
+  cryptoId     String
+  crypto       Crypto   @relation(fields: [cryptoId], references: [id], onDelete: Cascade)
   action       String   // 'buy' or 'sell'
   shares       Float
   price        Float

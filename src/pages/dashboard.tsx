@@ -9,6 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/components/ui/use-toast";
 import { parseFinnhubMessage, shouldSellStock, shouldBuyStock, StockPrice } from "@/lib/finnhub";
+import { parseKrakenMessage, createKrakenSubscription, shouldSellCrypto, shouldBuyCrypto, KrakenPrice } from "@/lib/kraken";
 import SortableStockList from "@/components/SortableStockList";
 import SortableCryptoList from "@/components/SortableCryptoList";
 import TransactionHistory from "@/components/TransactionHistory";
@@ -99,7 +100,7 @@ export default function Dashboard() {
     }
   }, [user, fetchStocks, fetchCryptos, fetchSettings]);
 
-  // Connect to Finnhub websocket
+  // Connect to WebSockets (Finnhub for stocks, Kraken for crypto)
   const connectWebSocket = useCallback(() => {
     // Check if we have a Finnhub API key from environment or settings
     const apiKey = process.env.NEXT_PUBLIC_FINNHUB_API_KEY || (settings?.finnhubApiKey || "");
@@ -120,15 +121,16 @@ export default function Dashboard() {
     }
 
     try {
+      // Connect to Finnhub for stock data
       console.log("Attempting to connect to Finnhub WebSocket...");
       const ws = new WebSocket(`wss://ws.finnhub.io?token=${apiKey}`);
       
       ws.onopen = () => {
-        console.log("WebSocket connection established successfully");
+        console.log("Finnhub WebSocket connection established successfully");
         setConnected(true);
         toast({
           title: "Connected",
-          description: "Connected to Finnhub websocket",
+          description: "Connected to Finnhub websocket for stocks",
         });
         
         // Subscribe to all stocks
@@ -145,23 +147,6 @@ export default function Dashboard() {
         } else {
           console.log("No stocks to subscribe to");
         }
-        
-        // Subscribe to all cryptos
-        if (cryptos.length > 0) {
-          console.log(`Subscribing to ${cryptos.length} cryptos`);
-          cryptos.forEach(crypto => {
-            try {
-              // For crypto, we need to use the format BINANCE:BTCUSDT or similar
-              const symbol = `BINANCE:${crypto.symbol}USDT`;
-              ws.send(JSON.stringify({ type: "subscribe", symbol }));
-              console.log(`Subscribed to ${symbol}`);
-            } catch (subError) {
-              console.error(`Error subscribing to ${crypto.symbol}:`, subError);
-            }
-          });
-        } else {
-          console.log("No cryptos to subscribe to");
-        }
       };
       
       ws.onmessage = (event) => {
@@ -173,20 +158,19 @@ export default function Dashboard() {
             
             if (stockPrices.length > 0) {
               updateStockPrices(stockPrices);
-              updateCryptoPrices(stockPrices);
               setLastUpdated(new Date());
             }
           } else {
-            console.log("Received non-string message from WebSocket");
+            console.log("Received non-string message from Finnhub WebSocket");
           }
         } catch (parseError) {
-          console.error("Error processing WebSocket message:", parseError, "Raw message:", event.data);
+          console.error("Error processing Finnhub WebSocket message:", parseError, "Raw message:", event.data);
         }
       };
       
       ws.onerror = (error) => {
         // Log detailed error information
-        console.error("WebSocket error:", error);
+        console.error("Finnhub WebSocket error:", error);
         
         // Try to extract more information from the error object
         let errorDetails = "Unknown error";
@@ -196,7 +180,7 @@ export default function Dashboard() {
           errorDetails = "Error details could not be stringified";
         }
         
-        console.error("WebSocket error details:", errorDetails);
+        console.error("Finnhub WebSocket error details:", errorDetails);
         setConnected(false);
         toast({
           variant: "destructive",
@@ -206,7 +190,7 @@ export default function Dashboard() {
       };
       
       ws.onclose = (event) => {
-        console.log(`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason || "No reason provided"}, Clean: ${event.wasClean}`);
+        console.log(`Finnhub WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason || "No reason provided"}, Clean: ${event.wasClean}`);
         setConnected(false);
         
         // Attempt to reconnect after a delay
@@ -217,10 +201,83 @@ export default function Dashboard() {
       
       wsRef.current = ws;
       
+      // Connect to Kraken for crypto data
+      if (cryptos.length > 0) {
+        console.log("Attempting to connect to Kraken WebSocket...");
+        const krakenWs = new WebSocket('wss://ws.kraken.com/v2');
+        
+        krakenWs.onopen = () => {
+          console.log("Kraken WebSocket connection established successfully");
+          toast({
+            title: "Connected",
+            description: "Connected to Kraken websocket for crypto",
+          });
+          
+          // Subscribe to all cryptos
+          if (cryptos.length > 0) {
+            console.log(`Subscribing to ${cryptos.length} cryptos on Kraken`);
+            const symbols = cryptos.map(crypto => crypto.symbol);
+            const subscriptionMessage = createKrakenSubscription(symbols);
+            krakenWs.send(JSON.stringify(subscriptionMessage));
+            console.log(`Sent subscription for ${symbols.join(', ')}`);
+          }
+        };
+        
+        krakenWs.onmessage = (event) => {
+          try {
+            if (typeof event.data === 'string') {
+              console.log("Received Kraken message:", event.data.substring(0, 200) + "...");
+              const cryptoPrices = parseKrakenMessage(event.data);
+              
+              if (cryptoPrices.length > 0) {
+                updateCryptoPrices(cryptoPrices);
+                setLastUpdated(new Date());
+              }
+            } else {
+              console.log("Received non-string message from Kraken WebSocket");
+            }
+          } catch (parseError) {
+            console.error("Error processing Kraken WebSocket message:", parseError);
+          }
+        };
+        
+        krakenWs.onerror = (error) => {
+          console.error("Kraken WebSocket error:", error);
+          toast({
+            variant: "destructive",
+            title: "Crypto Connection Error",
+            description: "Failed to connect to Kraken for crypto data.",
+          });
+        };
+        
+        krakenWs.onclose = (event) => {
+          console.log(`Kraken WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason || "No reason provided"}, Clean: ${event.wasClean}`);
+          
+          // Attempt to reconnect after a delay
+          const reconnectDelay = 5000;
+          console.log(`Will attempt to reconnect to Kraken in ${reconnectDelay/1000} seconds`);
+          setTimeout(() => {
+            if (cryptos.length > 0) {
+              try {
+                const newKrakenWs = new WebSocket('wss://ws.kraken.com/v2');
+                // Set up event handlers again
+                // This is simplified - in production you'd want to extract this to a reusable function
+                newKrakenWs.onopen = krakenWs.onopen;
+                newKrakenWs.onmessage = krakenWs.onmessage;
+                newKrakenWs.onerror = krakenWs.onerror;
+                newKrakenWs.onclose = krakenWs.onclose;
+              } catch (error) {
+                console.error("Error reconnecting to Kraken:", error);
+              }
+            }
+          }, reconnectDelay);
+        };
+      }
+      
       // Clean up on unmount
       return () => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
-          console.log("Cleaning up WebSocket connection");
+          console.log("Cleaning up Finnhub WebSocket connection");
           stocks.forEach(stock => {
             try {
               wsRef.current?.send(JSON.stringify({ type: "unsubscribe", symbol: stock.ticker }));
@@ -237,11 +294,11 @@ export default function Dashboard() {
       toast({
         variant: "destructive",
         title: "Connection Error",
-        description: "Failed to connect to Finnhub. Will retry shortly.",
+        description: "Failed to connect to WebSockets. Will retry shortly.",
       });
       setTimeout(connectWebSocket, 5000);
     }
-  }, [stocks, toast, settings]);
+  }, [stocks, cryptos, toast, settings]);
 
   // Update stock prices from websocket data
   const updateStockPrices = (stockPrices: StockPrice[]) => {
@@ -276,15 +333,12 @@ export default function Dashboard() {
     });
   };
   
-  // Update crypto prices from websocket data
-  const updateCryptoPrices = (stockPrices: StockPrice[]) => {
+  // Update crypto prices from Kraken websocket data
+  const updateCryptoPrices = (cryptoPrices: KrakenPrice[]) => {
     setCryptos(prevCryptos => {
       return prevCryptos.map(crypto => {
-        // For crypto, we need to check for the format BINANCE:BTCUSDT or similar
-        const priceData = stockPrices.find(sp => {
-          const cryptoSymbol = `BINANCE:${crypto.symbol}USDT`;
-          return sp.ticker === cryptoSymbol;
-        });
+        // Find matching crypto price data
+        const priceData = cryptoPrices.find(cp => cp.symbol === crypto.symbol);
         
         if (priceData) {
           const percentChange = crypto.purchasePrice > 0 
@@ -292,11 +346,11 @@ export default function Dashboard() {
             : 0;
             
           const shouldSell = settings && crypto.autoSell
-            ? shouldSellStock(priceData.price, crypto.purchasePrice, settings.sellThresholdPercent) 
+            ? shouldSellCrypto(priceData.price, crypto.purchasePrice, settings.sellThresholdPercent) 
             : false;
             
           const shouldBuy = settings && crypto.autoBuy
-            ? shouldBuyStock(priceData.price, crypto.purchasePrice, settings.buyThresholdPercent)
+            ? shouldBuyCrypto(priceData.price, crypto.purchasePrice, settings.buyThresholdPercent)
             : false;
             
           return {

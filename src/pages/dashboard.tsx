@@ -10,6 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/components/ui/use-toast";
 import { parseFinnhubMessage, shouldSellStock, shouldBuyStock, StockPrice } from "@/lib/finnhub";
 import SortableStockList from "@/components/SortableStockList";
+import TransactionHistory from "@/components/TransactionHistory";
 import { Stock, StockWithPrice as StockWithCurrentPrice, Settings } from "@/types/stock";
 
 export default function Dashboard() {
@@ -17,7 +18,7 @@ export default function Dashboard() {
   const { toast } = useToast();
   const [stocks, setStocks] = useState<StockWithCurrentPrice[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [newStock, setNewStock] = useState({ ticker: "", purchasePrice: "" });
+  const [newStock, setNewStock] = useState({ ticker: "", purchasePrice: "", shares: "" });
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -278,13 +279,14 @@ export default function Dashboard() {
         body: JSON.stringify({
           ticker: newStock.ticker.toUpperCase(),
           purchasePrice: parseFloat(newStock.purchasePrice),
+          shares: parseFloat(newStock.shares) || 0,
         }),
       });
       
       if (response.ok) {
         const newStockData = await response.json();
         setStocks(prev => [...prev, newStockData]);
-        setNewStock({ ticker: "", purchasePrice: "" });
+        setNewStock({ ticker: "", purchasePrice: "", shares: "" });
         
         // Subscribe to the new stock in the websocket
         if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -551,6 +553,7 @@ export default function Dashboard() {
         <Tabs defaultValue="portfolio" className="w-full">
           <TabsList className="mb-6">
             <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
+            <TabsTrigger value="reporting">Reporting</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
           
@@ -598,6 +601,18 @@ export default function Dashboard() {
                       onChange={(e) => setNewStock({ ...newStock, purchasePrice: e.target.value })}
                     />
                   </div>
+                  <div className="flex-1 space-y-2">
+                    <Label htmlFor="shares">Shares</Label>
+                    <Input
+                      id="shares"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="e.g. 10"
+                      value={newStock.shares}
+                      onChange={(e) => setNewStock({ ...newStock, shares: e.target.value })}
+                    />
+                  </div>
                   <Button type="submit" className="md:ml-2">Add Stock</Button>
                 </form>
               </CardContent>
@@ -642,6 +657,17 @@ export default function Dashboard() {
                 </AlertDescription>
               </Alert>
             )}
+          </TabsContent>
+          
+          <TabsContent value="reporting">
+            <Card>
+              <CardHeader>
+                <CardTitle>Transaction History</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <TransactionHistory />
+              </CardContent>
+            </Card>
           </TabsContent>
           
           <TabsContent value="settings">

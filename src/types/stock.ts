@@ -3,6 +3,7 @@ export interface Stock {
   id: string;
   ticker: string;
   purchasePrice: number;
+  shares: number;
   priority: number;
   autoSell: boolean;
   autoBuy: boolean;
@@ -25,4 +26,16 @@ export interface Settings {
   tradePlatformApiKey?: string;
   tradePlatformApiSecret?: string;
   finnhubApiKey?: string;
+}
+
+// Types for transactions
+export interface Transaction {
+  id: string;
+  stockId: string;
+  ticker: string;
+  action: 'buy' | 'sell';
+  shares: number;
+  price: number;
+  totalAmount: number;
+  createdAt: string;
 }

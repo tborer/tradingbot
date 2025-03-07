@@ -57,18 +57,31 @@ function SortableStockItem({
   };
 
   return (
-    <TableRow ref={setNodeRef} style={style} className="group">
+    <TableRow 
+      ref={setNodeRef} 
+      style={style} 
+      className="group cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50"
+      onClick={() => {
+        // Open trade dialog when clicking anywhere on the row
+        // We'll use a custom data attribute to prevent opening when clicking on buttons
+        if (!(event.target as HTMLElement).closest('[data-no-row-click]')) {
+          onBuy(stock.id, stock.ticker);
+        }
+      }}
+    >
       <TableCell className="w-10">
         <div 
           {...attributes} 
           {...listeners} 
           className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+          data-no-row-click
         >
           <GripVertical className="h-4 w-4 text-gray-400" />
         </div>
       </TableCell>
       <TableCell className="font-medium">{stock.ticker}</TableCell>
       <TableCell>${stock.purchasePrice.toFixed(2)}</TableCell>
+      <TableCell>{stock.shares.toFixed(2)}</TableCell>
       <TableCell>
         {stock.currentPrice 
           ? `$${stock.currentPrice.toFixed(2)}` 
@@ -85,52 +98,79 @@ function SortableStockItem({
         )}
       </TableCell>
       <TableCell>
-        <div className="flex items-center space-x-2">
-          <Checkbox 
-            id={`auto-sell-${stock.id}`} 
-            checked={stock.autoSell} 
-            onCheckedChange={(checked) => onToggleAutoSell(stock.id, checked as boolean)}
-          />
-          <Label htmlFor={`auto-sell-${stock.id}`} className="text-xs">Auto Sell</Label>
+        <div className="flex items-center space-x-2" data-no-row-click>
+          <div className="flex items-center space-x-2">
+            <Label htmlFor={`auto-action-${stock.id}`} className="text-xs mr-2">Action:</Label>
+            <div className="flex border rounded-md overflow-hidden">
+              <Button
+                type="button"
+                variant={stock.autoBuy ? "default" : "outline"}
+                size="sm"
+                className="rounded-none h-7 px-2"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleAutoBuy(stock.id, true);
+                  onToggleAutoSell(stock.id, false);
+                }}
+              >
+                Buy
+              </Button>
+              <Button
+                type="button"
+                variant={stock.autoSell ? "default" : "outline"}
+                size="sm"
+                className="rounded-none h-7 px-2"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleAutoBuy(stock.id, false);
+                  onToggleAutoSell(stock.id, true);
+                }}
+              >
+                Sell
+              </Button>
+            </div>
+          </div>
         </div>
       </TableCell>
       <TableCell>
-        <div className="flex items-center space-x-2">
-          <Checkbox 
-            id={`auto-buy-${stock.id}`} 
-            checked={stock.autoBuy} 
-            onCheckedChange={(checked) => onToggleAutoBuy(stock.id, checked as boolean)}
-          />
-          <Label htmlFor={`auto-buy-${stock.id}`} className="text-xs">Auto Buy</Label>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 w-full"
+          data-no-row-click
+          onClick={(e) => {
+            e.stopPropagation();
+            onBuy(stock.id, stock.ticker);
+          }}
+        >
+          <ShoppingCart className="h-3 w-3 mr-1" />
+          Buy
+        </Button>
       </TableCell>
       <TableCell>
-        <div className="flex space-x-1">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 px-2"
-            onClick={() => onBuy(stock.id, stock.ticker)}
-          >
-            <ShoppingCart className="h-3 w-3 mr-1" />
-            Buy
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 px-2"
-            onClick={() => onSell(stock.id, stock.ticker)}
-          >
-            <DollarSign className="h-3 w-3 mr-1" />
-            Sell
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 w-full"
+          data-no-row-click
+          onClick={(e) => {
+            e.stopPropagation();
+            onSell(stock.id, stock.ticker);
+          }}
+        >
+          <DollarSign className="h-3 w-3 mr-1" />
+          Sell
+        </Button>
       </TableCell>
       <TableCell>
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => onDelete(stock.id, stock.ticker)}
+          data-no-row-click
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(stock.id, stock.ticker);
+          }}
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -284,11 +324,12 @@ export default function SortableStockList({
                 <TableHead className="w-10"></TableHead>
                 <TableHead>Ticker</TableHead>
                 <TableHead>Purchase Price</TableHead>
+                <TableHead>Shares</TableHead>
                 <TableHead>Current Price</TableHead>
                 <TableHead>Change</TableHead>
-                <TableHead>Auto Sell</TableHead>
-                <TableHead>Auto Buy</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead>Action</TableHead>
+                <TableHead>Buy</TableHead>
+                <TableHead>Sell</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>

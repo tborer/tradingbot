@@ -26,7 +26,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     // POST - Add a new stock
     if (req.method === 'POST') {
-      const { ticker, purchasePrice } = req.body;
+      const { ticker, purchasePrice, shares = 0 } = req.body;
       
       if (!ticker || !purchasePrice) {
         return res.status(400).json({ error: 'Ticker and purchase price are required' });
@@ -56,6 +56,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         data: {
           ticker: ticker.toUpperCase(),
           purchasePrice: parseFloat(purchasePrice),
+          shares: parseFloat(shares) || 0,
           priority: newPriority,
           userId: user.id,
         },

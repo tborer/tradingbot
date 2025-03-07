@@ -20,6 +20,7 @@ model Stock {
   id           String   @id @default(uuid())
   ticker       String
   purchasePrice Float
+  shares       Float    @default(0)
   priority     Int      @default(0)
   autoSell     Boolean  @default(false)
   autoBuy      Boolean  @default(false)
@@ -27,6 +28,7 @@ model Stock {
   updatedAt    DateTime @updatedAt
   userId       String   @db.Uuid
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
 
   @@unique([userId, ticker])
 }
@@ -41,4 +43,16 @@ model Settings {
   finnhubApiKey     String?
   userId            String   @unique @db.Uuid
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Transaction {
+  id           String   @id @default(uuid())
+  stockId      String
+  stock        Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  action       String   // 'buy' or 'sell'
+  shares       Float
+  price        Float
+  totalAmount  Float
+  createdAt    DateTime @default(now())
+  userId       String   @db.Uuid
 }

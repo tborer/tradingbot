@@ -61,7 +61,7 @@ function SortableStockItem({
       ref={setNodeRef} 
       style={style} 
       className="group cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50"
-      onClick={() => {
+      onClick={(event) => {
         // Open trade dialog when clicking anywhere on the row
         // We'll use a custom data attribute to prevent opening when clicking on buttons
         if (!(event.target as HTMLElement).closest('[data-no-row-click]')) {

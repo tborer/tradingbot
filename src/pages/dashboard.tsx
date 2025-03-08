@@ -425,7 +425,7 @@ export default function Dashboard() {
       
       // Set up periodic reconnection
       timerRef.current = setInterval(() => {
-        if (!connected) {
+        if (!stocksConnected || !cryptoConnected) {
           connectWebSocket();
         }
       }, settings.checkFrequencySeconds * 1000);
@@ -436,7 +436,7 @@ export default function Dashboard() {
         }
       };
     }
-  }, [loading, stocks, settings, connected, connectWebSocket]);
+  }, [loading, stocks, settings, stocksConnected, cryptoConnected, connectWebSocket]);
 
   // Add a new stock
   const handleAddStock = async (e: React.FormEvent) => {
@@ -590,7 +590,7 @@ export default function Dashboard() {
         if (timerRef.current) {
           clearInterval(timerRef.current);
           timerRef.current = setInterval(() => {
-            if (!connected) {
+            if (!stocksConnected || !cryptoConnected) {
               connectWebSocket();
             }
           }, updatedSettings.checkFrequencySeconds * 1000);

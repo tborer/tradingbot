@@ -218,6 +218,10 @@ export default function Dashboard() {
             console.log(`Subscribing to ${cryptos.length} cryptos on Kraken`);
             const symbols = cryptos.map(crypto => crypto.symbol);
             const subscriptionMessage = createKrakenSubscription(symbols);
+            
+            // Log the subscription message for debugging
+            console.log("Sending Kraken subscription:", JSON.stringify(subscriptionMessage));
+            
             krakenWs.send(JSON.stringify(subscriptionMessage));
             console.log(`Sent subscription for ${symbols.join(', ')}`);
           }
@@ -226,10 +230,14 @@ export default function Dashboard() {
         krakenWs.onmessage = (event) => {
           try {
             if (typeof event.data === 'string') {
-              console.log("Received Kraken message:", event.data.substring(0, 200) + "...");
+              // Log the raw message for debugging (truncated for readability)
+              console.log("Received Kraken message:", 
+                event.data.length > 200 ? event.data.substring(0, 200) + "..." : event.data);
+              
               const cryptoPrices = parseKrakenMessage(event.data);
               
               if (cryptoPrices.length > 0) {
+                console.log("Parsed crypto prices:", cryptoPrices);
                 updateCryptoPrices(cryptoPrices);
                 setLastUpdated(new Date());
               }
@@ -237,16 +245,28 @@ export default function Dashboard() {
               console.log("Received non-string message from Kraken WebSocket");
             }
           } catch (parseError) {
-            console.error("Error processing Kraken WebSocket message:", parseError);
+            console.error("Error processing Kraken WebSocket message:", parseError, "Raw message:", event.data);
           }
         };
         
         krakenWs.onerror = (error) => {
+          // Log detailed error information
           console.error("Kraken WebSocket error:", error);
+          
+          // Try to extract more information from the error object
+          let errorDetails = "Unknown error";
+          try {
+            errorDetails = JSON.stringify(error);
+          } catch (e) {
+            errorDetails = "Error details could not be stringified";
+          }
+          
+          console.error("Kraken WebSocket error details:", errorDetails);
+          
           toast({
             variant: "destructive",
             title: "Crypto Connection Error",
-            description: "Failed to connect to Kraken for crypto data.",
+            description: "Failed to connect to Kraken for crypto data. Will retry shortly.",
           });
         };
         
@@ -256,13 +276,24 @@ export default function Dashboard() {
           // Attempt to reconnect after a delay
           const reconnectDelay = 5000;
           console.log(`Will attempt to reconnect to Kraken in ${reconnectDelay/1000} seconds`);
+          
           setTimeout(() => {
             if (cryptos.length > 0) {
               try {
+                console.log("Attempting to reconnect to Kraken WebSocket...");
                 const newKrakenWs = new WebSocket('wss://ws.kraken.com/v2');
-                // Set up event handlers again
-                // This is simplified - in production you'd want to extract this to a reusable function
-                newKrakenWs.onopen = krakenWs.onopen;
+                
+                // Set up event handlers for the new connection
+                newKrakenWs.onopen = () => {
+                  console.log("Kraken WebSocket reconnection successful");
+                  
+                  // Resubscribe to all cryptos
+                  const symbols = cryptos.map(crypto => crypto.symbol);
+                  const subscriptionMessage = createKrakenSubscription(symbols);
+                  newKrakenWs.send(JSON.stringify(subscriptionMessage));
+                  console.log(`Resubscribed to ${symbols.join(', ')}`);
+                };
+                
                 newKrakenWs.onmessage = krakenWs.onmessage;
                 newKrakenWs.onerror = krakenWs.onerror;
                 newKrakenWs.onclose = krakenWs.onclose;

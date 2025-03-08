@@ -29,18 +29,47 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
     const parsed = JSON.parse(message);
     
     // Handle subscription confirmation messages
-    if (parsed.type === 'subscribed' || parsed.type === 'heartbeat') {
+    if (parsed.event === 'subscribed' || parsed.event === 'heartbeat') {
+      console.log('Received subscription confirmation or heartbeat from Kraken');
       return [];
     }
     
-    // Handle ticker updates
+    // Handle error messages
+    if (parsed.event === 'error') {
+      console.error('Kraken WebSocket error:', parsed);
+      return [];
+    }
+    
+    // Check if it's an array (Kraken sends arrays for ticker updates)
+    if (Array.isArray(parsed)) {
+      // Kraken v2 WebSocket format: [channelID, data, channelName, pair]
+      // Example: [0,{"a":[["41772.10000",0.00100000,1.00000000]],"b":[["41772.00000",0.77920533,1.00000000]],"c":["41772.10000","0.00006949"],"v":["1903.41357664","2167.75553954"],"p":["41984.40905156","42020.94016593"],"t":[14218,16453],"l":["41600.00000","41600.00000"],"h":["42399.90000","42399.90000"],"o":["42208.80000","42208.80000"]},"ticker","XBT/USD"]
+      
+      if (parsed.length >= 4 && parsed[2] === 'ticker') {
+        const data = parsed[1];
+        const pair = parsed[3];
+        
+        // Extract the price from the close price (c) field
+        // The first element in the array is the price
+        const price = parseFloat(data.c[0]);
+        
+        // Extract the symbol from the pair
+        const symbol = formatKrakenSymbol(pair);
+        
+        return [{
+          symbol,
+          price,
+          timestamp: Date.now(),
+        }];
+      }
+    }
+    
+    // Handle ticker updates in v1 format (fallback)
     if (parsed.type === 'update' && parsed.channel === 'ticker') {
       // Extract the price from the close price (c) field
-      // The first element in the array is the price
       const price = parseFloat(parsed.data.c[0]);
       
       // Extract the symbol from the message
-      // The symbol format is like "XBT/USD", we need to convert it to our format
       const symbol = formatKrakenSymbol(parsed.symbol);
       
       return [{
@@ -88,11 +117,12 @@ export const createKrakenSubscription = (symbols: string[]): any => {
   const krakenSymbols = symbols.map(formatToKrakenSymbol);
   
   return {
-    method: 'subscribe',
-    params: {
-      channel: 'ticker',
-      symbols: krakenSymbols,
-    },
+    name: 'subscribe',
+    reqid: 123,
+    pair: krakenSymbols,
+    subscription: {
+      name: 'ticker'
+    }
   };
 };
 

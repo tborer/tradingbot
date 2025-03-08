@@ -34,7 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ct."createdAt"
       FROM "CryptoTransaction" ct
       JOIN "Crypto" c ON ct."cryptoId" = c.id
-      WHERE ct."userId" = ${user.id}
+      WHERE ct."userId" = ${user.id}::uuid
       ORDER BY ct."createdAt" DESC
     `;
     

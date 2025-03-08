@@ -1346,6 +1346,26 @@ export default function Dashboard() {
                               }
                             />
                           </div>
+                          <div className="flex items-center space-x-2 mt-4">
+                            <Checkbox
+                              id="enableAutoStockTrading"
+                              checked={settings.enableAutoStockTrading || false}
+                              onCheckedChange={(checked) => 
+                                setSettings({ ...settings, enableAutoStockTrading: checked as boolean })
+                              }
+                            />
+                            <Label htmlFor="enableAutoStockTrading">Enable Auto Stock Trading</Label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="enableAutoCryptoTrading"
+                              checked={settings.enableAutoCryptoTrading || false}
+                              onCheckedChange={(checked) => 
+                                setSettings({ ...settings, enableAutoCryptoTrading: checked as boolean })
+                              }
+                            />
+                            <Label htmlFor="enableAutoCryptoTrading">Enable Auto Crypto Trading</Label>
+                          </div>
                           <p className="text-sm text-muted-foreground">
                             These credentials are required for automatic and manual trading functionality.
                           </p>

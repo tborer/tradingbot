@@ -18,12 +18,15 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Trash2, GripVertical } from "lucide-react";
+import { Trash2, GripVertical, ShoppingCart, DollarSign } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { CryptoWithPrice } from "@/types/stock";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import AutoTradeModal, { AutoTradeSettings } from "@/components/AutoTradeModal";
+import { Settings } from "@/icons/Settings";
 
 interface SortableCryptoItemProps {
   crypto: CryptoWithPrice;
@@ -154,35 +157,33 @@ function SortableCryptoItem({
       <TableCell>
         <div className="flex items-center space-x-2" data-no-row-click>
           <div className="flex items-center space-x-2">
-            <Label htmlFor={`auto-action-${crypto.id}`} className="text-xs mr-2">Action:</Label>
-            <div className="flex border rounded-md overflow-hidden">
-              <Button
-                type="button"
-                variant={crypto.autoBuy ? "default" : "outline"}
-                size="sm"
-                className="rounded-none h-7 px-2"
-                onClick={(e) => {
-                  e.stopPropagation();
+            <Label htmlFor={`auto-enable-${crypto.id}`} className="text-xs mr-2">Enable auto:</Label>
+            <Checkbox
+              id={`auto-enable-${crypto.id}`}
+              checked={crypto.autoBuy || crypto.autoSell}
+              onCheckedChange={(checked) => {
+                if (checked) {
+                  // Default to buy when enabling
                   onToggleAutoBuy(crypto.id, true);
                   onToggleAutoSell(crypto.id, false);
-                }}
-              >
-                Buy
-              </Button>
-              <Button
-                type="button"
-                variant={crypto.autoSell ? "default" : "outline"}
-                size="sm"
-                className="rounded-none h-7 px-2"
-                onClick={(e) => {
-                  e.stopPropagation();
+                } else {
+                  // Disable both when unchecking
                   onToggleAutoBuy(crypto.id, false);
-                  onToggleAutoSell(crypto.id, true);
-                }}
-              >
-                Sell
-              </Button>
-            </div>
+                  onToggleAutoSell(crypto.id, false);
+                }
+              }}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 ml-1"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenAutoTradeModal(crypto.id, crypto.symbol);
+              }}
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </TableCell>
@@ -229,6 +230,8 @@ export default function SortableCryptoList({
   const [selectedCrypto, setSelectedCrypto] = useState<{ id: string; symbol: string } | null>(null);
   const [shares, setShares] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [autoTradeModalOpen, setAutoTradeModalOpen] = useState(false);
+  const [selectedAutoTradeStock, setSelectedAutoTradeStock] = useState<{ id: string; symbol: string } | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -286,6 +289,33 @@ export default function SortableCryptoList({
     setTradeAction('buy');
     setShares('');
     setTradeDialogOpen(true);
+  };
+  
+  const handleOpenAutoTradeModal = (id: string, symbol: string) => {
+    setSelectedAutoTradeStock({ id, symbol });
+    setAutoTradeModalOpen(true);
+  };
+  
+  const handleSaveAutoTradeSettings = async (settings: AutoTradeSettings) => {
+    if (!selectedAutoTradeStock) return;
+    
+    // Here you would typically save these settings to your backend
+    // For now, we'll just update the local state and show a success message
+    toast({
+      title: "Auto Trade Settings Saved",
+      description: `Settings for ${selectedAutoTradeStock.symbol} have been updated.`,
+    });
+    
+    // Enable auto buy or sell based on settings
+    if (onToggleAutoBuy && onToggleAutoSell) {
+      // This is a simplified implementation - in a real app, you'd save all the settings
+      if (settings.additionalBuy) {
+        await onToggleAutoBuy(selectedAutoTradeStock.id, true);
+      }
+      if (settings.additionalSell) {
+        await onToggleAutoSell(selectedAutoTradeStock.id, true);
+      }
+    }
   };
 
   const handleTrade = async () => {
@@ -422,6 +452,23 @@ export default function SortableCryptoList({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AutoTradeModal
+        isOpen={autoTradeModalOpen}
+        onClose={() => setAutoTradeModalOpen(false)}
+        onSave={handleSaveAutoTradeSettings}
+        itemName={selectedAutoTradeStock?.symbol || ""}
+        itemType="crypto"
+        initialSettings={{
+          buyThresholdPercent: 5,
+          sellThresholdPercent: 5,
+          enableContinuousTrading: false,
+          additionalBuy: false,
+          additionalSell: false,
+          tradeByShares: true,
+          tradeByValue: false
+        }}
+      />
     </>
   );
 }

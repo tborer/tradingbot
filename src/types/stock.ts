@@ -26,6 +26,8 @@ export interface Settings {
   tradePlatformApiKey?: string;
   tradePlatformApiSecret?: string;
   finnhubApiKey?: string;
+  enableAutoStockTrading: boolean;
+  enableAutoCryptoTrading: boolean;
 }
 
 // Types for transactions

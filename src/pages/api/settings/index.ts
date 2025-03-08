@@ -42,7 +42,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         checkFrequencySeconds,
         tradePlatformApiKey,
         tradePlatformApiSecret,
-        finnhubApiKey
+        finnhubApiKey,
+        enableAutoStockTrading,
+        enableAutoCryptoTrading
       } = req.body;
       
       if (sellThresholdPercent === undefined || buyThresholdPercent === undefined || checkFrequencySeconds === undefined) {
@@ -65,6 +67,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ...(tradePlatformApiKey !== undefined && { tradePlatformApiKey }),
           ...(tradePlatformApiSecret !== undefined && { tradePlatformApiSecret }),
           ...(finnhubApiKey !== undefined && { finnhubApiKey }),
+          ...(enableAutoStockTrading !== undefined && { enableAutoStockTrading }),
+          ...(enableAutoCryptoTrading !== undefined && { enableAutoCryptoTrading }),
         },
         create: {
           userId: user.id,
@@ -74,6 +78,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ...(tradePlatformApiKey !== undefined && { tradePlatformApiKey }),
           ...(tradePlatformApiSecret !== undefined && { tradePlatformApiSecret }),
           ...(finnhubApiKey !== undefined && { finnhubApiKey }),
+          ...(enableAutoStockTrading !== undefined && { enableAutoStockTrading }),
+          ...(enableAutoCryptoTrading !== undefined && { enableAutoCryptoTrading }),
         },
       });
       

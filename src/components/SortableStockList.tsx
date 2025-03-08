@@ -25,6 +25,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import AutoTradeModal, { AutoTradeSettings } from "@/components/AutoTradeModal";
+import { Settings } from "@/icons/Settings";
 
 interface SortableStockItemProps {
   stock: StockWithPrice;
@@ -157,35 +159,33 @@ function SortableStockItem({
       <TableCell>
         <div className="flex items-center space-x-2" data-no-row-click>
           <div className="flex items-center space-x-2">
-            <Label htmlFor={`auto-action-${stock.id}`} className="text-xs mr-2">Action:</Label>
-            <div className="flex border rounded-md overflow-hidden">
-              <Button
-                type="button"
-                variant={stock.autoBuy ? "default" : "outline"}
-                size="sm"
-                className="rounded-none h-7 px-2"
-                onClick={(e) => {
-                  e.stopPropagation();
+            <Label htmlFor={`auto-enable-${stock.id}`} className="text-xs mr-2">Enable auto:</Label>
+            <Checkbox
+              id={`auto-enable-${stock.id}`}
+              checked={stock.autoBuy || stock.autoSell}
+              onCheckedChange={(checked) => {
+                if (checked) {
+                  // Default to buy when enabling
                   onToggleAutoBuy(stock.id, true);
                   onToggleAutoSell(stock.id, false);
-                }}
-              >
-                Buy
-              </Button>
-              <Button
-                type="button"
-                variant={stock.autoSell ? "default" : "outline"}
-                size="sm"
-                className="rounded-none h-7 px-2"
-                onClick={(e) => {
-                  e.stopPropagation();
+                } else {
+                  // Disable both when unchecking
                   onToggleAutoBuy(stock.id, false);
-                  onToggleAutoSell(stock.id, true);
-                }}
-              >
-                Sell
-              </Button>
-            </div>
+                  onToggleAutoSell(stock.id, false);
+                }
+              }}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 ml-1"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenAutoTradeModal(stock.id, stock.ticker);
+              }}
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </TableCell>
@@ -262,6 +262,8 @@ export default function SortableStockList({
   const [selectedStock, setSelectedStock] = useState<{ id: string; ticker: string } | null>(null);
   const [shares, setShares] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [autoTradeModalOpen, setAutoTradeModalOpen] = useState(false);
+  const [selectedAutoTradeStock, setSelectedAutoTradeStock] = useState<{ id: string; ticker: string } | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -326,6 +328,33 @@ export default function SortableStockList({
     setTradeAction('sell');
     setShares('');
     setTradeDialogOpen(true);
+  };
+  
+  const handleOpenAutoTradeModal = (id: string, ticker: string) => {
+    setSelectedAutoTradeStock({ id, ticker });
+    setAutoTradeModalOpen(true);
+  };
+  
+  const handleSaveAutoTradeSettings = async (settings: AutoTradeSettings) => {
+    if (!selectedAutoTradeStock) return;
+    
+    // Here you would typically save these settings to your backend
+    // For now, we'll just update the local state and show a success message
+    toast({
+      title: "Auto Trade Settings Saved",
+      description: `Settings for ${selectedAutoTradeStock.ticker} have been updated.`,
+    });
+    
+    // Enable auto buy or sell based on settings
+    if (onToggleAutoBuy && onToggleAutoSell) {
+      // This is a simplified implementation - in a real app, you'd save all the settings
+      if (settings.additionalBuy) {
+        await onToggleAutoBuy(selectedAutoTradeStock.id, true);
+      }
+      if (settings.additionalSell) {
+        await onToggleAutoSell(selectedAutoTradeStock.id, true);
+      }
+    }
   };
 
   const handleTrade = async () => {
@@ -449,6 +478,23 @@ export default function SortableStockList({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AutoTradeModal
+        isOpen={autoTradeModalOpen}
+        onClose={() => setAutoTradeModalOpen(false)}
+        onSave={handleSaveAutoTradeSettings}
+        itemName={selectedAutoTradeStock?.ticker || ""}
+        itemType="stock"
+        initialSettings={{
+          buyThresholdPercent: 5,
+          sellThresholdPercent: 5,
+          enableContinuousTrading: false,
+          additionalBuy: false,
+          additionalSell: false,
+          tradeByShares: true,
+          tradeByValue: false
+        }}
+      />
     </>
   );
 }

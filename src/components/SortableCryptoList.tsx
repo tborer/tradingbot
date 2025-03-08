@@ -35,6 +35,7 @@ interface SortableCryptoItemProps {
   onToggleAutoBuy: (id: string, value: boolean) => void;
   onRowClick: (id: string, symbol: string) => void;
   onUpdateShares: (id: string, shares: number) => Promise<void>;
+  onOpenAutoTradeModal: (id: string, symbol: string) => void;
 }
 
 function SortableCryptoItem({ 
@@ -43,7 +44,8 @@ function SortableCryptoItem({
   onToggleAutoSell, 
   onToggleAutoBuy, 
   onRowClick,
-  onUpdateShares
+  onUpdateShares,
+  onOpenAutoTradeModal
 }: SortableCryptoItemProps) {
   const { 
     attributes, 
@@ -179,7 +181,7 @@ function SortableCryptoItem({
               className="h-7 w-7 ml-1"
               onClick={(e) => {
                 e.stopPropagation();
-                handleOpenAutoTradeModal(crypto.id, crypto.symbol);
+                onOpenAutoTradeModal(crypto.id, crypto.symbol);
               }}
             >
               <Settings className="h-4 w-4" />
@@ -394,6 +396,7 @@ export default function SortableCryptoList({
                     onToggleAutoBuy={handleToggleAutoBuy}
                     onRowClick={handleRowClick}
                     onUpdateShares={onUpdateShares || (async () => {})}
+                    onOpenAutoTradeModal={handleOpenAutoTradeModal}
                   />
                 ))}
               </SortableContext>

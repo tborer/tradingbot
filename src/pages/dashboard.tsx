@@ -580,6 +580,8 @@ export default function Dashboard() {
           tradePlatformApiKey: settings.tradePlatformApiKey,
           tradePlatformApiSecret: settings.tradePlatformApiSecret,
           finnhubApiKey: settings.finnhubApiKey,
+          enableAutoStockTrading: settings.enableAutoStockTrading,
+          enableAutoCryptoTrading: settings.enableAutoCryptoTrading,
         }),
       });
       

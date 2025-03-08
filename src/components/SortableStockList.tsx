@@ -36,6 +36,7 @@ interface SortableStockItemProps {
   onBuy: (id: string, ticker: string) => void;
   onSell: (id: string, ticker: string) => void;
   onUpdateShares: (id: string, shares: number) => Promise<void>;
+  onOpenAutoTradeModal: (id: string, ticker: string) => void;
 }
 
 function SortableStockItem({ 
@@ -45,7 +46,8 @@ function SortableStockItem({
   onToggleAutoBuy, 
   onBuy, 
   onSell,
-  onUpdateShares
+  onUpdateShares,
+  onOpenAutoTradeModal
 }: SortableStockItemProps) {
   const { 
     attributes, 
@@ -181,7 +183,7 @@ function SortableStockItem({
               className="h-7 w-7 ml-1"
               onClick={(e) => {
                 e.stopPropagation();
-                handleOpenAutoTradeModal(stock.id, stock.ticker);
+                onOpenAutoTradeModal(stock.id, stock.ticker);
               }}
             >
               <Settings className="h-4 w-4" />
@@ -436,6 +438,7 @@ export default function SortableStockList({
                     onBuy={handleBuy}
                     onSell={handleSell}
                     onUpdateShares={onUpdateShares || (async () => {})}
+                    onOpenAutoTradeModal={handleOpenAutoTradeModal}
                   />
                 ))}
               </SortableContext>

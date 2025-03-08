@@ -910,6 +910,84 @@ export default function Dashboard() {
       throw error;
     }
   };
+  
+  // Update stock shares
+  const handleUpdateStockShares = async (id: string, shares: number) => {
+    try {
+      const response = await fetch("/api/stocks/update-shares", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          shares,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update stock shares");
+      }
+      
+      // Update the local state
+      setStocks(prev => prev.map(stock => 
+        stock.id === id ? { ...stock, shares } : stock
+      ));
+      
+      toast({
+        title: "Success",
+        description: "Stock shares updated successfully.",
+      });
+      
+      return await response.json();
+    } catch (error) {
+      console.error("Error updating stock shares:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to update stock shares. Please try again.",
+      });
+      throw error;
+    }
+  };
+  
+  // Update crypto shares
+  const handleUpdateCryptoShares = async (id: string, shares: number) => {
+    try {
+      const response = await fetch("/api/cryptos/update-shares", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          shares,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update crypto shares");
+      }
+      
+      // Update the local state
+      setCryptos(prev => prev.map(crypto => 
+        crypto.id === id ? { ...crypto, shares } : crypto
+      ));
+      
+      toast({
+        title: "Success",
+        description: "Crypto shares updated successfully.",
+      });
+      
+      return await response.json();
+    } catch (error) {
+      console.error("Error updating crypto shares:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to update crypto shares. Please try again.",
+      });
+      throw error;
+    }
+  };
 
   if (loading) {
     return (
@@ -1021,6 +1099,7 @@ export default function Dashboard() {
                   onToggleAutoSell={handleToggleAutoSell}
                   onToggleAutoBuy={handleToggleAutoBuy}
                   onTrade={handleTrade}
+                  onUpdateShares={handleUpdateStockShares}
                 />
               </CardContent>
             </Card>
@@ -1123,6 +1202,7 @@ export default function Dashboard() {
                   onToggleAutoSell={handleToggleCryptoAutoSell}
                   onToggleAutoBuy={handleToggleCryptoAutoBuy}
                   onTrade={handleCryptoTrade}
+                  onUpdateShares={handleUpdateCryptoShares}
                 />
               </CardContent>
             </Card>

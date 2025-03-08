@@ -31,6 +31,7 @@ interface SortableCryptoItemProps {
   onToggleAutoSell: (id: string, value: boolean) => void;
   onToggleAutoBuy: (id: string, value: boolean) => void;
   onRowClick: (id: string, symbol: string) => void;
+  onUpdateShares: (id: string, shares: number) => Promise<void>;
 }
 
 function SortableCryptoItem({ 
@@ -38,7 +39,8 @@ function SortableCryptoItem({
   onDelete, 
   onToggleAutoSell, 
   onToggleAutoBuy, 
-  onRowClick
+  onRowClick,
+  onUpdateShares
 }: SortableCryptoItemProps) {
   const { 
     attributes, 
@@ -47,10 +49,39 @@ function SortableCryptoItem({
     transform, 
     transition 
   } = useSortable({ id: crypto.id });
+  
+  const [sharesValue, setSharesValue] = useState(crypto.shares.toString());
+  const [isEditing, setIsEditing] = useState(false);
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
+  };
+
+  const handleSharesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSharesValue(e.target.value);
+  };
+
+  const handleSharesBlur = async () => {
+    setIsEditing(false);
+    
+    const newShares = Number(sharesValue);
+    if (!isNaN(newShares) && newShares >= 0) {
+      try {
+        await onUpdateShares(crypto.id, newShares);
+      } catch (error) {
+        console.error('Error updating shares:', error);
+      }
+    } else {
+      // Reset to original value if invalid
+      setSharesValue(crypto.shares.toString());
+    }
+  };
+
+  const handleSharesKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    }
   };
 
   return (
@@ -78,7 +109,33 @@ function SortableCryptoItem({
       </TableCell>
       <TableCell className="font-medium">{crypto.symbol}</TableCell>
       <TableCell>${crypto.purchasePrice.toFixed(2)}</TableCell>
-      <TableCell>{crypto.shares.toFixed(2)}</TableCell>
+      <TableCell>
+        {isEditing ? (
+          <Input
+            type="number"
+            value={sharesValue}
+            onChange={handleSharesChange}
+            onBlur={handleSharesBlur}
+            onKeyDown={handleSharesKeyDown}
+            min="0.000001"
+            step="0.000001"
+            className="w-24 h-8 text-sm"
+            data-no-row-click
+            autoFocus
+          />
+        ) : (
+          <div 
+            className="cursor-text hover:bg-gray-100 dark:hover:bg-gray-800 px-2 py-1 rounded"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsEditing(true);
+            }}
+            data-no-row-click
+          >
+            {Number(crypto.shares).toFixed(6)}
+          </div>
+        )}
+      </TableCell>
       <TableCell>
         {crypto.currentPrice 
           ? `$${crypto.currentPrice.toFixed(2)}` 
@@ -153,6 +210,7 @@ interface SortableCryptoListProps {
   onToggleAutoSell?: (id: string, value: boolean) => Promise<void>;
   onToggleAutoBuy?: (id: string, value: boolean) => Promise<void>;
   onTrade?: (id: string, symbol: string, action: 'buy' | 'sell', shares: number) => Promise<void>;
+  onUpdateShares?: (id: string, shares: number) => Promise<void>;
 }
 
 export default function SortableCryptoList({ 
@@ -161,7 +219,8 @@ export default function SortableCryptoList({
   onReorder,
   onToggleAutoSell,
   onToggleAutoBuy,
-  onTrade
+  onTrade,
+  onUpdateShares
 }: SortableCryptoListProps) {
   const { toast } = useToast();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -304,6 +363,7 @@ export default function SortableCryptoList({
                     onToggleAutoSell={handleToggleAutoSell}
                     onToggleAutoBuy={handleToggleAutoBuy}
                     onRowClick={handleRowClick}
+                    onUpdateShares={onUpdateShares || (async () => {})}
                   />
                 ))}
               </SortableContext>

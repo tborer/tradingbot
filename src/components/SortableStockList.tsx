@@ -33,6 +33,7 @@ interface SortableStockItemProps {
   onToggleAutoBuy: (id: string, value: boolean) => void;
   onBuy: (id: string, ticker: string) => void;
   onSell: (id: string, ticker: string) => void;
+  onUpdateShares: (id: string, shares: number) => Promise<void>;
 }
 
 function SortableStockItem({ 
@@ -41,7 +42,8 @@ function SortableStockItem({
   onToggleAutoSell, 
   onToggleAutoBuy, 
   onBuy, 
-  onSell 
+  onSell,
+  onUpdateShares
 }: SortableStockItemProps) {
   const { 
     attributes, 
@@ -51,9 +53,38 @@ function SortableStockItem({
     transition 
   } = useSortable({ id: stock.id });
 
+  const [sharesValue, setSharesValue] = useState(stock.shares.toString());
+  const [isEditing, setIsEditing] = useState(false);
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
+  };
+
+  const handleSharesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSharesValue(e.target.value);
+  };
+
+  const handleSharesBlur = async () => {
+    setIsEditing(false);
+    
+    const newShares = Number(sharesValue);
+    if (!isNaN(newShares) && newShares >= 0) {
+      try {
+        await onUpdateShares(stock.id, newShares);
+      } catch (error) {
+        console.error('Error updating shares:', error);
+      }
+    } else {
+      // Reset to original value if invalid
+      setSharesValue(stock.shares.toString());
+    }
+  };
+
+  const handleSharesKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    }
   };
 
   return (
@@ -81,7 +112,33 @@ function SortableStockItem({
       </TableCell>
       <TableCell className="font-medium">{stock.ticker}</TableCell>
       <TableCell>${stock.purchasePrice.toFixed(2)}</TableCell>
-      <TableCell>{stock.shares.toFixed(2)}</TableCell>
+      <TableCell>
+        {isEditing ? (
+          <Input
+            type="number"
+            value={sharesValue}
+            onChange={handleSharesChange}
+            onBlur={handleSharesBlur}
+            onKeyDown={handleSharesKeyDown}
+            min="0.01"
+            step="0.01"
+            className="w-24 h-8 text-sm"
+            data-no-row-click
+            autoFocus
+          />
+        ) : (
+          <div 
+            className="cursor-text hover:bg-gray-100 dark:hover:bg-gray-800 px-2 py-1 rounded"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsEditing(true);
+            }}
+            data-no-row-click
+          >
+            {Number(stock.shares).toFixed(2)}
+          </div>
+        )}
+      </TableCell>
       <TableCell>
         {stock.currentPrice 
           ? `$${stock.currentPrice.toFixed(2)}` 
@@ -186,6 +243,7 @@ interface SortableStockListProps {
   onToggleAutoSell?: (id: string, value: boolean) => Promise<void>;
   onToggleAutoBuy?: (id: string, value: boolean) => Promise<void>;
   onTrade?: (id: string, ticker: string, action: 'buy' | 'sell', shares: number) => Promise<void>;
+  onUpdateShares?: (id: string, shares: number) => Promise<void>;
 }
 
 export default function SortableStockList({ 
@@ -194,7 +252,8 @@ export default function SortableStockList({
   onReorder,
   onToggleAutoSell,
   onToggleAutoBuy,
-  onTrade
+  onTrade,
+  onUpdateShares
 }: SortableStockListProps) {
   const { toast } = useToast();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -347,6 +406,7 @@ export default function SortableStockList({
                     onToggleAutoBuy={handleToggleAutoBuy}
                     onBuy={handleBuy}
                     onSell={handleSell}
+                    onUpdateShares={onUpdateShares || (async () => {})}
                   />
                 ))}
               </SortableContext>

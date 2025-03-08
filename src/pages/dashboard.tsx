@@ -25,9 +25,11 @@ export default function Dashboard() {
   const [newStock, setNewStock] = useState({ ticker: "", purchasePrice: "", shares: "" });
   const [newCrypto, setNewCrypto] = useState({ symbol: "", purchasePrice: "", shares: "" });
   const [loading, setLoading] = useState(true);
-  const [connected, setConnected] = useState(false);
+  const [stocksConnected, setStocksConnected] = useState(false);
+  const [cryptoConnected, setCryptoConnected] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const krakenWsRef = useRef<WebSocket | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch stocks and settings
@@ -127,7 +129,7 @@ export default function Dashboard() {
       
       ws.onopen = () => {
         console.log("Finnhub WebSocket connection established successfully");
-        setConnected(true);
+        setStocksConnected(true);
         toast({
           title: "Connected",
           description: "Connected to Finnhub websocket for stocks",
@@ -181,7 +183,7 @@ export default function Dashboard() {
         }
         
         console.error("Finnhub WebSocket error details:", errorDetails);
-        setConnected(false);
+        setStocksConnected(false);
         toast({
           variant: "destructive",
           title: "Connection Error",
@@ -191,7 +193,7 @@ export default function Dashboard() {
       
       ws.onclose = (event) => {
         console.log(`Finnhub WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason || "No reason provided"}, Clean: ${event.wasClean}`);
-        setConnected(false);
+        setStocksConnected(false);
         
         // Attempt to reconnect after a delay
         const reconnectDelay = 5000;
@@ -208,6 +210,7 @@ export default function Dashboard() {
         
         krakenWs.onopen = () => {
           console.log("Kraken WebSocket connection established successfully");
+          setCryptoConnected(true);
           toast({
             title: "Connected",
             description: "Connected to Kraken websocket for crypto",
@@ -262,6 +265,7 @@ export default function Dashboard() {
           }
           
           console.error("Kraken WebSocket error details:", errorDetails);
+          setCryptoConnected(false);
           
           toast({
             variant: "destructive",
@@ -272,6 +276,7 @@ export default function Dashboard() {
         
         krakenWs.onclose = (event) => {
           console.log(`Kraken WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason || "No reason provided"}, Clean: ${event.wasClean}`);
+          setCryptoConnected(false);
           
           // Attempt to reconnect after a delay
           const reconnectDelay = 5000;
@@ -282,10 +287,12 @@ export default function Dashboard() {
               try {
                 console.log("Attempting to reconnect to Kraken WebSocket...");
                 const newKrakenWs = new WebSocket('wss://ws.kraken.com/v2');
+                krakenWsRef.current = newKrakenWs;
                 
                 // Set up event handlers for the new connection
                 newKrakenWs.onopen = () => {
                   console.log("Kraken WebSocket reconnection successful");
+                  setCryptoConnected(true);
                   
                   // Resubscribe to all cryptos
                   const symbols = cryptos.map(crypto => crypto.symbol);
@@ -303,6 +310,8 @@ export default function Dashboard() {
             }
           }, reconnectDelay);
         };
+        
+        krakenWsRef.current = krakenWs;
       }
       
       // Clean up on unmount
@@ -318,6 +327,11 @@ export default function Dashboard() {
             }
           });
           wsRef.current.close();
+        }
+        
+        if (krakenWsRef.current?.readyState === WebSocket.OPEN) {
+          console.log("Cleaning up Kraken WebSocket connection");
+          krakenWsRef.current.close();
         }
       };
     } catch (error) {
@@ -934,9 +948,9 @@ export default function Dashboard() {
             {/* Connection Status */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className={`h-3 w-3 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <div className={`h-3 w-3 rounded-full ${stocksConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
                 <span className="text-sm text-muted-foreground">
-                  {connected ? 'Connected to Finnhub' : 'Disconnected'}
+                  {stocksConnected ? 'Connected to Finnhub' : 'Disconnected'}
                 </span>
               </div>
               {lastUpdated && (
@@ -1036,9 +1050,9 @@ export default function Dashboard() {
             {/* Connection Status */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className={`h-3 w-3 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <div className={`h-3 w-3 rounded-full ${cryptoConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
                 <span className="text-sm text-muted-foreground">
-                  {connected ? 'Connected to Finnhub' : 'Disconnected'}
+                  {cryptoConnected ? 'Connected to Crypto Data' : 'Disconnected'}
                 </span>
               </div>
               {lastUpdated && (

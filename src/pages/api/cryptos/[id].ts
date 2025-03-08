@@ -3,20 +3,25 @@ import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Initialize Supabase client
-  const { supabase, user } = await createClient(req, res);
-  
-  if (!user) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  
-  const { id } = req.query;
-  
-  if (!id || typeof id !== 'string') {
-    return res.status(400).json({ error: 'Invalid crypto ID' });
-  }
-  
   try {
+    // Initialize Supabase client
+    const supabase = createClient(req, res);
+    
+    // Get the user session
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session || !session.user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    const user = session.user;
+    
+    const { id } = req.query;
+    
+    if (!id || typeof id !== 'string') {
+      return res.status(400).json({ error: 'Invalid crypto ID' });
+    }
+    
     // Check if the crypto exists and belongs to the user
     const crypto = await prisma.crypto.findFirst({
       where: {

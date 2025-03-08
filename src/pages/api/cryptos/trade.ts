@@ -3,19 +3,24 @@ import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Initialize Supabase client
-  const { supabase, user } = await createClient(req, res);
-  
-  if (!user) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  
-  // Only allow POST requests
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-  
   try {
+    // Initialize Supabase client
+    const supabase = createClient(req, res);
+    
+    // Get the user session
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session || !session.user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    const user = session.user;
+    
+    // Only allow POST requests
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
+    
     const { cryptoId, action, shares } = req.body;
     
     if (!cryptoId || !action || !shares) {

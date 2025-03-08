@@ -3,14 +3,19 @@ import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Initialize Supabase client
-  const { supabase, user } = await createClient(req, res);
-  
-  if (!user) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  
   try {
+    // Initialize Supabase client
+    const supabase = createClient(req, res);
+    
+    // Get the user session
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session || !session.user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    const user = session.user;
+    
     // GET - Fetch all cryptos for the user
     if (req.method === 'GET') {
       const cryptos = await prisma.crypto.findMany({
@@ -88,6 +93,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     console.error('API error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error', details: error });
   }
 }

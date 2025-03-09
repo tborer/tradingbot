@@ -145,3 +145,45 @@ export const shouldBuyCrypto = (
   const percentDrop = ((purchasePrice - currentPrice) / purchasePrice) * 100;
   return percentDrop >= thresholdPercent;
 };
+
+// Kraken Order API Types
+export interface KrakenOrderRequest {
+  nonce: number;
+  ordertype: 'limit';
+  type: 'buy' | 'sell';
+  volume: string;
+  pair: string;
+  price: string;
+  cl_ord_id: string;
+}
+
+export interface KrakenOrderResponse {
+  error: string[];
+  result: {
+    descr: {
+      order: string;
+    };
+    txid: string[];
+  };
+}
+
+// Convert our symbol to Kraken trading pair format
+export const getKrakenTradingPair = (symbol: string): string => {
+  // Kraken uses XBT for Bitcoin
+  if (symbol === 'BTC') {
+    return 'XBTUSD';
+  }
+  
+  // For other symbols, add USD
+  return `${symbol}USD`;
+};
+
+// Generate a unique order ID
+export const generateOrderId = (): string => {
+  return crypto.randomUUID();
+};
+
+// Generate a nonce (timestamp in milliseconds)
+export const generateNonce = (): number => {
+  return Date.now();
+};

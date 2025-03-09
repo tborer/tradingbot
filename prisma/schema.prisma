@@ -42,6 +42,8 @@ model Settings {
   tradePlatformApiKey String?
   tradePlatformApiSecret String?
   finnhubApiKey     String?
+  krakenApiKey      String?
+  krakenApiSign     String?
   enableAutoStockTrading Boolean @default(false)
   enableAutoCryptoTrading Boolean @default(false)
   userId            String   @unique @db.Uuid

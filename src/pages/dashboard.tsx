@@ -1182,25 +1182,57 @@ export default function Dashboard() {
   // Execute a crypto trade (buy or sell)
   const handleCryptoTrade = async (id: string, symbol: string, action: 'buy' | 'sell', shares: number) => {
     try {
-      const response = await fetch("/api/cryptos/trade", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cryptoId: id,
-          action,
-          shares,
-        }),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to ${action} crypto`);
+      // Get the current crypto to get its current price
+      const crypto = cryptos.find(c => c.id === id);
+      if (!crypto || !crypto.currentPrice) {
+        throw new Error("Cannot execute trade: current price not available");
       }
-      
-      // Update the crypto shares after successful trade
-      fetchCryptos();
-      
-      return await response.json();
+
+      // Check if Kraken API credentials are configured
+      if (settings?.krakenApiKey && settings?.krakenApiSign) {
+        // Use the Kraken API for trading
+        const response = await fetch("/api/cryptos/execute-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cryptoId: id,
+            action,
+            shares,
+            price: crypto.currentPrice,
+          }),
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `Failed to ${action} crypto using Kraken API`);
+        }
+        
+        // Update the crypto shares after successful trade
+        fetchCryptos();
+        
+        return await response.json();
+      } else {
+        // Fall back to the internal trading system if Kraken API is not configured
+        const response = await fetch("/api/cryptos/trade", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cryptoId: id,
+            action,
+            shares,
+          }),
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `Failed to ${action} crypto`);
+        }
+        
+        // Update the crypto shares after successful trade
+        fetchCryptos();
+        
+        return await response.json();
+      }
     } catch (error) {
       console.error(`Error ${action}ing crypto:`, error);
       throw error;
@@ -1664,6 +1696,39 @@ export default function Dashboard() {
                           </div>
                           <p className="text-sm text-muted-foreground">
                             These credentials are required for automatic and manual trading functionality.
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="border-t pt-4 mt-4">
+                        <h3 className="text-lg font-medium mb-2">Kraken Order API Integration</h3>
+                        <div className="space-y-4">
+                          <div>
+                            <Label htmlFor="krakenApiKey">Kraken API Key</Label>
+                            <Input
+                              id="krakenApiKey"
+                              type="password"
+                              placeholder="Enter your Kraken API key"
+                              value={settings.krakenApiKey || ""}
+                              onChange={(e) => 
+                                setSettings({ ...settings, krakenApiKey: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="krakenApiSign">Kraken API Sign</Label>
+                            <Input
+                              id="krakenApiSign"
+                              type="password"
+                              placeholder="Enter your Kraken API Sign"
+                              value={settings.krakenApiSign || ""}
+                              onChange={(e) => 
+                                setSettings({ ...settings, krakenApiSign: e.target.value })
+                              }
+                            />
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            These credentials are required for manual crypto trading functionality. The API endpoint used is: https://api.kraken.com/0/private/AddOrder
                           </p>
                         </div>
                       </div>

@@ -43,6 +43,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         tradePlatformApiKey,
         tradePlatformApiSecret,
         finnhubApiKey,
+        krakenApiKey,
+        krakenApiSign,
         enableAutoStockTrading,
         enableAutoCryptoTrading
       } = req.body;
@@ -67,6 +69,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ...(tradePlatformApiKey !== undefined && { tradePlatformApiKey }),
           ...(tradePlatformApiSecret !== undefined && { tradePlatformApiSecret }),
           ...(finnhubApiKey !== undefined && { finnhubApiKey }),
+          ...(krakenApiKey !== undefined && { krakenApiKey }),
+          ...(krakenApiSign !== undefined && { krakenApiSign }),
           ...(enableAutoStockTrading !== undefined && { enableAutoStockTrading }),
           ...(enableAutoCryptoTrading !== undefined && { enableAutoCryptoTrading }),
         },
@@ -78,6 +82,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ...(tradePlatformApiKey !== undefined && { tradePlatformApiKey }),
           ...(tradePlatformApiSecret !== undefined && { tradePlatformApiSecret }),
           ...(finnhubApiKey !== undefined && { finnhubApiKey }),
+          ...(krakenApiKey !== undefined && { krakenApiKey }),
+          ...(krakenApiSign !== undefined && { krakenApiSign }),
           ...(enableAutoStockTrading !== undefined && { enableAutoStockTrading }),
           ...(enableAutoCryptoTrading !== undefined && { enableAutoCryptoTrading }),
         },

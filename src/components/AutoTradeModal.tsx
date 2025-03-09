@@ -132,7 +132,7 @@ export default function AutoTradeModal({
                 setSettings({ ...settings, additionalBuy: checked as boolean })
               }
             />
-            <Label htmlFor="additional-buy">Additional buy on threshold</Label>
+            <Label htmlFor="additional-buy">1 time buy</Label>
           </div>
           
           <div className="flex items-center space-x-2">
@@ -143,7 +143,7 @@ export default function AutoTradeModal({
                 setSettings({ ...settings, additionalSell: checked as boolean })
               }
             />
-            <Label htmlFor="additional-sell">Additional sell on threshold</Label>
+            <Label htmlFor="additional-sell">1 time sell</Label>
           </div>
           
           <div className="space-y-3">

@@ -124,16 +124,33 @@ export default function Dashboard() {
       return;
     }
 
+    // Close any existing connection that might be in a different state
+    if (wsRef.current) {
+      try {
+        wsRef.current.close();
+      } catch (closeError) {
+        console.error("Error closing existing Finnhub WebSocket:", closeError);
+      }
+      wsRef.current = null;
+    }
+
     try {
       // Connect to Finnhub for stock data
       console.log("Attempting to connect to Finnhub WebSocket...");
-      const ws = new WebSocket(`wss://ws.finnhub.io?token=${apiKey}`);
+      
+      // Add a timestamp parameter to prevent caching issues
+      const timestamp = Date.now();
+      const ws = new WebSocket(`wss://ws.finnhub.io?token=${apiKey}&t=${timestamp}`);
       
       // Set a connection timeout
       const connectionTimeout = setTimeout(() => {
-        if (ws.readyState !== WebSocket.OPEN) {
+        if (ws && ws.readyState !== WebSocket.OPEN) {
           console.error("Finnhub WebSocket connection timeout");
-          ws.close();
+          try {
+            ws.close();
+          } catch (closeError) {
+            console.error("Error closing timed out Finnhub WebSocket:", closeError);
+          }
           setStocksConnected(false);
           toast({
             variant: "destructive",
@@ -142,6 +159,40 @@ export default function Dashboard() {
           });
         }
       }, 10000); // 10 second timeout
+      
+      // Set up a heartbeat to keep the connection alive
+      let heartbeatInterval: NodeJS.Timeout | null = null;
+      
+      const startHeartbeat = () => {
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+        }
+        
+        heartbeatInterval = setInterval(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            try {
+              console.log("Sending ping to Finnhub WebSocket");
+              ws.send(JSON.stringify({ type: "ping" }));
+            } catch (pingError) {
+              console.error("Error sending ping to Finnhub:", pingError);
+              // If ping fails, try to reconnect
+              if (ws) {
+                try {
+                  ws.close();
+                } catch (closeError) {
+                  console.error("Error closing Finnhub WebSocket after ping failure:", closeError);
+                }
+              }
+            }
+          } else {
+            // If connection is not open, clear the interval
+            if (heartbeatInterval) {
+              clearInterval(heartbeatInterval);
+              heartbeatInterval = null;
+            }
+          }
+        }, 30000); // Send ping every 30 seconds
+      };
       
       ws.onopen = () => {
         clearTimeout(connectionTimeout);
@@ -152,29 +203,38 @@ export default function Dashboard() {
           description: "Connected to Finnhub websocket for stocks",
         });
         
+        // Start the heartbeat
+        startHeartbeat();
+        
         // Subscribe to all stocks
         if (stocks.length > 0) {
           console.log(`Subscribing to ${stocks.length} stocks`);
-          stocks.forEach(stock => {
-            try {
-              const subscriptionMessage = JSON.stringify({ type: "subscribe", symbol: stock.ticker });
-              console.log(`Sending subscription for ${stock.ticker}:`, subscriptionMessage);
-              ws.send(subscriptionMessage);
-              console.log(`Subscribed to ${stock.ticker}`);
-            } catch (subError) {
-              console.error(`Error subscribing to ${stock.ticker}:`, subError);
-            }
+          
+          // Add a small delay between subscriptions to avoid rate limiting
+          stocks.forEach((stock, index) => {
+            setTimeout(() => {
+              try {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                  const subscriptionMessage = JSON.stringify({ type: "subscribe", symbol: stock.ticker });
+                  console.log(`Sending subscription for ${stock.ticker}`);
+                  ws.send(subscriptionMessage);
+                  console.log(`Subscribed to ${stock.ticker}`);
+                }
+              } catch (subError) {
+                console.error(`Error subscribing to ${stock.ticker}:`, subError);
+              }
+            }, index * 100); // Stagger subscriptions by 100ms each
           });
           
           // Send a ping to verify the connection is working
           setTimeout(() => {
             try {
-              if (ws.readyState === WebSocket.OPEN) {
-                console.log("Sending ping to Finnhub WebSocket");
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                console.log("Sending initial ping to Finnhub WebSocket");
                 ws.send(JSON.stringify({ type: "ping" }));
               }
             } catch (pingError) {
-              console.error("Error sending ping to Finnhub:", pingError);
+              console.error("Error sending initial ping to Finnhub:", pingError);
             }
           }, 2000);
         } else {
@@ -187,12 +247,31 @@ export default function Dashboard() {
           // Log the raw message for debugging
           if (typeof event.data === 'string') {
             // Only parse if it's a string (could be binary data)
-            console.log("Received Finnhub message:", 
-              event.data.length > 200 ? event.data.substring(0, 200) + "..." : event.data);
+            const truncatedMessage = event.data.length > 200 ? event.data.substring(0, 200) + "..." : event.data;
+            console.log("Received Finnhub message:", truncatedMessage);
             
             // Check if it's a pong response
             if (event.data.includes('"type":"pong"')) {
               console.log("Received pong from Finnhub");
+              return;
+            }
+            
+            // Check for error messages
+            if (event.data.includes('"type":"error"')) {
+              console.error("Finnhub error message:", event.data);
+              
+              // Check for specific error types
+              if (event.data.includes("Authentication failed") || event.data.includes("Invalid API key")) {
+                toast({
+                  variant: "destructive",
+                  title: "Authentication Error",
+                  description: "Finnhub API key is invalid or expired. Please check your settings.",
+                });
+                
+                // Don't attempt to reconnect immediately with the same invalid key
+                return;
+              }
+              
               return;
             }
             
@@ -209,24 +288,41 @@ export default function Dashboard() {
             console.log("Received non-string message from Finnhub WebSocket");
           }
         } catch (parseError) {
-          console.error("Error processing Finnhub WebSocket message:", parseError, "Raw message:", event.data);
+          console.error("Error processing Finnhub WebSocket message:", parseError);
+          console.log("Raw message that caused error:", typeof event.data === 'string' ? 
+            (event.data.length > 200 ? event.data.substring(0, 200) + "..." : event.data) : 
+            "Non-string data");
         }
       };
       
       ws.onerror = (error) => {
         clearTimeout(connectionTimeout);
-        // Log detailed error information
-        console.error("Finnhub WebSocket error:", error);
         
-        // Try to extract more information from the error object
-        let errorDetails = "Unknown error";
-        try {
-          errorDetails = JSON.stringify(error);
-        } catch (e) {
-          errorDetails = "Error details could not be stringified";
+        // Clean up heartbeat
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+          heartbeatInterval = null;
         }
         
-        console.error("Finnhub WebSocket error details:", errorDetails);
+        // Log error properties
+        console.error("Finnhub WebSocket error event:", error.type);
+        
+        // Extract more useful information from the error event
+        const errorInfo = {
+          type: error.type,
+          isTrusted: error.isTrusted,
+          timeStamp: error.timeStamp,
+          target: {
+            url: ws.url,
+            readyState: ws.readyState,
+            protocol: ws.protocol,
+            extensions: ws.extensions,
+            bufferedAmount: ws.bufferedAmount
+          }
+        };
+        
+        console.error("Finnhub WebSocket error details:", JSON.stringify(errorInfo));
+        
         setStocksConnected(false);
         toast({
           variant: "destructive",
@@ -237,27 +333,74 @@ export default function Dashboard() {
       
       ws.onclose = (event) => {
         clearTimeout(connectionTimeout);
+        
+        // Clean up heartbeat
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+          heartbeatInterval = null;
+        }
+        
         console.log(`Finnhub WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason || "No reason provided"}, Clean: ${event.wasClean}`);
         setStocksConnected(false);
         
-        // Attempt to reconnect after a delay
-        const reconnectDelay = 5000;
-        console.log(`Will attempt to reconnect in ${reconnectDelay/1000} seconds`);
-        setTimeout(connectWebSocket, reconnectDelay);
+        // Attempt to reconnect after a delay, with exponential backoff
+        const baseDelay = 5000;
+        const maxDelay = 60000; // 1 minute max
+        
+        // Calculate reconnect delay with some randomness to avoid thundering herd
+        const reconnectAttempts = wsRef.current?.reconnectAttempts || 0;
+        const exponentialDelay = Math.min(baseDelay * Math.pow(1.5, reconnectAttempts), maxDelay);
+        const jitter = Math.random() * 1000; // Add up to 1 second of jitter
+        const reconnectDelay = exponentialDelay + jitter;
+        
+        console.log(`Will attempt to reconnect in ${Math.round(reconnectDelay/1000)} seconds (attempt ${reconnectAttempts + 1})`);
+        
+        // Store the timeout so we can clear it if needed
+        const reconnectTimeout = setTimeout(() => {
+          console.log("Executing reconnection to Finnhub WebSocket");
+          connectWebSocket();
+        }, reconnectDelay);
+        
+        // Store the reconnect attempt count on the websocket ref
+        if (wsRef.current) {
+          wsRef.current.reconnectAttempts = reconnectAttempts + 1;
+          wsRef.current.reconnectTimeout = reconnectTimeout;
+        }
       };
+      
+      // Add custom properties to track reconnection attempts
+      ws.reconnectAttempts = 0;
+      ws.reconnectTimeout = null;
       
       wsRef.current = ws;
       
       // Connect to Kraken for crypto data
       if (cryptos.length > 0) {
         console.log("Attempting to connect to Kraken WebSocket...");
-        const krakenWs = new WebSocket('wss://ws.kraken.com/v2');
+        
+        // Close any existing Kraken connection
+        if (krakenWsRef.current) {
+          try {
+            krakenWsRef.current.close();
+          } catch (closeError) {
+            console.error("Error closing existing Kraken WebSocket:", closeError);
+          }
+          krakenWsRef.current = null;
+        }
+        
+        // Add a timestamp parameter to prevent caching issues
+        const timestamp = Date.now();
+        const krakenWs = new WebSocket(`wss://ws.kraken.com/v2?t=${timestamp}`);
         
         // Set a connection timeout for Kraken
         const krakenConnectionTimeout = setTimeout(() => {
-          if (krakenWs.readyState !== WebSocket.OPEN) {
+          if (krakenWs && krakenWs.readyState !== WebSocket.OPEN) {
             console.error("Kraken WebSocket connection timeout");
-            krakenWs.close();
+            try {
+              krakenWs.close();
+            } catch (closeError) {
+              console.error("Error closing timed out Kraken WebSocket:", closeError);
+            }
             setCryptoConnected(false);
             toast({
               variant: "destructive",
@@ -266,6 +409,40 @@ export default function Dashboard() {
             });
           }
         }, 10000); // 10 second timeout
+        
+        // Set up a heartbeat to keep the connection alive
+        let krakenHeartbeatInterval: NodeJS.Timeout | null = null;
+        
+        const startKrakenHeartbeat = () => {
+          if (krakenHeartbeatInterval) {
+            clearInterval(krakenHeartbeatInterval);
+          }
+          
+          krakenHeartbeatInterval = setInterval(() => {
+            if (krakenWs && krakenWs.readyState === WebSocket.OPEN) {
+              try {
+                console.log("Sending ping to Kraken WebSocket");
+                krakenWs.send(JSON.stringify({ "name": "ping" }));
+              } catch (pingError) {
+                console.error("Error sending ping to Kraken:", pingError);
+                // If ping fails, try to reconnect
+                if (krakenWs) {
+                  try {
+                    krakenWs.close();
+                  } catch (closeError) {
+                    console.error("Error closing Kraken WebSocket after ping failure:", closeError);
+                  }
+                }
+              }
+            } else {
+              // If connection is not open, clear the interval
+              if (krakenHeartbeatInterval) {
+                clearInterval(krakenHeartbeatInterval);
+                krakenHeartbeatInterval = null;
+              }
+            }
+          }, 30000); // Send ping every 30 seconds
+        };
         
         krakenWs.onopen = () => {
           clearTimeout(krakenConnectionTimeout);
@@ -276,6 +453,9 @@ export default function Dashboard() {
             description: "Connected to Kraken websocket for crypto",
           });
           
+          // Start the heartbeat
+          startKrakenHeartbeat();
+          
           // Subscribe to all cryptos
           if (cryptos.length > 0) {
             console.log(`Subscribing to ${cryptos.length} cryptos on Kraken`);
@@ -285,18 +465,22 @@ export default function Dashboard() {
             // Log the subscription message for debugging
             console.log("Sending Kraken subscription:", JSON.stringify(subscriptionMessage));
             
-            krakenWs.send(JSON.stringify(subscriptionMessage));
-            console.log(`Sent subscription for ${symbols.join(', ')}`);
+            try {
+              krakenWs.send(JSON.stringify(subscriptionMessage));
+              console.log(`Sent subscription for ${symbols.join(', ')}`);
+            } catch (subError) {
+              console.error("Error sending subscription to Kraken:", subError);
+            }
             
             // Send a ping to verify the connection is working
             setTimeout(() => {
               try {
-                if (krakenWs.readyState === WebSocket.OPEN) {
-                  console.log("Sending ping to Kraken WebSocket");
+                if (krakenWs && krakenWs.readyState === WebSocket.OPEN) {
+                  console.log("Sending initial ping to Kraken WebSocket");
                   krakenWs.send(JSON.stringify({ "name": "ping" }));
                 }
               } catch (pingError) {
-                console.error("Error sending ping to Kraken:", pingError);
+                console.error("Error sending initial ping to Kraken:", pingError);
               }
             }, 2000);
           }
@@ -306,12 +490,18 @@ export default function Dashboard() {
           try {
             if (typeof event.data === 'string') {
               // Log the raw message for debugging (truncated for readability)
-              console.log("Received Kraken message:", 
-                event.data.length > 200 ? event.data.substring(0, 200) + "..." : event.data);
+              const truncatedMessage = event.data.length > 200 ? event.data.substring(0, 200) + "..." : event.data;
+              console.log("Received Kraken message:", truncatedMessage);
               
               // Check if it's a pong response
               if (event.data.includes('"name":"pong"')) {
                 console.log("Received pong from Kraken");
+                return;
+              }
+              
+              // Check for error messages
+              if (event.data.includes('"name":"error"')) {
+                console.error("Kraken WebSocket error message:", event.data);
                 return;
               }
               
@@ -328,24 +518,40 @@ export default function Dashboard() {
               console.log("Received non-string message from Kraken WebSocket");
             }
           } catch (parseError) {
-            console.error("Error processing Kraken WebSocket message:", parseError, "Raw message:", event.data);
+            console.error("Error processing Kraken WebSocket message:", parseError);
+            console.log("Raw message that caused error:", typeof event.data === 'string' ? 
+              (event.data.length > 200 ? event.data.substring(0, 200) + "..." : event.data) : 
+              "Non-string data");
           }
         };
         
         krakenWs.onerror = (error) => {
           clearTimeout(krakenConnectionTimeout);
-          // Log detailed error information
-          console.error("Kraken WebSocket error:", error);
           
-          // Try to extract more information from the error object
-          let errorDetails = "Unknown error";
-          try {
-            errorDetails = JSON.stringify(error);
-          } catch (e) {
-            errorDetails = "Error details could not be stringified";
+          // Clean up heartbeat
+          if (krakenHeartbeatInterval) {
+            clearInterval(krakenHeartbeatInterval);
+            krakenHeartbeatInterval = null;
           }
           
-          console.error("Kraken WebSocket error details:", errorDetails);
+          // Log error properties
+          console.error("Kraken WebSocket error event:", error.type);
+          
+          // Extract more useful information from the error event
+          const errorInfo = {
+            type: error.type,
+            isTrusted: error.isTrusted,
+            timeStamp: error.timeStamp,
+            target: {
+              url: krakenWs.url,
+              readyState: krakenWs.readyState,
+              protocol: krakenWs.protocol,
+              extensions: krakenWs.extensions,
+              bufferedAmount: krakenWs.bufferedAmount
+            }
+          };
+          
+          console.error("Kraken WebSocket error details:", JSON.stringify(errorInfo));
           setCryptoConnected(false);
           
           toast({
@@ -357,41 +563,47 @@ export default function Dashboard() {
         
         krakenWs.onclose = (event) => {
           clearTimeout(krakenConnectionTimeout);
+          
+          // Clean up heartbeat
+          if (krakenHeartbeatInterval) {
+            clearInterval(krakenHeartbeatInterval);
+            krakenHeartbeatInterval = null;
+          }
+          
           console.log(`Kraken WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason || "No reason provided"}, Clean: ${event.wasClean}`);
           setCryptoConnected(false);
           
-          // Attempt to reconnect after a delay
-          const reconnectDelay = 5000;
-          console.log(`Will attempt to reconnect to Kraken in ${reconnectDelay/1000} seconds`);
+          // Attempt to reconnect after a delay, with exponential backoff
+          const baseDelay = 5000;
+          const maxDelay = 60000; // 1 minute max
           
-          setTimeout(() => {
+          // Calculate reconnect delay with some randomness to avoid thundering herd
+          const reconnectAttempts = krakenWsRef.current?.reconnectAttempts || 0;
+          const exponentialDelay = Math.min(baseDelay * Math.pow(1.5, reconnectAttempts), maxDelay);
+          const jitter = Math.random() * 1000; // Add up to 1 second of jitter
+          const reconnectDelay = exponentialDelay + jitter;
+          
+          console.log(`Will attempt to reconnect to Kraken in ${Math.round(reconnectDelay/1000)} seconds (attempt ${reconnectAttempts + 1})`);
+          
+          // Store the timeout so we can clear it if needed
+          const reconnectTimeout = setTimeout(() => {
+            console.log("Executing reconnection to Kraken WebSocket");
+            // Only reconnect if we still have cryptos to track
             if (cryptos.length > 0) {
-              try {
-                console.log("Attempting to reconnect to Kraken WebSocket...");
-                const newKrakenWs = new WebSocket('wss://ws.kraken.com/v2');
-                krakenWsRef.current = newKrakenWs;
-                
-                // Set up event handlers for the new connection
-                newKrakenWs.onopen = () => {
-                  console.log("Kraken WebSocket reconnection successful");
-                  setCryptoConnected(true);
-                  
-                  // Resubscribe to all cryptos
-                  const symbols = cryptos.map(crypto => crypto.symbol);
-                  const subscriptionMessage = createKrakenSubscription(symbols);
-                  newKrakenWs.send(JSON.stringify(subscriptionMessage));
-                  console.log(`Resubscribed to ${symbols.join(', ')}`);
-                };
-                
-                newKrakenWs.onmessage = krakenWs.onmessage;
-                newKrakenWs.onerror = krakenWs.onerror;
-                newKrakenWs.onclose = krakenWs.onclose;
-              } catch (error) {
-                console.error("Error reconnecting to Kraken:", error);
-              }
+              connectWebSocket();
             }
           }, reconnectDelay);
+          
+          // Store the reconnect attempt count on the websocket ref
+          if (krakenWsRef.current) {
+            krakenWsRef.current.reconnectAttempts = reconnectAttempts + 1;
+            krakenWsRef.current.reconnectTimeout = reconnectTimeout;
+          }
         };
+        
+        // Add custom properties to track reconnection attempts
+        krakenWs.reconnectAttempts = 0;
+        krakenWs.reconnectTimeout = null;
         
         krakenWsRef.current = krakenWs;
       }

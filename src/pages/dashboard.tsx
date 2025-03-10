@@ -15,6 +15,7 @@ import SortableStockList from "@/components/SortableStockList";
 import SortableCryptoList from "@/components/SortableCryptoList";
 import TransactionHistory from "@/components/TransactionHistory";
 import CryptoTransactionHistory from "@/components/CryptoTransactionHistory";
+import KrakenWebSocketSettings from "@/components/KrakenWebSocketSettings";
 import { Stock, StockWithPrice as StockWithCurrentPrice, Settings, Crypto, CryptoWithPrice } from "@/types/stock";
 
 export default function Dashboard() {
@@ -1732,6 +1733,17 @@ export default function Dashboard() {
                           </p>
                         </div>
                       </div>
+
+                      <KrakenWebSocketSettings
+                        websocketUrl={settings.krakenWebsocketUrl || "wss://ws.kraken.com/v2"}
+                        enableManualCryptoTrading={settings.enableManualCryptoTrading || false}
+                        onWebsocketUrlChange={(url) => 
+                          setSettings({ ...settings, krakenWebsocketUrl: url })
+                        }
+                        onEnableManualCryptoTradingChange={(enabled) => 
+                          setSettings({ ...settings, enableManualCryptoTrading: enabled })
+                        }
+                      />
                     </div>
                     
                     <Button onClick={handleUpdateSettings}>Save Settings</Button>

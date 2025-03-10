@@ -26,8 +26,12 @@ export interface Settings {
   tradePlatformApiKey?: string;
   tradePlatformApiSecret?: string;
   finnhubApiKey?: string;
+  krakenApiKey?: string;
+  krakenApiSign?: string;
+  krakenWebsocketUrl?: string;
   enableAutoStockTrading: boolean;
   enableAutoCryptoTrading: boolean;
+  enableManualCryptoTrading?: boolean;
 }
 
 // Types for transactions

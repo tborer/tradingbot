@@ -48,6 +48,7 @@ export const useKrakenWebSocket = ({
           }
         };
         
+        console.log('Sending Kraken subscription message:', JSON.stringify(subscribeMessage));
         socket.send(JSON.stringify(subscribeMessage));
         
         if (onOpen) {

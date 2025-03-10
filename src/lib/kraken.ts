@@ -117,11 +117,10 @@ export const createKrakenSubscription = (symbols: string[]): any => {
   const krakenSymbols = symbols.map(formatToKrakenSymbol);
   
   return {
-    name: 'subscribe',
-    reqid: 123,
-    pair: krakenSymbols,
-    subscription: {
-      name: 'ticker'
+    method: "subscribe",
+    params: {
+      channel: "ticker",
+      symbol: krakenSymbols
     }
   };
 };

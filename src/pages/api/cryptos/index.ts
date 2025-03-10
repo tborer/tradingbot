@@ -66,6 +66,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         },
       });
       
+      console.log(`Added new crypto: ${symbol.toUpperCase()}. Kraken WebSocket subscription will be updated on next connection.`);
+      
       return res.status(201).json(newCrypto);
     }
     

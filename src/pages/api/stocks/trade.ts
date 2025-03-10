@@ -47,6 +47,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       }
       
+      // Check if auto stock trading is enabled for auto orders
+      if (req.body.isAutoOrder && (!settings.enableAutoStockTrading)) {
+        return res.status(403).json({ 
+          error: 'Auto stock trading is not enabled. Please enable it in settings.' 
+        });
+      }
+      
       // In a real application, this is where you would call the trading platform API
       // For now, we'll just simulate a successful trade
       

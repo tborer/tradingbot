@@ -31,6 +31,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         error: 'Kraken API credentials not found. Please configure them in settings.' 
       });
     }
+    
+    // Check if auto crypto trading is enabled for auto orders
+    if (req.body.isAutoOrder && (!settings.enableAutoCryptoTrading)) {
+      return res.status(403).json({ 
+        error: 'Auto crypto trading is not enabled. Please enable it in settings.' 
+      });
+    }
 
     const { cryptoId, action, shares, price } = req.body;
 

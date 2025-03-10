@@ -46,6 +46,8 @@ model Settings {
   krakenApiSign     String?
   enableAutoStockTrading Boolean @default(false)
   enableAutoCryptoTrading Boolean @default(false)
+  enableManualCryptoTrading Boolean @default(false)
+  krakenWebsocketUrl String @default("wss://ws.kraken.com/v2")
   userId            String   @unique @db.Uuid
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

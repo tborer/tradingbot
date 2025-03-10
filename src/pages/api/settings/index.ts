@@ -46,7 +46,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         krakenApiKey,
         krakenApiSign,
         enableAutoStockTrading,
-        enableAutoCryptoTrading
+        enableAutoCryptoTrading,
+        enableManualCryptoTrading,
+        krakenWebsocketUrl
       } = req.body;
       
       if (sellThresholdPercent === undefined || buyThresholdPercent === undefined || checkFrequencySeconds === undefined) {
@@ -73,6 +75,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ...(krakenApiSign !== undefined && { krakenApiSign }),
           ...(enableAutoStockTrading !== undefined && { enableAutoStockTrading }),
           ...(enableAutoCryptoTrading !== undefined && { enableAutoCryptoTrading }),
+          ...(enableManualCryptoTrading !== undefined && { enableManualCryptoTrading }),
+          ...(krakenWebsocketUrl !== undefined && { krakenWebsocketUrl }),
         },
         create: {
           userId: user.id,
@@ -86,6 +90,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ...(krakenApiSign !== undefined && { krakenApiSign }),
           ...(enableAutoStockTrading !== undefined && { enableAutoStockTrading }),
           ...(enableAutoCryptoTrading !== undefined && { enableAutoCryptoTrading }),
+          ...(enableManualCryptoTrading !== undefined && { enableManualCryptoTrading }),
+          ...(krakenWebsocketUrl !== undefined && { krakenWebsocketUrl }),
         },
       });
       

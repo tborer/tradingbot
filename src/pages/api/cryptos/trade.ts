@@ -21,6 +21,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(405).json({ error: 'Method not allowed' });
     }
     
+    // Check if manual crypto trading is enabled
+    const settings = await prisma.settings.findUnique({
+      where: { userId: user.id },
+    });
+    
+    if (!settings || !settings.enableManualCryptoTrading) {
+      return res.status(403).json({ error: 'Manual crypto trading is not enabled. Please enable it in settings.' });
+    }
+    
     const { cryptoId, action, shares } = req.body;
     
     if (!cryptoId || !action || !shares) {

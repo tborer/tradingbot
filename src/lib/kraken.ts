@@ -203,12 +203,27 @@ export const getKrakenTradingPair = (symbol: string): string => {
   return `${symbol}USD`;
 };
 
-// Generate a unique order ID
+// Generate a unique order ID in UUID v4 format
 export const generateOrderId = (): string => {
-  // Create a simple UUID-like string without relying on crypto.randomUUID
-  const timestamp = Date.now().toString(36);
-  const randomStr = Math.random().toString(36).substring(2, 15);
-  return `${timestamp}-${randomStr}`;
+  // Generate a proper UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+  // where x is any hexadecimal digit and y is one of 8, 9, A, or B
+  const hexDigits = '0123456789abcdef';
+  let uuid = '';
+  
+  for (let i = 0; i < 36; i++) {
+    if (i === 8 || i === 13 || i === 18 || i === 23) {
+      uuid += '-';
+    } else if (i === 14) {
+      uuid += '4'; // Version 4 UUID always has the 14th character as '4'
+    } else if (i === 19) {
+      // The 19th character is one of: 8, 9, a, b
+      uuid += hexDigits.charAt(Math.floor(Math.random() * 4) + 8);
+    } else {
+      uuid += hexDigits.charAt(Math.floor(Math.random() * 16));
+    }
+  }
+  
+  return uuid;
 };
 
 // Generate a nonce (timestamp in milliseconds)

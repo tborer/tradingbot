@@ -8,25 +8,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const supabase = createClient(req, res);
     
     // Get the user session
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { user } } = await supabase.auth.getUser();
     
-    if (!session || !session.user) {
+    if (!user) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
-    
-    const user = session.user;
     
     // Only allow POST requests
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Method not allowed' });
     }
     
-    // Check if manual crypto trading is enabled
+    // Get settings but don't block trading if enableManualCryptoTrading is not explicitly set
     const settings = await prisma.settings.findUnique({
       where: { userId: user.id },
     });
     
-    if (!settings || !settings.enableManualCryptoTrading) {
+    // Only block if settings exist AND enableManualCryptoTrading is explicitly set to false
+    if (settings && settings.enableManualCryptoTrading === false) {
       return res.status(403).json({ error: 'Manual crypto trading is not enabled. Please enable it in settings.' });
     }
     
@@ -95,6 +94,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   } catch (error) {
     console.error('API error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 }

@@ -1211,12 +1211,18 @@ export default function Dashboard() {
     try {
       // Get the current crypto to get its current price
       const crypto = cryptos.find(c => c.id === id);
-      if (!crypto || !crypto.currentPrice) {
-        throw new Error("Cannot execute trade: current price not available");
+      if (!crypto) {
+        throw new Error("Crypto not found");
       }
+
+      // Use current price if available, otherwise fall back to purchase price
+      const price = crypto.currentPrice || crypto.purchasePrice;
+      
+      console.log(`Executing ${action} for ${symbol}, ${shares} shares at $${price}`);
 
       // Check if Kraken API credentials are configured
       if (settings?.krakenApiKey && settings?.krakenApiSign) {
+        console.log("Using Kraken API for trading");
         // Use the Kraken API for trading
         const response = await fetch("/api/cryptos/execute-order", {
           method: "POST",
@@ -1225,20 +1231,23 @@ export default function Dashboard() {
             cryptoId: id,
             action,
             shares,
-            price: crypto.currentPrice,
+            price,
           }),
         });
         
+        const responseData = await response.json();
+        
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || `Failed to ${action} crypto using Kraken API`);
+          console.error("Kraken API error:", responseData);
+          throw new Error(responseData.error || `Failed to ${action} crypto using Kraken API`);
         }
         
         // Update the crypto shares after successful trade
         fetchCryptos();
         
-        return await response.json();
+        return responseData;
       } else {
+        console.log("Using internal trading system");
         // Fall back to the internal trading system if Kraken API is not configured
         const response = await fetch("/api/cryptos/trade", {
           method: "POST",
@@ -1250,15 +1259,17 @@ export default function Dashboard() {
           }),
         });
         
+        const responseData = await response.json();
+        
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || `Failed to ${action} crypto`);
+          console.error("Internal trading error:", responseData);
+          throw new Error(responseData.error || `Failed to ${action} crypto`);
         }
         
         // Update the crypto shares after successful trade
         fetchCryptos();
         
-        return await response.json();
+        return responseData;
       }
     } catch (error) {
       console.error(`Error ${action}ing crypto:`, error);

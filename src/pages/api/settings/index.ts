@@ -78,7 +78,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         checkFrequencySeconds: parseInt(checkFrequencySeconds.toString()),
         enableAutoStockTrading: enableAutoStockTrading === true,
         enableAutoCryptoTrading: enableAutoCryptoTrading === true,
-        enableManualCryptoTrading: enableManualCryptoTrading === true
+        // Only set enableManualCryptoTrading if it's explicitly provided in the request
+        // This ensures we don't accidentally set it to false when it's undefined
+        ...(enableManualCryptoTrading !== undefined && { enableManualCryptoTrading: enableManualCryptoTrading === true })
       };
       
       // Only add optional fields if they are defined

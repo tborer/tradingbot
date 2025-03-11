@@ -876,6 +876,10 @@ export default function Dashboard() {
           finnhubApiKey: settings.finnhubApiKey,
           enableAutoStockTrading: settings.enableAutoStockTrading,
           enableAutoCryptoTrading: settings.enableAutoCryptoTrading,
+          enableManualCryptoTrading: settings.enableManualCryptoTrading,
+          krakenWebsocketUrl: settings.krakenWebsocketUrl,
+          krakenApiKey: settings.krakenApiKey,
+          krakenApiSign: settings.krakenApiSign,
         }),
       });
       

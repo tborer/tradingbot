@@ -2,7 +2,8 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
 import { KrakenOrderRequest, KrakenOrderResponse, getKrakenTradingPair, generateOrderId, generateNonce } from '@/lib/kraken';
-import crypto from 'crypto';
+// Use dynamic import for Node.js crypto module to ensure it's only loaded in server context
+import { createHash, createHmac } from 'crypto';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Only allow POST requests
@@ -89,8 +90,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Create signature
     const message = nonce + postData;
     const secret = Buffer.from(settings.krakenApiSign, 'base64');
-    const hash = crypto.createHash('sha256').update(nonce + postData, 'utf8').digest('binary');
-    const hmac = crypto.createHmac('sha512', secret).update(path + hash, 'binary').digest('base64');
+    const hash = createHash('sha256').update(nonce + postData, 'utf8').digest('binary');
+    const hmac = createHmac('sha512', secret).update(path + hash, 'binary').digest('base64');
 
     // Execute the order
     const response = await fetch(apiEndpoint, {

@@ -205,7 +205,10 @@ export const getKrakenTradingPair = (symbol: string): string => {
 
 // Generate a unique order ID
 export const generateOrderId = (): string => {
-  return crypto.randomUUID();
+  // Create a simple UUID-like string without relying on crypto.randomUUID
+  const timestamp = Date.now().toString(36);
+  const randomStr = Math.random().toString(36).substring(2, 15);
+  return `${timestamp}-${randomStr}`;
 };
 
 // Generate a nonce (timestamp in milliseconds)

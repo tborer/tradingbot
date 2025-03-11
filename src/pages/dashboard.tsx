@@ -1762,13 +1762,14 @@ export default function Dashboard() {
 
                       <KrakenWebSocketSettings
                         websocketUrl={settings.krakenWebsocketUrl || "wss://ws.kraken.com/v2"}
-                        enableManualCryptoTrading={settings.enableManualCryptoTrading || false}
+                        enableManualCryptoTrading={settings.enableManualCryptoTrading === true}
                         onWebsocketUrlChange={(url) => 
                           setSettings({ ...settings, krakenWebsocketUrl: url })
                         }
-                        onEnableManualCryptoTradingChange={(enabled) => 
-                          setSettings({ ...settings, enableManualCryptoTrading: enabled })
-                        }
+                        onEnableManualCryptoTradingChange={(enabled) => {
+                          console.log("Setting enableManualCryptoTrading to:", enabled);
+                          setSettings({ ...settings, enableManualCryptoTrading: enabled });
+                        }}
                       />
                     </div>
                     

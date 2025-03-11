@@ -51,6 +51,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         krakenWebsocketUrl
       } = req.body;
       
+      console.log('Updating settings with:', {
+        sellThresholdPercent,
+        buyThresholdPercent,
+        checkFrequencySeconds,
+        enableManualCryptoTrading,
+        krakenWebsocketUrl,
+        hasKrakenApiKey: !!krakenApiKey,
+        hasKrakenApiSign: !!krakenApiSign
+      });
+      
       if (sellThresholdPercent === undefined || buyThresholdPercent === undefined || checkFrequencySeconds === undefined) {
         return res.status(400).json({ error: 'Sell threshold, buy threshold, and check frequency are required' });
       }
@@ -62,36 +72,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       }
       
+      const updateData = {
+        sellThresholdPercent: parseFloat(sellThresholdPercent.toString()),
+        buyThresholdPercent: parseFloat(buyThresholdPercent.toString()),
+        checkFrequencySeconds: parseInt(checkFrequencySeconds.toString()),
+        enableAutoStockTrading: enableAutoStockTrading === true,
+        enableAutoCryptoTrading: enableAutoCryptoTrading === true,
+        enableManualCryptoTrading: enableManualCryptoTrading === true
+      };
+      
+      // Only add optional fields if they are defined
+      if (tradePlatformApiKey !== undefined) updateData['tradePlatformApiKey'] = tradePlatformApiKey;
+      if (tradePlatformApiSecret !== undefined) updateData['tradePlatformApiSecret'] = tradePlatformApiSecret;
+      if (finnhubApiKey !== undefined) updateData['finnhubApiKey'] = finnhubApiKey;
+      if (krakenApiKey !== undefined) updateData['krakenApiKey'] = krakenApiKey;
+      if (krakenApiSign !== undefined) updateData['krakenApiSign'] = krakenApiSign;
+      if (krakenWebsocketUrl !== undefined) updateData['krakenWebsocketUrl'] = krakenWebsocketUrl;
+      
       const settings = await prisma.settings.upsert({
         where: { userId: user.id },
-        update: {
-          sellThresholdPercent: parseFloat(sellThresholdPercent),
-          buyThresholdPercent: parseFloat(buyThresholdPercent),
-          checkFrequencySeconds: parseInt(checkFrequencySeconds),
-          ...(tradePlatformApiKey !== undefined && { tradePlatformApiKey }),
-          ...(tradePlatformApiSecret !== undefined && { tradePlatformApiSecret }),
-          ...(finnhubApiKey !== undefined && { finnhubApiKey }),
-          ...(krakenApiKey !== undefined && { krakenApiKey }),
-          ...(krakenApiSign !== undefined && { krakenApiSign }),
-          ...(enableAutoStockTrading !== undefined && { enableAutoStockTrading }),
-          ...(enableAutoCryptoTrading !== undefined && { enableAutoCryptoTrading }),
-          ...(enableManualCryptoTrading !== undefined && { enableManualCryptoTrading }),
-          ...(krakenWebsocketUrl !== undefined && { krakenWebsocketUrl }),
-        },
+        update: updateData,
         create: {
           userId: user.id,
-          sellThresholdPercent: parseFloat(sellThresholdPercent),
-          buyThresholdPercent: parseFloat(buyThresholdPercent),
-          checkFrequencySeconds: parseInt(checkFrequencySeconds),
-          ...(tradePlatformApiKey !== undefined && { tradePlatformApiKey }),
-          ...(tradePlatformApiSecret !== undefined && { tradePlatformApiSecret }),
-          ...(finnhubApiKey !== undefined && { finnhubApiKey }),
-          ...(krakenApiKey !== undefined && { krakenApiKey }),
-          ...(krakenApiSign !== undefined && { krakenApiSign }),
-          ...(enableAutoStockTrading !== undefined && { enableAutoStockTrading }),
-          ...(enableAutoCryptoTrading !== undefined && { enableAutoCryptoTrading }),
-          ...(enableManualCryptoTrading !== undefined && { enableManualCryptoTrading }),
-          ...(krakenWebsocketUrl !== undefined && { krakenWebsocketUrl }),
+          ...updateData
         },
       });
       

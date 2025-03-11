@@ -58,10 +58,23 @@ export const useKrakenWebSocket = ({
 
       socket.onmessage = (event) => {
         try {
+          // Check if the message is empty or just '{}'
+          if (!event.data || event.data === '{}') {
+            console.log('Received empty message from Kraken, ignoring');
+            return;
+          }
+          
+          // Log the raw message for debugging (truncated for readability)
+          const truncatedMessage = typeof event.data === 'string' && event.data.length > 200 
+            ? event.data.substring(0, 200) + "..." 
+            : event.data;
+          console.log("Received Kraken message:", truncatedMessage);
+          
           const data = JSON.parse(event.data);
           onMessage(data);
         } catch (err) {
-          console.error('Error parsing WebSocket message:', err);
+          console.error('Error parsing Kraken WebSocket message:', err);
+          console.error('Raw message that caused error:', event.data);
         }
       };
 

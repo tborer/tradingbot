@@ -7,6 +7,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 
 const LogLevelBadge = ({ level }: { level: LogLevel }) => {
   const colorMap: Record<LogLevel, string> = {
@@ -27,6 +29,7 @@ const WebSocketLogger: React.FC = () => {
   const { logs, clearLogs } = useWebSocketLogs();
   const [filter, setFilter] = useState('');
   const [activeTab, setActiveTab] = useState<LogLevel | 'all'>('all');
+  const [ignoreHeartbeat, setIgnoreHeartbeat] = useState(false);
   
   const filteredLogs = logs.filter(log => {
     // Filter by search term
@@ -37,8 +40,21 @@ const WebSocketLogger: React.FC = () => {
     // Filter by log level
     const levelMatch = activeTab === 'all' || log.level === activeTab;
     
-    return searchMatch && levelMatch;
+    // Filter out heartbeat messages if ignoreHeartbeat is true
+    const isHeartbeat = ignoreHeartbeat && 
+      log.details?.data && 
+      typeof log.details.data === 'string' && 
+      log.details.data.includes('"channel":"heartbeat"');
+    
+    return searchMatch && levelMatch && !isHeartbeat;
   });
+  
+  // Count heartbeat messages
+  const heartbeatCount = logs.filter(log => 
+    log.details?.data && 
+    typeof log.details.data === 'string' && 
+    log.details.data.includes('"channel":"heartbeat"')
+  ).length;
   
   const logCounts = {
     all: logs.length,
@@ -60,13 +76,23 @@ const WebSocketLogger: React.FC = () => {
         <CardDescription>
           Monitor WebSocket connections, messages, and errors
         </CardDescription>
-        <div className="flex gap-2 mt-2">
-          <Input 
-            placeholder="Filter logs..." 
-            value={filter} 
-            onChange={(e) => setFilter(e.target.value)}
-            className="max-w-sm"
-          />
+        <div className="flex flex-col gap-2 mt-2">
+          <div className="flex gap-2">
+            <Input 
+              placeholder="Filter logs..." 
+              value={filter} 
+              onChange={(e) => setFilter(e.target.value)}
+              className="max-w-sm"
+            />
+          </div>
+          <div className="flex items-center space-x-2 mt-2">
+            <Checkbox 
+              id="ignore-heartbeat" 
+              checked={ignoreHeartbeat} 
+              onCheckedChange={(checked) => setIgnoreHeartbeat(checked === true)}
+            />
+            <Label htmlFor="ignore-heartbeat">Ignore Heartbeat</Label>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -125,6 +151,9 @@ const WebSocketLogger: React.FC = () => {
       </CardContent>
       <CardFooter className="text-xs text-muted-foreground">
         Showing {filteredLogs.length} of {logs.length} logs
+        {ignoreHeartbeat && heartbeatCount > 0 && (
+          <span className="ml-2">({heartbeatCount} heartbeat messages hidden)</span>
+        )}
       </CardFooter>
     </Card>
   );

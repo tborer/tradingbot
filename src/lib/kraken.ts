@@ -32,6 +32,7 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
       return [];
     }
     
+    console.log('Parsing Kraken message:', message.substring(0, 200));
     const parsed = JSON.parse(message);
     
     // Handle subscription confirmation messages
@@ -54,12 +55,16 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
     
     // Check if it's an array (Kraken sends arrays for ticker updates)
     if (Array.isArray(parsed)) {
+      console.log('Received array-format message from Kraken:', JSON.stringify(parsed).substring(0, 200));
+      
       // Kraken v2 WebSocket format: [channelID, data, channelName, pair]
       // Example: [0,{"a":[["41772.10000",0.00100000,1.00000000]],"b":[["41772.00000",0.77920533,1.00000000]],"c":["41772.10000","0.00006949"],"v":["1903.41357664","2167.75553954"],"p":["41984.40905156","42020.94016593"],"t":[14218,16453],"l":["41600.00000","41600.00000"],"h":["42399.90000","42399.90000"],"o":["42208.80000","42208.80000"]},"ticker","XBT/USD"]
       
       if (parsed.length >= 4 && parsed[2] === 'ticker') {
         const data = parsed[1];
         const pair = parsed[3];
+        
+        console.log(`Extracted ticker data for pair ${pair}:`, JSON.stringify(data).substring(0, 200));
         
         // Make sure data and c field exist
         if (!data || !data.c || !Array.isArray(data.c) || data.c.length === 0) {
@@ -74,6 +79,37 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
         // Extract the symbol from the pair
         const symbol = formatKrakenSymbol(pair);
         
+        console.log(`Extracted price ${price} for symbol ${symbol} from pair ${pair}`);
+        
+        return [{
+          symbol,
+          price,
+          timestamp: Date.now(),
+        }];
+      }
+      
+      // Handle v1 format array response: [channelName, data, pair]
+      // Example: ["ticker", {"a": ["58661.00000", 0, "0.00000000"], ...}, "XBT/USD"]
+      if (parsed.length >= 3 && parsed[0] === 'ticker') {
+        const data = parsed[1];
+        const pair = parsed[2];
+        
+        console.log(`Extracted v1 ticker data for pair ${pair}:`, JSON.stringify(data).substring(0, 200));
+        
+        // Make sure data and c field exist
+        if (!data || !data.c || !Array.isArray(data.c) || data.c.length === 0) {
+          console.log('Invalid Kraken v1 ticker data format:', data);
+          return [];
+        }
+        
+        // Extract the price from the close price (c) field
+        const price = parseFloat(data.c[0]);
+        
+        // Extract the symbol from the pair
+        const symbol = formatKrakenSymbol(pair);
+        
+        console.log(`Extracted price ${price} for symbol ${symbol} from pair ${pair} (v1 format)`);
+        
         return [{
           symbol,
           price,
@@ -84,6 +120,8 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
     
     // Handle ticker updates in v1 format (fallback)
     if (parsed.type === 'update' && parsed.channel === 'ticker') {
+      console.log('Received update-type message from Kraken:', JSON.stringify(parsed).substring(0, 200));
+      
       // Make sure data and c field exist
       if (!parsed.data || !parsed.data.c || !Array.isArray(parsed.data.c) || parsed.data.c.length === 0) {
         console.log('Invalid Kraken ticker data format (v1):', parsed.data);
@@ -96,6 +134,8 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
       // Extract the symbol from the message
       const symbol = formatKrakenSymbol(parsed.symbol);
       
+      console.log(`Extracted price ${price} for symbol ${symbol} from update message`);
+      
       return [{
         symbol,
         price,
@@ -104,10 +144,10 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
     }
     
     // If we get here, we received a message we don't understand
-    console.log('Unrecognized Kraken message format:', message.substring(0, 200));
+    console.log('Unrecognized Kraken message format:', JSON.stringify(parsed).substring(0, 200));
     return [];
   } catch (error) {
-    console.error('Error parsing Kraken message:', error, 'Message:', message);
+    console.error('Error parsing Kraken message:', error, 'Message:', message.substring(0, 200));
     return [];
   }
 };

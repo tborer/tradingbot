@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/use-toast";
 import { parseFinnhubMessage, shouldSellStock, shouldBuyStock, StockPrice } from "@/lib/finnhub";
 import { parseKrakenMessage, createKrakenSubscription, shouldSellCrypto, shouldBuyCrypto, KrakenPrice } from "@/lib/kraken";
+import KrakenPriceMonitor from "@/components/KrakenPriceMonitor";
 import SortableStockList from "@/components/SortableStockList";
 import SortableCryptoList from "@/components/SortableCryptoList";
 import TransactionHistory from "@/components/TransactionHistory";
@@ -1576,6 +1577,15 @@ export default function Dashboard() {
                 />
               </CardContent>
             </Card>
+            
+            {/* Kraken Price Monitor */}
+            {cryptos.length > 0 && (
+              <KrakenPriceMonitor 
+                symbols={cryptos.map(crypto => crypto.symbol)}
+                websocketUrl={settings?.krakenWebsocketUrl || "wss://ws.kraken.com/v2"}
+                onPriceUpdate={updateCryptoPrices}
+              />
+            )}
             
             {/* Crypto Transaction History */}
             <Card>

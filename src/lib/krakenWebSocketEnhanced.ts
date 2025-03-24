@@ -52,7 +52,13 @@ export const useKrakenWebSocket = ({
           subscription: {
             name: 'ticker'
           },
-          pair: symbols
+          pair: symbols.map(symbol => {
+            // Convert BTC to XBT/USD format for Kraken
+            if (symbol === 'BTC') {
+              return 'XBT/USD';
+            }
+            return `${symbol}/USD`;
+          })
         };
         
         console.log('Sending v1 subscription message:', JSON.stringify(subscribeMessage));
@@ -69,6 +75,11 @@ export const useKrakenWebSocket = ({
           if (!event.data || event.data === '{}') {
             return;
           }
+          
+          console.log('Received message from alternative Kraken WebSocket:', 
+            typeof event.data === 'string' && event.data.length > 200 
+              ? event.data.substring(0, 200) + "..." 
+              : event.data);
           
           const data = JSON.parse(event.data);
           onMessage(data);
@@ -103,6 +114,7 @@ export const useKrakenWebSocket = ({
     }
 
     try {
+      console.log(`Connecting to Kraken WebSocket at URL: ${url}`);
       const socket = new WebSocket(url);
       socketRef.current = socket;
 
@@ -111,12 +123,23 @@ export const useKrakenWebSocket = ({
         setIsConnected(true);
         reconnectAttemptsRef.current = 0;
         
+        // Convert symbols to Kraken format
+        const krakenSymbols = symbols.map(symbol => {
+          // Convert BTC to XBT/USD format for Kraken
+          if (symbol === 'BTC') {
+            return 'XBT/USD';
+          }
+          return `${symbol}/USD`;
+        });
+        
+        console.log('Using Kraken symbols:', krakenSymbols);
+        
         // Subscribe to ticker data for each symbol
         const subscribeMessage = {
           method: 'subscribe',
           params: {
             channel: 'ticker',
-            symbol: symbols
+            symbol: krakenSymbols
           }
         };
         
@@ -164,7 +187,13 @@ export const useKrakenWebSocket = ({
                 method: 'subscribe',
                 params: {
                   name: 'ticker',
-                  symbols: symbols
+                  symbols: symbols.map(symbol => {
+                    // Convert BTC to XBT/USD format for Kraken
+                    if (symbol === 'BTC') {
+                      return 'XBT/USD';
+                    }
+                    return `${symbol}/USD`;
+                  })
                 }
               };
               
@@ -248,10 +277,17 @@ export const useKrakenWebSocket = ({
         method: 'unsubscribe',
         params: {
           channel: 'ticker',
-          symbol: symbols
+          symbol: symbols.map(symbol => {
+            // Convert BTC to XBT/USD format for Kraken
+            if (symbol === 'BTC') {
+              return 'XBT/USD';
+            }
+            return `${symbol}/USD`;
+          })
         }
       };
       
+      console.log('Sending unsubscribe message:', JSON.stringify(unsubscribeMessage));
       socketRef.current.send(JSON.stringify(unsubscribeMessage));
       
       // Subscribe to new symbols
@@ -259,10 +295,17 @@ export const useKrakenWebSocket = ({
         method: 'subscribe',
         params: {
           channel: 'ticker',
-          symbol: symbols
+          symbol: symbols.map(symbol => {
+            // Convert BTC to XBT/USD format for Kraken
+            if (symbol === 'BTC') {
+              return 'XBT/USD';
+            }
+            return `${symbol}/USD`;
+          })
         }
       };
       
+      console.log('Sending subscribe message for new symbols:', JSON.stringify(subscribeMessage));
       socketRef.current.send(JSON.stringify(subscribeMessage));
     }
   }, [JSON.stringify(symbols), isConnected]);

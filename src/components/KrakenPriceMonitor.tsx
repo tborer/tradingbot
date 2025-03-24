@@ -1,9 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useKrakenWebSocket } from '@/hooks/useKrakenWebSocket';
 import { KrakenPrice } from '@/lib/kraken';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/components/ui/use-toast';
+import { processAutoCryptoTrades } from '@/lib/autoTradeService';
 
 interface KrakenPriceMonitorProps {
   symbols: string[];
@@ -16,10 +19,64 @@ export default function KrakenPriceMonitor({
   websocketUrl = 'wss://ws.kraken.com/v2',
   onPriceUpdate 
 }: KrakenPriceMonitorProps) {
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [prices, setPrices] = useState<KrakenPrice[]>([]);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [autoTradeEnabled, setAutoTradeEnabled] = useState<boolean>(false);
+  const [lastAutoTradeCheck, setLastAutoTradeCheck] = useState<Date | null>(null);
+  const [autoTradeResults, setAutoTradeResults] = useState<any[]>([]);
   
-  const handlePriceUpdate = (newPrices: KrakenPrice[]) => {
+  // Fetch settings to check if auto trading is enabled
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const response = await fetch('/api/settings');
+        if (response.ok) {
+          const settings = await response.json();
+          setAutoTradeEnabled(settings.enableAutoCryptoTrading || false);
+        }
+      } catch (error) {
+        console.error('Error fetching settings:', error);
+      }
+    };
+    
+    if (user) {
+      fetchSettings();
+    }
+  }, [user]);
+  
+  // Process auto trades when prices update
+  const processAutoTrades = useCallback(async (prices: KrakenPrice[]) => {
+    if (!user || !autoTradeEnabled || prices.length === 0) return;
+    
+    try {
+      const results = await processAutoCryptoTrades(prices, user.id);
+      
+      // Filter for successful trades
+      const successfulTrades = results.filter(result => result.success && result.action);
+      
+      if (successfulTrades.length > 0) {
+        // Show toast for successful trades
+        successfulTrades.forEach(trade => {
+          toast({
+            title: `Auto ${trade.action} Executed`,
+            description: `${trade.action === 'buy' ? 'Bought' : 'Sold'} ${trade.shares?.toFixed(6)} shares of ${trade.symbol} at $${trade.price?.toFixed(2)}`,
+            variant: 'default',
+          });
+        });
+        
+        // Update auto trade results
+        setAutoTradeResults(prev => [...successfulTrades, ...prev].slice(0, 5));
+      }
+      
+      setLastAutoTradeCheck(new Date());
+    } catch (error) {
+      console.error('Error processing auto trades:', error);
+    }
+  }, [user, autoTradeEnabled, toast]);
+  
+  const handlePriceUpdate = useCallback((newPrices: KrakenPrice[]) => {
     setPrices(prevPrices => {
       // Merge new prices with existing ones
       const updatedPrices = [...prevPrices];
@@ -41,7 +98,10 @@ export default function KrakenPriceMonitor({
     if (onPriceUpdate) {
       onPriceUpdate(newPrices);
     }
-  };
+    
+    // Process auto trades with the new prices
+    processAutoTrades(newPrices);
+  }, [onPriceUpdate, processAutoTrades]);
   
   const { isConnected, error, reconnect } = useKrakenWebSocket({
     symbols,
@@ -78,6 +138,33 @@ export default function KrakenPriceMonitor({
           <Alert variant="destructive" className="mb-4">
             <AlertDescription>
               Error connecting to Kraken: {error.message}
+            </AlertDescription>
+          </Alert>
+        )}
+        
+        {autoTradeEnabled && (
+          <Alert variant="default" className="mb-4 bg-blue-50 dark:bg-blue-900/20 border-blue-500">
+            <AlertTitle className="text-blue-700 dark:text-blue-300">Auto Trading Enabled</AlertTitle>
+            <AlertDescription className="text-blue-700 dark:text-blue-300">
+              Automatic trading is enabled for cryptocurrencies.
+              {lastAutoTradeCheck && (
+                <div className="text-xs mt-1">Last check: {lastAutoTradeCheck.toLocaleTimeString()}</div>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
+        
+        {autoTradeResults.length > 0 && (
+          <Alert variant="default" className="mb-4 bg-green-50 dark:bg-green-900/20 border-green-500">
+            <AlertTitle className="text-green-700 dark:text-green-300">Recent Auto Trades</AlertTitle>
+            <AlertDescription className="text-green-700 dark:text-green-300">
+              <ul className="text-xs mt-1 space-y-1">
+                {autoTradeResults.map((result, index) => (
+                  <li key={index}>
+                    {result.action === 'buy' ? 'Bought' : 'Sold'} {result.shares?.toFixed(6)} {result.symbol} at ${result.price?.toFixed(2)}
+                  </li>
+                ))}
+              </ul>
             </AlertDescription>
           </Alert>
         )}

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 
 const LogLevelBadge = ({ level }: { level: LogLevel }) => {
   const colorMap: Record<LogLevel, string> = {
@@ -26,7 +27,7 @@ const LogLevelBadge = ({ level }: { level: LogLevel }) => {
 };
 
 const WebSocketLogger: React.FC = () => {
-  const { logs, clearLogs } = useWebSocketLogs();
+  const { logs, clearLogs, isLoggingEnabled, setLoggingEnabled } = useWebSocketLogs();
   const [filter, setFilter] = useState('');
   const [activeTab, setActiveTab] = useState<LogLevel | 'all'>('all');
   const [ignoreHeartbeat, setIgnoreHeartbeat] = useState(false);
@@ -69,9 +70,21 @@ const WebSocketLogger: React.FC = () => {
       <CardHeader>
         <CardTitle className="flex justify-between items-center">
           <span>WebSocket Logs</span>
-          <Button variant="destructive" size="sm" onClick={clearLogs}>
-            Clear Logs
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="logging-toggle"
+                checked={isLoggingEnabled}
+                onCheckedChange={setLoggingEnabled}
+              />
+              <Label htmlFor="logging-toggle" className="text-sm">
+                {isLoggingEnabled ? "Logging Enabled" : "Logging Disabled"}
+              </Label>
+            </div>
+            <Button variant="destructive" size="sm" onClick={clearLogs}>
+              Clear Logs
+            </Button>
+          </div>
         </CardTitle>
         <CardDescription>
           Monitor WebSocket connections, messages, and errors
@@ -150,9 +163,17 @@ const WebSocketLogger: React.FC = () => {
         </Tabs>
       </CardContent>
       <CardFooter className="text-xs text-muted-foreground">
-        Showing {filteredLogs.length} of {logs.length} logs
-        {ignoreHeartbeat && heartbeatCount > 0 && (
-          <span className="ml-2">({heartbeatCount} heartbeat messages hidden)</span>
+        {!isLoggingEnabled ? (
+          <div className="flex items-center text-amber-500">
+            <span>WebSocket logging is disabled. No new logs will be captured.</span>
+          </div>
+        ) : (
+          <div>
+            Showing {filteredLogs.length} of {logs.length} logs
+            {ignoreHeartbeat && heartbeatCount > 0 && (
+              <span className="ml-2">({heartbeatCount} heartbeat messages hidden)</span>
+            )}
+          </div>
         )}
       </CardFooter>
     </Card>

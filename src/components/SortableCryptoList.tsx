@@ -113,7 +113,7 @@ function SortableCryptoItem({
         </div>
       </TableCell>
       <TableCell className="font-medium">{crypto.symbol}</TableCell>
-      <TableCell>${crypto.purchasePrice.toFixed(2)}</TableCell>
+      <TableCell>${crypto.purchasePrice.toFixed(6)}</TableCell>
       <TableCell>
         {isEditing ? (
           <Input
@@ -374,7 +374,7 @@ export default function SortableCryptoList({
               <TableRow>
                 <TableHead className="w-10"></TableHead>
                 <TableHead>Symbol</TableHead>
-                <TableHead>Purchase Price</TableHead>
+                <TableHead>Purchase Price ($Per Share)</TableHead>
                 <TableHead>Shares</TableHead>
                 <TableHead>Current Price</TableHead>
                 <TableHead>Change</TableHead>

@@ -114,7 +114,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Calculate total amount
     const totalAmount = shares * price;
 
-    // Record the transaction
+    // Record the transaction with API request and response data for troubleshooting
     const transaction = await prisma.cryptoTransaction.create({
       data: {
         cryptoId: crypto.id,
@@ -122,7 +122,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         shares,
         price,
         totalAmount,
-        userId: user.id
+        userId: user.id,
+        apiRequest: JSON.stringify({
+          endpoint: apiEndpoint,
+          method: 'POST',
+          headers: {
+            'API-Key': '[REDACTED]', // Don't store actual API key
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: postData
+        }, null, 2),
+        apiResponse: JSON.stringify(krakenResponse, null, 2),
+        logInfo: JSON.stringify({
+          timestamp: new Date().toISOString(),
+          orderId,
+          pair,
+          action,
+          shares,
+          price,
+          totalAmount,
+          status: 'success',
+          message: `Successfully executed ${action} order for ${shares} shares of ${crypto.symbol} at $${price}`
+        }, null, 2)
       }
     });
 

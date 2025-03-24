@@ -65,7 +65,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const currentPrice = crypto.purchasePrice;
     const totalAmount = currentPrice * Number(shares);
     
-    // Create the transaction
+    // Create the transaction with logging information
     const transaction = await prisma.cryptoTransaction.create({
       data: {
         cryptoId: crypto.id,
@@ -74,6 +74,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         price: currentPrice,
         totalAmount,
         userId: user.id,
+        logInfo: JSON.stringify({
+          timestamp: new Date().toISOString(),
+          method: 'manual_trade',
+          action,
+          shares: Number(shares),
+          price: currentPrice,
+          totalAmount,
+          status: 'success',
+          message: `Successfully executed manual ${action} for ${shares} shares of ${crypto.symbol} at $${currentPrice}`
+        }, null, 2)
       },
     });
     

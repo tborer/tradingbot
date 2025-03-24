@@ -25,6 +25,78 @@ export const useKrakenWebSocket = ({
   const maxReconnectAttempts = 5;
   const baseReconnectDelay = 1000; // 1 second
 
+  // Try alternative WebSocket URL if the main one fails
+  const tryAlternativeUrl = () => {
+    // If we're already using an alternative URL (not the default), don't try again
+    if (url !== 'wss://ws.kraken.com/v2') {
+      console.log('Already using alternative WebSocket URL, not retrying');
+      return;
+    }
+    
+    console.log('Trying alternative Kraken WebSocket URL...');
+    // Try the v1 WebSocket URL as a fallback
+    const alternativeUrl = 'wss://ws.kraken.com';
+    
+    try {
+      const socket = new WebSocket(alternativeUrl);
+      socketRef.current = socket;
+      
+      socket.onopen = () => {
+        console.log('Connected to alternative Kraken WebSocket URL');
+        setIsConnected(true);
+        reconnectAttemptsRef.current = 0;
+        
+        // Subscribe to ticker data with v1 format
+        const subscribeMessage = {
+          name: 'subscribe',
+          subscription: {
+            name: 'ticker'
+          },
+          pair: symbols
+        };
+        
+        console.log('Sending v1 subscription message:', JSON.stringify(subscribeMessage));
+        socket.send(JSON.stringify(subscribeMessage));
+        
+        if (onOpen) {
+          onOpen();
+        }
+      };
+      
+      // Set up the rest of the event handlers similar to the main connection
+      socket.onmessage = (event) => {
+        try {
+          if (!event.data || event.data === '{}') {
+            return;
+          }
+          
+          const data = JSON.parse(event.data);
+          onMessage(data);
+        } catch (err) {
+          console.error('Error parsing alternative WebSocket message:', err);
+        }
+      };
+      
+      socket.onerror = (event) => {
+        console.error('Alternative WebSocket error:', event);
+        setError(event);
+        if (onError) {
+          onError(event);
+        }
+      };
+      
+      socket.onclose = (event) => {
+        console.log('Alternative WebSocket closed:', event);
+        setIsConnected(false);
+        if (onClose) {
+          onClose(event);
+        }
+      };
+    } catch (err) {
+      console.error('Error creating alternative WebSocket connection:', err);
+    }
+  };
+
   const connect = () => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       return;
@@ -71,6 +143,36 @@ export const useKrakenWebSocket = ({
           console.log("Received Kraken message:", truncatedMessage);
           
           const data = JSON.parse(event.data);
+          
+          // Check if this is a heartbeat message
+          if (data.method === 'heartbeat') {
+            console.log('Received Kraken heartbeat');
+            return;
+          }
+          
+          // Check if this is a subscription status message
+          if (data.method === 'subscribe' || data.method === 'unsubscribe') {
+            console.log(`Kraken ${data.method} status:`, data.result);
+            
+            // If subscription failed, try to resubscribe with different format
+            if (data.method === 'subscribe' && data.result === 'error') {
+              console.log('Subscription failed, trying alternative format...');
+              
+              // Try alternative subscription format
+              const altSubscribeMessage = {
+                method: 'subscribe',
+                params: {
+                  name: 'ticker',
+                  symbols: symbols
+                }
+              };
+              
+              console.log('Sending alternative subscription:', JSON.stringify(altSubscribeMessage));
+              socket.send(JSON.stringify(altSubscribeMessage));
+            }
+            return;
+          }
+          
           onMessage(data);
         } catch (err) {
           console.error('Error parsing Kraken WebSocket message:', err);
@@ -104,7 +206,8 @@ export const useKrakenWebSocket = ({
             connect();
           }, delay);
         } else {
-          console.error('Max reconnection attempts reached');
+          console.error('Max reconnection attempts reached, trying alternative URL');
+          tryAlternativeUrl();
         }
       };
     } catch (err) {

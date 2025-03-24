@@ -73,5 +73,8 @@ export interface CryptoTransaction {
   shares: number;
   price: number;
   totalAmount: number;
+  apiRequest?: string;
+  apiResponse?: string;
+  logInfo?: string;
   createdAt: string;
 }

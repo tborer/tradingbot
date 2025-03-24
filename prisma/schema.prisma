@@ -89,6 +89,9 @@ model CryptoTransaction {
   shares       Float
   price        Float
   totalAmount  Float
+  apiRequest   String?  @db.Text  // Store the API request body for troubleshooting
+  apiResponse  String?  @db.Text  // Store the API response for troubleshooting
+  logInfo      String?  @db.Text  // Additional logging information
   createdAt    DateTime @default(now())
   userId       String   @db.Uuid
 }

@@ -31,6 +31,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ct.shares, 
         ct.price, 
         ct."totalAmount", 
+        ct."apiRequest",
+        ct."apiResponse",
+        ct."logInfo",
         ct."createdAt"
       FROM "CryptoTransaction" ct
       JOIN "Crypto" c ON ct."cryptoId" = c.id

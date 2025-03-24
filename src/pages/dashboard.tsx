@@ -17,6 +17,7 @@ import SortableCryptoList from "@/components/SortableCryptoList";
 import TransactionHistory from "@/components/TransactionHistory";
 import CryptoTransactionHistory from "@/components/CryptoTransactionHistory";
 import KrakenWebSocketSettings from "@/components/KrakenWebSocketSettings";
+import WebSocketLogger from "@/components/WebSocketLogger";
 import { Stock, StockWithPrice as StockWithCurrentPrice, Settings, Crypto, CryptoWithPrice } from "@/types/stock";
 
 export default function Dashboard() {
@@ -1391,6 +1392,7 @@ export default function Dashboard() {
             <TabsTrigger value="crypto">Crypto</TabsTrigger>
             <TabsTrigger value="reporting">Reporting</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
+            <TabsTrigger value="websocket-logs">WebSocket Logs</TabsTrigger>
           </TabsList>
           
           <TabsContent value="portfolio" className="space-y-6">
@@ -1607,6 +1609,10 @@ export default function Dashboard() {
                 <TransactionHistory />
               </CardContent>
             </Card>
+          </TabsContent>
+          
+          <TabsContent value="websocket-logs">
+            <WebSocketLogger />
           </TabsContent>
           
           <TabsContent value="settings">

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { parseKrakenMessage, formatToKrakenSymbol, KrakenPrice } from '@/lib/kraken';
+import { useWebSocketLogs } from '@/contexts/WebSocketLogContext';
 
 interface UseKrakenWebSocketOptions {
   symbols: string[];
@@ -14,6 +15,7 @@ export function useKrakenWebSocket({
   onPriceUpdate,
   enabled = true
 }: UseKrakenWebSocketOptions) {
+  const { addLog } = useWebSocketLogs();
   const [isConnected, setIsConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
   const [error, setError] = useState<Error | null>(null);
@@ -30,6 +32,7 @@ export function useKrakenWebSocket({
     const connect = () => {
       try {
         console.log(`Connecting to Kraken WebSocket at URL: ${url}`);
+        addLog('info', 'Connecting to WebSocket', { url, timestamp: Date.now() });
         
         // Add a timestamp to prevent caching
         const timestamp = Date.now();
@@ -38,6 +41,7 @@ export function useKrakenWebSocket({
 
         socket.onopen = () => {
           console.log('Kraken WebSocket connected successfully');
+          addLog('success', 'WebSocket connected successfully', { url });
           setIsConnected(true);
           reconnectAttemptsRef.current = 0;
           setError(null);
@@ -56,6 +60,10 @@ export function useKrakenWebSocket({
           };
 
           console.log('Sending Kraken subscription message:', JSON.stringify(subscribeMessage));
+          addLog('info', 'Sending subscription message', { 
+            message: subscribeMessage, 
+            symbols: krakenSymbols 
+          });
           socket.send(JSON.stringify(subscribeMessage));
           
           // Try alternative subscription format if needed
@@ -71,6 +79,10 @@ export function useKrakenWebSocket({
               };
               
               console.log('Sending v1 subscription message as fallback:', JSON.stringify(v1SubscribeMessage));
+              addLog('info', 'Sending fallback v1 subscription message', { 
+                message: v1SubscribeMessage, 
+                symbols: krakenSymbols 
+              });
               socket.send(JSON.stringify(v1SubscribeMessage));
             }
           }, 2000);
@@ -89,12 +101,23 @@ export function useKrakenWebSocket({
               : event.data;
             console.log("Received Kraken message:", truncatedMessage);
             
+            // Add to log context
+            addLog('info', 'Received WebSocket message', {
+              data: truncatedMessage,
+              timestamp: Date.now()
+            });
+            
             // Parse the message
             if (typeof event.data === 'string') {
               const prices = parseKrakenMessage(event.data);
               
               if (prices.length > 0) {
                 console.log('Parsed Kraken prices:', prices);
+                addLog('success', 'Successfully parsed price data', { 
+                  prices, 
+                  count: prices.length 
+                });
+                
                 if (onPriceUpdate) {
                   onPriceUpdate(prices);
                 }
@@ -104,23 +127,46 @@ export function useKrakenWebSocket({
             console.error('Error processing Kraken WebSocket message:', err);
             console.error('Raw message that caused error:', 
               typeof event.data === 'string' ? event.data.substring(0, 500) : 'Non-string data');
+            
+            addLog('error', 'Error processing WebSocket message', {
+              error: err instanceof Error ? err.message : String(err),
+              rawData: typeof event.data === 'string' ? event.data.substring(0, 500) : 'Non-string data'
+            });
           }
         };
 
         socket.onerror = (event) => {
           console.error('Kraken WebSocket error:', event);
+          addLog('error', 'WebSocket error event', { 
+            event: 'error',
+            url,
+            timestamp: Date.now()
+          });
           setError(new Error('WebSocket connection error'));
           setIsConnected(false);
         };
 
         socket.onclose = (event) => {
           console.log(`Kraken WebSocket closed. Code: ${event.code}, Reason: ${event.reason || 'No reason provided'}, Clean: ${event.wasClean}`);
+          addLog('warning', 'WebSocket connection closed', {
+            code: event.code,
+            reason: event.reason || 'No reason provided',
+            wasClean: event.wasClean,
+            url,
+            timestamp: Date.now()
+          });
           setIsConnected(false);
 
           // Attempt to reconnect with exponential backoff
           if (reconnectAttemptsRef.current < maxReconnectAttempts) {
             const delay = 1000 * Math.pow(2, reconnectAttemptsRef.current);
             console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttemptsRef.current + 1}/${maxReconnectAttempts})`);
+            addLog('info', 'Attempting to reconnect', {
+              attempt: reconnectAttemptsRef.current + 1,
+              maxAttempts: maxReconnectAttempts,
+              delay,
+              url
+            });
             
             reconnectTimeoutRef.current = setTimeout(() => {
               reconnectAttemptsRef.current += 1;
@@ -128,11 +174,19 @@ export function useKrakenWebSocket({
             }, delay);
           } else {
             console.error('Max reconnection attempts reached');
+            addLog('error', 'Max reconnection attempts reached', {
+              attempts: reconnectAttemptsRef.current,
+              url
+            });
             setError(new Error('Failed to connect after maximum attempts'));
             
             // Try alternative URL
             if (url === 'wss://ws.kraken.com/v2') {
               console.log('Trying alternative Kraken WebSocket URL...');
+              addLog('info', 'Trying alternative WebSocket URL', {
+                currentUrl: url,
+                timestamp: Date.now()
+              });
               
               // Reset reconnect attempts for the new URL
               reconnectAttemptsRef.current = 0;
@@ -146,6 +200,11 @@ export function useKrakenWebSocket({
         };
       } catch (err) {
         console.error('Error creating Kraken WebSocket connection:', err);
+        addLog('error', 'Error creating WebSocket connection', {
+          error: err instanceof Error ? err.message : String(err),
+          url,
+          timestamp: Date.now()
+        });
         setError(err instanceof Error ? err : new Error('Unknown connection error'));
         setIsConnected(false);
       }
@@ -217,11 +276,17 @@ export function useKrakenWebSocket({
   }, [JSON.stringify(symbols), isConnected]);
 
   const reconnect = () => {
+    addLog('info', 'Manual reconnect initiated', { url, timestamp: Date.now() });
+    
     if (socketRef.current) {
       try {
         socketRef.current.close();
       } catch (err) {
         console.error('Error closing socket during reconnect:', err);
+        addLog('error', 'Error closing socket during manual reconnect', {
+          error: err instanceof Error ? err.message : String(err),
+          url
+        });
       }
       socketRef.current = null;
     }
@@ -238,6 +303,7 @@ export function useKrakenWebSocket({
       const connect = () => {
         try {
           console.log(`Reconnecting to Kraken WebSocket at URL: ${url}`);
+          addLog('info', 'Manual reconnection attempt', { url, timestamp: Date.now() });
           
           // Add a timestamp to prevent caching
           const timestamp = Date.now();
@@ -248,6 +314,10 @@ export function useKrakenWebSocket({
           // (This is simplified - in a real implementation, you'd duplicate the event handler setup)
         } catch (err) {
           console.error('Error during manual reconnect:', err);
+          addLog('error', 'Error during manual reconnect', {
+            error: err instanceof Error ? err.message : String(err),
+            url
+          });
           setError(err instanceof Error ? err : new Error('Unknown reconnection error'));
         }
       };

@@ -53,6 +53,49 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
       return [];
     }
     
+    // Handle the new message format with data field containing a JSON string
+    if (parsed.data && typeof parsed.data === 'string') {
+      console.log('Detected new message format with data as string');
+      try {
+        // Parse the nested JSON string in the data field
+        const innerData = JSON.parse(parsed.data);
+        console.log('Parsed inner data:', JSON.stringify(innerData).substring(0, 200));
+        
+        // Check if it's a ticker message
+        if (innerData.channel === 'ticker' && Array.isArray(innerData.data)) {
+          console.log('Found ticker data in new format');
+          
+          // Extract prices from each ticker item
+          const prices: KrakenPrice[] = [];
+          
+          for (const item of innerData.data) {
+            if (item.symbol && item.last) {
+              // Extract the symbol (remove the /USD part)
+              const rawSymbol = item.symbol.split('/')[0];
+              const symbol = rawSymbol === 'XBT' ? 'BTC' : rawSymbol;
+              
+              // Use the 'last' field as the current price
+              const price = parseFloat(item.last);
+              
+              console.log(`Extracted price ${price} for symbol ${symbol} from new format ticker`);
+              
+              prices.push({
+                symbol,
+                price,
+                timestamp: parsed.timestamp || Date.now(),
+              });
+            }
+          }
+          
+          if (prices.length > 0) {
+            return prices;
+          }
+        }
+      } catch (innerError) {
+        console.error('Error parsing inner data JSON:', innerError);
+      }
+    }
+    
     // Check if it's an array (Kraken sends arrays for ticker updates)
     if (Array.isArray(parsed)) {
       console.log('Received array-format message from Kraken:', JSON.stringify(parsed).substring(0, 200));

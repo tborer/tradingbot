@@ -152,6 +152,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? crypto.shares + shares 
       : crypto.shares - shares;
 
+    // If this is an auto order, flip the nextAction in the settings
+    if (req.body.isAutoOrder) {
+      // Get the current auto trade settings for this crypto
+      const autoTradeSettings = await prisma.cryptoAutoTradeSettings.findFirst({
+        where: { cryptoId: crypto.id }
+      });
+      
+      if (autoTradeSettings) {
+        // Flip the next action from buy to sell or vice versa
+        const nextAction = autoTradeSettings.nextAction === 'buy' ? 'sell' : 'buy';
+        
+        // Update the settings
+        await prisma.cryptoAutoTradeSettings.update({
+          where: { id: autoTradeSettings.id },
+          data: { nextAction }
+        });
+        
+        console.log(`Auto trade completed successfully. Next action flipped to: ${nextAction}`);
+      }
+    }
+
     await prisma.crypto.update({
       where: { id: crypto.id },
       data: { shares: updatedShares }

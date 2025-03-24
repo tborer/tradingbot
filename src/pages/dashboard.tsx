@@ -1528,13 +1528,13 @@ export default function Dashboard() {
                     />
                   </div>
                   <div className="flex-1 space-y-2">
-                    <Label htmlFor="cryptoPurchasePrice">Purchase Price ($)</Label>
+                    <Label htmlFor="cryptoPurchasePrice">Purchase Price ($Per Share)</Label>
                     <Input
                       id="cryptoPurchasePrice"
                       type="number"
-                      step="0.01"
+                      step="0.000001"
                       min="0"
-                      placeholder="e.g. 50000.00"
+                      placeholder="e.g. 50000.000000"
                       value={newCrypto.purchasePrice}
                       onChange={(e) => setNewCrypto({ ...newCrypto, purchasePrice: e.target.value })}
                     />

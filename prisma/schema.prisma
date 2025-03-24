@@ -77,6 +77,7 @@ model Crypto {
   userId       String   @db.Uuid
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions CryptoTransaction[]
+  autoTradeSettings CryptoAutoTradeSettings?
 
   @@unique([userId, symbol])
 }
@@ -94,4 +95,18 @@ model CryptoTransaction {
   logInfo      String?  @db.Text  // Additional logging information
   createdAt    DateTime @default(now())
   userId       String   @db.Uuid
+}
+
+model CryptoAutoTradeSettings {
+  id                   String   @id @default(uuid())
+  cryptoId             String   @unique
+  crypto               Crypto   @relation(fields: [cryptoId], references: [id], onDelete: Cascade)
+  buyThresholdPercent  Float    @default(5.0)
+  sellThresholdPercent Float    @default(5.0)
+  enableContinuousTrading Boolean @default(false)
+  nextAction           String   @default("buy") // 'buy' or 'sell'
+  tradeByShares        Boolean  @default(true)
+  tradeByValue         Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }

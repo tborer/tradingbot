@@ -301,22 +301,44 @@ export default function SortableCryptoList({
   const handleSaveAutoTradeSettings = async (settings: AutoTradeSettings) => {
     if (!selectedAutoTradeStock) return;
     
-    // Here you would typically save these settings to your backend
-    // For now, we'll just update the local state and show a success message
-    toast({
-      title: "Auto Trade Settings Saved",
-      description: `Settings for ${selectedAutoTradeStock.symbol} have been updated.`,
-    });
-    
-    // Enable auto buy or sell based on settings
-    if (onToggleAutoBuy && onToggleAutoSell) {
-      // This is a simplified implementation - in a real app, you'd save all the settings
-      if (settings.additionalBuy) {
-        await onToggleAutoBuy(selectedAutoTradeStock.id, true);
+    try {
+      // Save the auto trade settings to the backend
+      const response = await fetch(`/api/cryptos/auto-trade-settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cryptoId: selectedAutoTradeStock.id,
+          settings
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to save auto trade settings");
       }
-      if (settings.additionalSell) {
-        await onToggleAutoSell(selectedAutoTradeStock.id, true);
+      
+      toast({
+        title: "Auto Trade Settings Saved",
+        description: `Settings for ${selectedAutoTradeStock.symbol} have been updated.`,
+      });
+      
+      // Enable auto buy or sell based on settings
+      if (onToggleAutoBuy && onToggleAutoSell) {
+        // Update the auto buy/sell flags based on settings
+        if (settings.nextAction === 'buy' || settings.additionalBuy) {
+          await onToggleAutoBuy(selectedAutoTradeStock.id, true);
+        }
+        if (settings.nextAction === 'sell' || settings.additionalSell) {
+          await onToggleAutoSell(selectedAutoTradeStock.id, true);
+        }
       }
+    } catch (error) {
+      console.error("Error saving auto trade settings:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to save auto trade settings. Please try again.",
+      });
     }
   };
 

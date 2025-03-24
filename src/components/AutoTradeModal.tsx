@@ -16,6 +16,7 @@ export interface AutoTradeSettings {
   additionalSell: boolean;
   tradeByShares: boolean;
   tradeByValue: boolean;
+  nextAction: 'buy' | 'sell';
 }
 
 interface AutoTradeModalProps {
@@ -47,6 +48,7 @@ export default function AutoTradeModal({
     additionalSell: initialSettings.additionalSell || false,
     tradeByShares: initialSettings.tradeByShares || true,
     tradeByValue: initialSettings.tradeByValue || false,
+    nextAction: initialSettings.nextAction || 'buy',
   });
 
   const handleSave = async () => {
@@ -110,6 +112,29 @@ export default function AutoTradeModal({
             />
             <p className="text-sm text-muted-foreground">
               Auto sell when price increases by this percentage.
+            </p>
+          </div>
+          
+          <div className="space-y-2">
+            <Label>Next Action</Label>
+            <div className="flex space-x-2">
+              <Button 
+                variant={settings.nextAction === 'buy' ? 'default' : 'outline'} 
+                className="flex-1"
+                onClick={() => setSettings({ ...settings, nextAction: 'buy' })}
+              >
+                Buy
+              </Button>
+              <Button 
+                variant={settings.nextAction === 'sell' ? 'default' : 'outline'} 
+                className="flex-1"
+                onClick={() => setSettings({ ...settings, nextAction: 'sell' })}
+              >
+                Sell
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              The next action to take when threshold is reached. Will flip to the other action after successful completion.
             </p>
           </div>
           

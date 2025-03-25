@@ -61,21 +61,21 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
         const innerData = JSON.parse(parsed.data);
         console.log('Parsed inner data:', JSON.stringify(innerData).substring(0, 200));
         
-        // Check if it's a ticker message
-        if (innerData.channel === 'ticker' && Array.isArray(innerData.data)) {
-          console.log('Found ticker data in new format');
+        // Check if it's a ticker message with type update
+        if (innerData.channel === 'ticker' && innerData.type === 'update' && Array.isArray(innerData.data)) {
+          console.log('Found ticker update data in new format');
           
           // Extract prices from each ticker item
           const prices: KrakenPrice[] = [];
           
           for (const item of innerData.data) {
-            if (item.symbol && item.last) {
+            if (item.symbol && item.last !== undefined) {
               // Extract the symbol (remove the /USD part)
               const rawSymbol = item.symbol.split('/')[0];
               const symbol = rawSymbol === 'XBT' ? 'BTC' : rawSymbol;
               
               // Use the 'last' field as the current price
-              const price = parseFloat(item.last);
+              const price = typeof item.last === 'string' ? parseFloat(item.last) : item.last;
               
               console.log(`Extracted price ${price} for symbol ${symbol} from new format ticker`);
               

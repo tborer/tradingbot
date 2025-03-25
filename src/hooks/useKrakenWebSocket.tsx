@@ -112,7 +112,7 @@ export function useKrakenWebSocket({
               const prices = parseKrakenMessage(event.data);
               
               if (prices.length > 0) {
-                console.log('Parsed Kraken prices:', prices);
+                console.log('Parsed Kraken prices:', JSON.stringify(prices));
                 addLog('success', 'Successfully parsed price data', { 
                   prices, 
                   count: prices.length 
@@ -121,6 +121,8 @@ export function useKrakenWebSocket({
                 if (onPriceUpdate) {
                   onPriceUpdate(prices);
                 }
+              } else {
+                console.log('No prices extracted from message');
               }
             }
           } catch (err) {

@@ -68,6 +68,7 @@ model Crypto {
   id           String   @id @default(uuid())
   symbol       String
   purchasePrice Float
+  lastPrice    Float?   // Latest price from WebSocket
   shares       Float    @default(0)
   priority     Int      @default(0)
   autoSell     Boolean  @default(false)

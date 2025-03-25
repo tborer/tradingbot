@@ -108,6 +108,34 @@ export default function KrakenPriceMonitor({
     
     setLastUpdated(new Date());
     
+    // Update lastPrice in the database for each crypto
+    if (user && newPrices.length > 0) {
+      // Create a function to update the lastPrice for each crypto
+      const updateLastPrices = async () => {
+        try {
+          // For each price update, update the corresponding crypto's lastPrice
+          for (const priceUpdate of newPrices) {
+            await fetch('/api/cryptos/update-last-price', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                symbol: priceUpdate.symbol,
+                lastPrice: priceUpdate.price
+              }),
+            });
+            console.log(`Updated lastPrice for ${priceUpdate.symbol} to ${priceUpdate.price}`);
+          }
+        } catch (error) {
+          console.error('Error updating lastPrice:', error);
+        }
+      };
+      
+      // Execute the update function
+      updateLastPrices();
+    }
+    
     if (onPriceUpdate) {
       console.log('Forwarding price updates to parent component');
       onPriceUpdate(newPrices);
@@ -115,7 +143,7 @@ export default function KrakenPriceMonitor({
     
     // Process auto trades with the new prices
     processAutoTrades(newPrices);
-  }, [onPriceUpdate, processAutoTrades]);
+  }, [onPriceUpdate, processAutoTrades, user]);
   
   const { isConnected, error, reconnect } = useKrakenWebSocket({
     symbols,

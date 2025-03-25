@@ -111,6 +111,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: krakenResponse.error.join(', ') });
     }
 
+    // For buy transactions, update the purchasePrice to the current price
+    if (action === 'buy') {
+      await prisma.crypto.update({
+        where: { id: crypto.id },
+        data: { purchasePrice: price }
+      });
+      console.log(`Updated purchasePrice for ${crypto.symbol} to ${price} on buy transaction`);
+    }
+    
     // Calculate total amount
     const totalAmount = shares * price;
 

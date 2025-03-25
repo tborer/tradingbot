@@ -126,14 +126,21 @@ export async function processAutoCryptoTrades(
             }
           });
 
-          // Update crypto shares
-          const newShares = action === 'buy' 
-            ? crypto.shares + sharesToTrade 
-            : Math.max(0, crypto.shares - sharesToTrade);
+          // Update crypto shares and purchasePrice for buy transactions
+          const updateData: any = { 
+            shares: action === 'buy' 
+              ? crypto.shares + sharesToTrade 
+              : Math.max(0, crypto.shares - sharesToTrade)
+          };
+          
+          // For buy transactions, update the purchasePrice to the current price
+          if (action === 'buy') {
+            updateData.purchasePrice = priceData.price;
+          }
 
           await prisma.crypto.update({
             where: { id: crypto.id },
-            data: { shares: newShares }
+            data: updateData
           });
 
           // If this is a one-time trade, disable the auto flag
@@ -312,14 +319,21 @@ export async function checkCryptoForAutoTrade(
           }
         });
 
-        // Update crypto shares
-        const newShares = action === 'buy' 
-          ? crypto.shares + sharesToTrade 
-          : Math.max(0, crypto.shares - sharesToTrade);
+        // Update crypto shares and purchasePrice for buy transactions
+        const updateData: any = { 
+          shares: action === 'buy' 
+            ? crypto.shares + sharesToTrade 
+            : Math.max(0, crypto.shares - sharesToTrade)
+        };
+        
+        // For buy transactions, update the purchasePrice to the current price
+        if (action === 'buy') {
+          updateData.purchasePrice = price;
+        }
 
         await prisma.crypto.update({
           where: { id: crypto.id },
-          data: { shares: newShares }
+          data: updateData
         });
 
         // If this is a one-time trade, disable the auto flag

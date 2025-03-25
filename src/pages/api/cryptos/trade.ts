@@ -60,9 +60,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Not enough shares to sell' });
     }
     
-    // In a real app, we would get the current price from an API
-    // For now, we'll use the purchase price as a placeholder
-    const currentPrice = crypto.purchasePrice;
+    // Get the latest price from the Kraken WebSocket data
+    // If we have a lastPrice stored, use that, otherwise fall back to purchasePrice
+    const currentPrice = crypto.lastPrice || crypto.purchasePrice;
     const totalAmount = currentPrice * Number(shares);
     
     // Create the transaction with logging information

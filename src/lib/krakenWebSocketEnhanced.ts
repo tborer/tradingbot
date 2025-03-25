@@ -134,12 +134,13 @@ export const useKrakenWebSocket = ({
         
         console.log('Using Kraken symbols:', krakenSymbols);
         
-        // Subscribe to ticker data for each symbol
+        // Subscribe to ticker data for each symbol with the exact format required by Kraken API
         const subscribeMessage = {
           method: 'subscribe',
           params: {
             channel: 'ticker',
-            symbol: krakenSymbols
+            symbol: krakenSymbols,
+            snapshot: true
           }
         };
         

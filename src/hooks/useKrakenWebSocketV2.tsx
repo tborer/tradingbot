@@ -84,12 +84,13 @@ export function useKrakenWebSocket({
         const krakenSymbols = symbols.map(formatToKrakenSymbol);
         console.log('Subscribing to Kraken symbols:', krakenSymbols);
         
-        // Use the correct subscription format
+        // Use the correct subscription format exactly as specified in the Kraken API docs
         const subscribeMessage = {
           method: "subscribe",
           params: {
             channel: "ticker",
-            symbol: krakenSymbols
+            symbol: krakenSymbols,
+            snapshot: true
           }
         };
 

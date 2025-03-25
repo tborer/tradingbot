@@ -14,7 +14,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Unauthorized' });
     }
     
-    // Only allow POST requests
+    // Handle GET requests to fetch settings for a specific crypto
+    if (req.method === 'GET') {
+      const { cryptoId } = req.query;
+      
+      if (!cryptoId) {
+        return res.status(400).json({ error: 'Missing cryptoId parameter' });
+      }
+      
+      // Verify the crypto belongs to the user
+      const crypto = await prisma.crypto.findFirst({
+        where: {
+          id: cryptoId as string,
+          userId: user.id,
+        },
+        include: {
+          autoTradeSettings: true
+        }
+      });
+      
+      if (!crypto) {
+        return res.status(404).json({ error: 'Crypto not found' });
+      }
+      
+      return res.status(200).json({
+        success: true,
+        autoTradeSettings: crypto.autoTradeSettings || null
+      });
+    }
+    
+    // Handle POST requests to update settings
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Method not allowed' });
     }

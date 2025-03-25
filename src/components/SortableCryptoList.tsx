@@ -293,7 +293,76 @@ export default function SortableCryptoList({
     setTradeDialogOpen(true);
   };
   
-  const handleOpenAutoTradeModal = (id: string, symbol: string) => {
+  const [currentAutoTradeSettings, setCurrentAutoTradeSettings] = useState<Partial<AutoTradeSettings>>({});
+  
+  const handleOpenAutoTradeModal = async (id: string, symbol: string) => {
+    try {
+      // Fetch the current auto trade settings for this specific crypto
+      const response = await fetch(`/api/cryptos/auto-trade-settings?cryptoId=${id}`, {
+        method: "GET",
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.autoTradeSettings) {
+          // Use the fetched settings
+          setCurrentAutoTradeSettings({
+            buyThresholdPercent: data.autoTradeSettings.buyThresholdPercent,
+            sellThresholdPercent: data.autoTradeSettings.sellThresholdPercent,
+            enableContinuousTrading: data.autoTradeSettings.enableContinuousTrading,
+            oneTimeBuy: data.autoTradeSettings.oneTimeBuy,
+            oneTimeSell: data.autoTradeSettings.oneTimeSell,
+            nextAction: data.autoTradeSettings.nextAction,
+            tradeByShares: data.autoTradeSettings.tradeByShares,
+            tradeByValue: data.autoTradeSettings.tradeByValue,
+            sharesAmount: data.autoTradeSettings.sharesAmount,
+            totalValue: data.autoTradeSettings.totalValue,
+          });
+        } else {
+          // Reset to default settings if none exist for this crypto
+          setCurrentAutoTradeSettings({
+            buyThresholdPercent: 5,
+            sellThresholdPercent: 5,
+            enableContinuousTrading: false,
+            oneTimeBuy: false,
+            oneTimeSell: false,
+            tradeByShares: true,
+            tradeByValue: false,
+            sharesAmount: 0,
+            totalValue: 0
+          });
+        }
+      } else {
+        // Reset to default settings if there was an error
+        setCurrentAutoTradeSettings({
+          buyThresholdPercent: 5,
+          sellThresholdPercent: 5,
+          enableContinuousTrading: false,
+          oneTimeBuy: false,
+          oneTimeSell: false,
+          tradeByShares: true,
+          tradeByValue: false,
+          sharesAmount: 0,
+          totalValue: 0
+        });
+        console.error("Failed to fetch auto trade settings");
+      }
+    } catch (error) {
+      console.error("Error fetching auto trade settings:", error);
+      // Reset to default settings if there was an error
+      setCurrentAutoTradeSettings({
+        buyThresholdPercent: 5,
+        sellThresholdPercent: 5,
+        enableContinuousTrading: false,
+        oneTimeBuy: false,
+        oneTimeSell: false,
+        tradeByShares: true,
+        tradeByValue: false,
+        sharesAmount: 0,
+        totalValue: 0
+      });
+    }
+    
     setSelectedAutoTradeStock({ id, symbol });
     setAutoTradeModalOpen(true);
   };
@@ -484,17 +553,7 @@ export default function SortableCryptoList({
         onSave={handleSaveAutoTradeSettings}
         itemName={selectedAutoTradeStock?.symbol || ""}
         itemType="crypto"
-        initialSettings={{
-          buyThresholdPercent: 5,
-          sellThresholdPercent: 5,
-          enableContinuousTrading: false,
-          oneTimeBuy: false,
-          oneTimeSell: false,
-          tradeByShares: true,
-          tradeByValue: false,
-          sharesAmount: 0,
-          totalValue: 0
-        }}
+        initialSettings={currentAutoTradeSettings}
       />
     </>
   );

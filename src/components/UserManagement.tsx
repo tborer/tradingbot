@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 interface User {
   id: string;
@@ -90,6 +92,16 @@ const UserManagement: React.FC = () => {
       description: `Permission updated successfully.`,
     });
   };
+  
+  const handleDeleteUser = (userId: string) => {
+    // In a real implementation, this would call an API to delete the user
+    setUsers(prevUsers => prevUsers.filter(user => user.id !== userId));
+    
+    toast({
+      title: "User Deleted",
+      description: "User has been successfully removed from the system.",
+    });
+  };
 
   if (loading) {
     return <div>Loading user data...</div>;
@@ -115,6 +127,7 @@ const UserManagement: React.FC = () => {
               <TableHead>Settings</TableHead>
               <TableHead>WebSocket Logs</TableHead>
               <TableHead>Research</TableHead>
+              <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -169,6 +182,35 @@ const UserManagement: React.FC = () => {
                     onCheckedChange={(checked) => handlePermissionChange(user.id, 'research', checked)}
                     disabled={user.isAdmin}
                   />
+                </TableCell>
+                <TableCell>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button 
+                        variant="destructive" 
+                        size="sm"
+                        disabled={user.isAdmin}
+                        className={user.isAdmin ? "opacity-50 cursor-not-allowed" : ""}
+                      >
+                        Delete
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This action cannot be undone. This will permanently delete the user
+                          account and remove their data from our servers.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleDeleteUser(user.id)}>
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </TableCell>
               </TableRow>
             ))}

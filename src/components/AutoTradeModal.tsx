@@ -17,6 +17,8 @@ export interface AutoTradeSettings {
   tradeByShares: boolean;
   tradeByValue: boolean;
   nextAction: 'buy' | 'sell';
+  sharesAmount: number;
+  totalValue: number;
 }
 
 interface AutoTradeModalProps {
@@ -49,6 +51,8 @@ export default function AutoTradeModal({
     tradeByShares: initialSettings.tradeByShares || true,
     tradeByValue: initialSettings.tradeByValue || false,
     nextAction: initialSettings.nextAction || 'buy',
+    sharesAmount: initialSettings.sharesAmount || 0,
+    totalValue: initialSettings.totalValue || 0,
   });
 
   const handleSave = async () => {
@@ -183,15 +187,42 @@ export default function AutoTradeModal({
                 })
               }
             >
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 mb-2">
                 <RadioGroupItem value="shares" id="trade-shares" />
-                <Label htmlFor="trade-shares">Shares</Label>
+                <Label htmlFor="trade-shares" className="w-24">Shares</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={settings.sharesAmount}
+                  onChange={(e) => setSettings({ 
+                    ...settings, 
+                    sharesAmount: parseFloat(e.target.value) || 0 
+                  })}
+                  placeholder="Enter amount"
+                  className="w-40"
+                />
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="value" id="trade-value" />
-                <Label htmlFor="trade-value">Total value</Label>
+                <Label htmlFor="trade-value" className="w-24">Total value</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={settings.totalValue}
+                  onChange={(e) => setSettings({ 
+                    ...settings, 
+                    totalValue: parseFloat(e.target.value) || 0 
+                  })}
+                  placeholder="Enter value"
+                  className="w-40"
+                />
               </div>
             </RadioGroup>
+            <p className="text-sm text-muted-foreground">
+              Specify how much to trade when the threshold is reached.
+            </p>
           </div>
         </div>
         

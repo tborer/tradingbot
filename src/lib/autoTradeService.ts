@@ -75,7 +75,13 @@ export async function processAutoCryptoTrades(
       const buyThreshold = crypto.autoTradeSettings?.buyThresholdPercent || settings.buyThresholdPercent;
       const sellThreshold = crypto.autoTradeSettings?.sellThresholdPercent || settings.sellThresholdPercent;
       const enableContinuous = crypto.autoTradeSettings?.enableContinuousTrading || false;
+      const oneTimeBuy = crypto.autoTradeSettings?.oneTimeBuy || false;
+      const oneTimeSell = crypto.autoTradeSettings?.oneTimeSell || false;
       const nextAction = crypto.autoTradeSettings?.nextAction || 'buy';
+      const tradeByShares = crypto.autoTradeSettings?.tradeByShares || true;
+      const tradeByValue = crypto.autoTradeSettings?.tradeByValue || false;
+      const sharesAmount = crypto.autoTradeSettings?.sharesAmount || 0;
+      const totalValue = crypto.autoTradeSettings?.totalValue || 0;
 
       // Determine if we should buy or sell
       let shouldTrade = false;
@@ -98,9 +104,28 @@ export async function processAutoCryptoTrades(
       if (shouldTrade && action) {
         // Execute the trade
         try {
-          // Default to trading 100% of available shares for sell, or use purchase price for buy
-          const sharesToTrade = action === 'sell' ? crypto.shares : 
-            (crypto.purchasePrice > 0 ? 1 / crypto.purchasePrice : 0);
+          // Determine shares to trade based on settings
+          let sharesToTrade = 0;
+          
+          if (tradeByShares && sharesAmount > 0) {
+            // Use configured shares amount
+            sharesToTrade = sharesAmount;
+            // For sell, make sure we don't try to sell more than we have
+            if (action === 'sell') {
+              sharesToTrade = Math.min(sharesToTrade, crypto.shares);
+            }
+          } else if (tradeByValue && totalValue > 0) {
+            // Calculate shares based on total value and current price
+            sharesToTrade = totalValue / priceData.price;
+            // For sell, make sure we don't try to sell more than we have
+            if (action === 'sell') {
+              sharesToTrade = Math.min(sharesToTrade, crypto.shares);
+            }
+          } else {
+            // Default to trading 100% of available shares for sell, or use purchase price for buy
+            sharesToTrade = action === 'sell' ? crypto.shares : 
+              (crypto.purchasePrice > 0 ? 1 / crypto.purchasePrice : 0);
+          }
 
           if (sharesToTrade <= 0) {
             results.push({
@@ -269,7 +294,13 @@ export async function checkCryptoForAutoTrade(
     const buyThreshold = crypto.autoTradeSettings?.buyThresholdPercent || settings.buyThresholdPercent;
     const sellThreshold = crypto.autoTradeSettings?.sellThresholdPercent || settings.sellThresholdPercent;
     const enableContinuous = crypto.autoTradeSettings?.enableContinuousTrading || false;
+    const oneTimeBuy = crypto.autoTradeSettings?.oneTimeBuy || false;
+    const oneTimeSell = crypto.autoTradeSettings?.oneTimeSell || false;
     const nextAction = crypto.autoTradeSettings?.nextAction || 'buy';
+    const tradeByShares = crypto.autoTradeSettings?.tradeByShares || true;
+    const tradeByValue = crypto.autoTradeSettings?.tradeByValue || false;
+    const sharesAmount = crypto.autoTradeSettings?.sharesAmount || 0;
+    const totalValue = crypto.autoTradeSettings?.totalValue || 0;
 
     // Determine if we should buy or sell
     let shouldTrade = false;
@@ -292,9 +323,28 @@ export async function checkCryptoForAutoTrade(
     if (shouldTrade && action) {
       // Execute the trade
       try {
-        // Default to trading 100% of available shares for sell, or use purchase price for buy
-        const sharesToTrade = action === 'sell' ? crypto.shares : 
-          (crypto.purchasePrice > 0 ? 1 / crypto.purchasePrice : 0);
+        // Determine shares to trade based on settings
+        let sharesToTrade = 0;
+        
+        if (tradeByShares && sharesAmount > 0) {
+          // Use configured shares amount
+          sharesToTrade = sharesAmount;
+          // For sell, make sure we don't try to sell more than we have
+          if (action === 'sell') {
+            sharesToTrade = Math.min(sharesToTrade, crypto.shares);
+          }
+        } else if (tradeByValue && totalValue > 0) {
+          // Calculate shares based on total value and current price
+          sharesToTrade = totalValue / price;
+          // For sell, make sure we don't try to sell more than we have
+          if (action === 'sell') {
+            sharesToTrade = Math.min(sharesToTrade, crypto.shares);
+          }
+        } else {
+          // Default to trading 100% of available shares for sell, or use purchase price for buy
+          sharesToTrade = action === 'sell' ? crypto.shares : 
+            (crypto.purchasePrice > 0 ? 1 / crypto.purchasePrice : 0);
+        }
 
         if (sharesToTrade <= 0) {
           return {

@@ -105,9 +105,13 @@ model CryptoAutoTradeSettings {
   buyThresholdPercent  Float    @default(5.0)
   sellThresholdPercent Float    @default(5.0)
   enableContinuousTrading Boolean @default(false)
+  oneTimeBuy           Boolean  @default(false)
+  oneTimeSell          Boolean  @default(false)
   nextAction           String   @default("buy") // 'buy' or 'sell'
   tradeByShares        Boolean  @default(true)
   tradeByValue         Boolean  @default(false)
+  sharesAmount         Float    @default(0)
+  totalValue           Float    @default(0)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 }

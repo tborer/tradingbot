@@ -12,8 +12,8 @@ export interface AutoTradeSettings {
   buyThresholdPercent: number;
   sellThresholdPercent: number;
   enableContinuousTrading: boolean;
-  additionalBuy: boolean;
-  additionalSell: boolean;
+  oneTimeBuy: boolean;
+  oneTimeSell: boolean;
   tradeByShares: boolean;
   tradeByValue: boolean;
   nextAction: 'buy' | 'sell';
@@ -46,8 +46,8 @@ export default function AutoTradeModal({
     buyThresholdPercent: initialSettings.buyThresholdPercent || 5,
     sellThresholdPercent: initialSettings.sellThresholdPercent || 5,
     enableContinuousTrading: initialSettings.enableContinuousTrading || false,
-    additionalBuy: initialSettings.additionalBuy || false,
-    additionalSell: initialSettings.additionalSell || false,
+    oneTimeBuy: initialSettings.oneTimeBuy || false,
+    oneTimeSell: initialSettings.oneTimeSell || false,
     tradeByShares: initialSettings.tradeByShares || true,
     tradeByValue: initialSettings.tradeByValue || false,
     nextAction: initialSettings.nextAction || 'buy',
@@ -155,24 +155,24 @@ export default function AutoTradeModal({
           
           <div className="flex items-center space-x-2">
             <Checkbox
-              id="additional-buy"
-              checked={settings.additionalBuy}
+              id="one-time-buy"
+              checked={settings.oneTimeBuy}
               onCheckedChange={(checked) => 
-                setSettings({ ...settings, additionalBuy: checked as boolean })
+                setSettings({ ...settings, oneTimeBuy: checked as boolean })
               }
             />
-            <Label htmlFor="additional-buy">1 time buy</Label>
+            <Label htmlFor="one-time-buy">1 time buy</Label>
           </div>
           
           <div className="flex items-center space-x-2">
             <Checkbox
-              id="additional-sell"
-              checked={settings.additionalSell}
+              id="one-time-sell"
+              checked={settings.oneTimeSell}
               onCheckedChange={(checked) => 
-                setSettings({ ...settings, additionalSell: checked as boolean })
+                setSettings({ ...settings, oneTimeSell: checked as boolean })
               }
             />
-            <Label htmlFor="additional-sell">1 time sell</Label>
+            <Label htmlFor="one-time-sell">1 time sell</Label>
           </div>
           
           <div className="space-y-3">

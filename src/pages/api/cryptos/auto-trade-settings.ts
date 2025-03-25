@@ -61,9 +61,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           buyThresholdPercent: settings.buyThresholdPercent,
           sellThresholdPercent: settings.sellThresholdPercent,
           enableContinuousTrading: settings.enableContinuousTrading,
+          oneTimeBuy: settings.oneTimeBuy,
+          oneTimeSell: settings.oneTimeSell,
           nextAction: settings.nextAction,
           tradeByShares: settings.tradeByShares,
           tradeByValue: settings.tradeByValue,
+          sharesAmount: settings.sharesAmount || 0,
+          totalValue: settings.totalValue || 0,
         }
       });
     } else {
@@ -74,9 +78,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           buyThresholdPercent: settings.buyThresholdPercent,
           sellThresholdPercent: settings.sellThresholdPercent,
           enableContinuousTrading: settings.enableContinuousTrading,
+          oneTimeBuy: settings.oneTimeBuy,
+          oneTimeSell: settings.oneTimeSell,
           nextAction: settings.nextAction,
           tradeByShares: settings.tradeByShares,
           tradeByValue: settings.tradeByValue,
+          sharesAmount: settings.sharesAmount || 0,
+          totalValue: settings.totalValue || 0,
         }
       });
     }
@@ -85,8 +93,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await prisma.crypto.update({
       where: { id: crypto.id },
       data: {
-        autoBuy: settings.nextAction === 'buy' || settings.additionalBuy,
-        autoSell: settings.nextAction === 'sell' || settings.additionalSell,
+        autoBuy: settings.nextAction === 'buy' || settings.oneTimeBuy,
+        autoSell: settings.nextAction === 'sell' || settings.oneTimeSell,
       }
     });
     

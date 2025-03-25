@@ -325,10 +325,10 @@ export default function SortableCryptoList({
       // Enable auto buy or sell based on settings
       if (onToggleAutoBuy && onToggleAutoSell) {
         // Update the auto buy/sell flags based on settings
-        if (settings.nextAction === 'buy' || settings.additionalBuy) {
+        if (settings.nextAction === 'buy' || settings.oneTimeBuy) {
           await onToggleAutoBuy(selectedAutoTradeStock.id, true);
         }
-        if (settings.nextAction === 'sell' || settings.additionalSell) {
+        if (settings.nextAction === 'sell' || settings.oneTimeSell) {
           await onToggleAutoSell(selectedAutoTradeStock.id, true);
         }
       }
@@ -488,10 +488,12 @@ export default function SortableCryptoList({
           buyThresholdPercent: 5,
           sellThresholdPercent: 5,
           enableContinuousTrading: false,
-          additionalBuy: false,
-          additionalSell: false,
+          oneTimeBuy: false,
+          oneTimeSell: false,
           tradeByShares: true,
-          tradeByValue: false
+          tradeByValue: false,
+          sharesAmount: 0,
+          totalValue: 0
         }}
       />
     </>

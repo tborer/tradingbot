@@ -186,8 +186,8 @@ export const useKrakenWebSocket = ({
               const altSubscribeMessage = {
                 method: 'subscribe',
                 params: {
-                  name: 'ticker',
-                  symbols: symbols.map(symbol => {
+                  channel: 'ticker',
+                  symbol: symbols.map(symbol => {
                     // Convert BTC to XBT/USD format for Kraken
                     if (symbol === 'BTC') {
                       return 'XBT/USD';

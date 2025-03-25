@@ -682,12 +682,14 @@ export default function Dashboard() {
       return;
     }
     
-    console.log('Updating crypto prices with:', cryptoPrices);
+    console.log('Updating crypto prices with:', JSON.stringify(cryptoPrices));
     
     setCryptos(prevCryptos => {
       const updatedCryptos = prevCryptos.map(crypto => {
-        // Find matching crypto price data
-        const priceData = cryptoPrices.find(cp => cp.symbol.toUpperCase() === crypto.symbol.toUpperCase());
+        // Find matching crypto price data - use case-insensitive comparison
+        const priceData = cryptoPrices.find(cp => 
+          cp.symbol.toUpperCase() === crypto.symbol.toUpperCase()
+        );
         
         if (priceData) {
           console.log(`Found price update for ${crypto.symbol}: $${priceData.price}`);
@@ -712,7 +714,7 @@ export default function Dashboard() {
             shouldBuy,
           };
         } else {
-          console.log(`No price update found for ${crypto.symbol}`);
+          console.log(`No price update found for ${crypto.symbol} in received data`);
           return crypto;
         }
       });

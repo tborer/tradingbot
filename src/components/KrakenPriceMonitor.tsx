@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useKrakenWebSocket } from '@/hooks/useKrakenWebSocket';
 import { KrakenPrice } from '@/lib/kraken';
+import { useWebSocketLogs } from '@/contexts/WebSocketLogContext';
+import { useKrakenWebSocket } from '@/hooks/useKrakenWebSocketV2';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';

@@ -25,6 +25,8 @@ export interface KrakenTickerMessage {
 
 // Parse Kraken websocket message
 export const parseKrakenMessage = (message: string): KrakenPrice[] => {
+  // Add detailed logging to help diagnose parsing issues
+  console.log('Starting to parse Kraken message:', message.substring(0, 200));
   try {
     // Check for empty message
     if (!message || message === '{}') {
@@ -184,6 +186,39 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
         price,
         timestamp: parsed.timestamp || Date.now(),
       }];
+    }
+    
+    // Handle Kraken v2 API format with ticker updates
+    if (parsed.type === 'ticker' && parsed.symbol) {
+      console.log('Detected Kraken v2 ticker update format:', JSON.stringify(parsed).substring(0, 200));
+      
+      // Extract the symbol (remove the /USD part)
+      const rawSymbol = parsed.symbol.split('/')[0];
+      const symbol = rawSymbol === 'XBT' ? 'BTC' : rawSymbol;
+      
+      // Try to extract price from different possible fields
+      let price: number | null = null;
+      
+      // Check for price in different possible locations
+      if (parsed.price !== undefined) {
+        price = typeof parsed.price === 'string' ? parseFloat(parsed.price) : parsed.price;
+      } else if (parsed.last !== undefined) {
+        price = typeof parsed.last === 'string' ? parseFloat(parsed.last) : parsed.last;
+      } else if (parsed.c && Array.isArray(parsed.c) && parsed.c.length > 0) {
+        price = parseFloat(parsed.c[0]);
+      } else if (parsed.data && parsed.data.c && Array.isArray(parsed.data.c) && parsed.data.c.length > 0) {
+        price = parseFloat(parsed.data.c[0]);
+      }
+      
+      if (price !== null) {
+        console.log(`Extracted price ${price} for symbol ${symbol} from v2 ticker update`);
+        
+        return [{
+          symbol,
+          price,
+          timestamp: parsed.timestamp || Date.now(),
+        }];
+      }
     }
     
     // If we get here, we received a message we don't understand

@@ -677,12 +677,21 @@ export default function Dashboard() {
   
   // Update crypto prices from Kraken websocket data
   const updateCryptoPrices = (cryptoPrices: KrakenPrice[]) => {
+    if (cryptoPrices.length === 0) {
+      console.log('No crypto prices to update');
+      return;
+    }
+    
+    console.log('Updating crypto prices with:', cryptoPrices);
+    
     setCryptos(prevCryptos => {
-      return prevCryptos.map(crypto => {
+      const updatedCryptos = prevCryptos.map(crypto => {
         // Find matching crypto price data
-        const priceData = cryptoPrices.find(cp => cp.symbol === crypto.symbol);
+        const priceData = cryptoPrices.find(cp => cp.symbol.toUpperCase() === crypto.symbol.toUpperCase());
         
         if (priceData) {
+          console.log(`Found price update for ${crypto.symbol}: $${priceData.price}`);
+          
           const percentChange = crypto.purchasePrice > 0 
             ? ((priceData.price - crypto.purchasePrice) / crypto.purchasePrice) * 100 
             : 0;
@@ -702,10 +711,13 @@ export default function Dashboard() {
             shouldSell,
             shouldBuy,
           };
+        } else {
+          console.log(`No price update found for ${crypto.symbol}`);
+          return crypto;
         }
-        
-        return crypto;
       });
+      
+      return updatedCryptos;
     });
   };
 

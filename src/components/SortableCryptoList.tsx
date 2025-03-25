@@ -142,7 +142,7 @@ function SortableCryptoItem({
         )}
       </TableCell>
       <TableCell>
-        {crypto.currentPrice 
+        {crypto.currentPrice !== undefined && crypto.currentPrice !== null
           ? `$${crypto.currentPrice.toFixed(2)}` 
           : "Waiting..."}
       </TableCell>

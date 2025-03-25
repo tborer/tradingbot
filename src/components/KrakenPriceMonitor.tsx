@@ -77,15 +77,27 @@ export default function KrakenPriceMonitor({
   }, [user, autoTradeEnabled, toast]);
   
   const handlePriceUpdate = useCallback((newPrices: KrakenPrice[]) => {
+    if (newPrices.length === 0) {
+      console.log('No new prices to update in KrakenPriceMonitor');
+      return;
+    }
+    
+    console.log('KrakenPriceMonitor received price updates:', newPrices);
+    
     setPrices(prevPrices => {
       // Merge new prices with existing ones
       const updatedPrices = [...prevPrices];
       
       newPrices.forEach(newPrice => {
-        const existingIndex = updatedPrices.findIndex(p => p.symbol === newPrice.symbol);
+        const existingIndex = updatedPrices.findIndex(p => 
+          p.symbol.toUpperCase() === newPrice.symbol.toUpperCase()
+        );
+        
         if (existingIndex >= 0) {
+          console.log(`Updating existing price for ${newPrice.symbol}: $${newPrice.price}`);
           updatedPrices[existingIndex] = newPrice;
         } else {
+          console.log(`Adding new price for ${newPrice.symbol}: $${newPrice.price}`);
           updatedPrices.push(newPrice);
         }
       });
@@ -96,6 +108,7 @@ export default function KrakenPriceMonitor({
     setLastUpdated(new Date());
     
     if (onPriceUpdate) {
+      console.log('Forwarding price updates to parent component');
       onPriceUpdate(newPrices);
     }
     

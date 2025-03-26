@@ -125,8 +125,8 @@ export function useKrakenWebSocket({
           method: "subscribe",
           params: {
             channel: "ticker",
-            symbol: krakenSymbols,
-            snapshot: true
+            symbol: krakenSymbols
+            // snapshot is optional and defaults to true, so we don't need to specify it
           }
         };
 

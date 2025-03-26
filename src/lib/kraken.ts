@@ -56,7 +56,7 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
     }
     
     // Handle the new v2 format with channel and data array
-    // This matches the format provided by the user
+    // This matches the format provided by the user in the documentation
     if (parsed.channel === 'ticker' && (parsed.type === 'snapshot' || parsed.type === 'update') && Array.isArray(parsed.data)) {
       console.log('Found ticker data in new v2 format with channel and data array');
       
@@ -64,21 +64,32 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
       const prices: KrakenPrice[] = [];
       
       for (const item of parsed.data) {
-        if (item.symbol && item.last !== undefined) {
+        if (item.symbol) {
           // Extract the symbol (remove the /USD part)
           const rawSymbol = item.symbol.split('/')[0];
           const symbol = rawSymbol === 'XBT' ? 'BTC' : rawSymbol;
           
-          // Use the 'last' field as the current price
-          const price = typeof item.last === 'string' ? parseFloat(item.last) : item.last;
+          // According to Kraken docs, 'last' field contains the last traded price
+          let price: number | null = null;
           
-          console.log(`Extracted price ${price} for symbol ${symbol} from new v2 format ticker`);
+          if (item.last !== undefined) {
+            price = typeof item.last === 'string' ? parseFloat(item.last) : item.last;
+          } else if (item.ask !== undefined && item.bid !== undefined) {
+            // If last is not available, use the midpoint of bid and ask
+            const ask = typeof item.ask === 'string' ? parseFloat(item.ask) : item.ask;
+            const bid = typeof item.bid === 'string' ? parseFloat(item.bid) : item.bid;
+            price = (ask + bid) / 2;
+          }
           
-          prices.push({
-            symbol,
-            price,
-            timestamp: parsed.timestamp || Date.now(),
-          });
+          if (price !== null) {
+            console.log(`Extracted price ${price} for symbol ${symbol} from ${parsed.type} message`);
+            
+            prices.push({
+              symbol,
+              price,
+              timestamp: parsed.timestamp || Date.now(),
+            });
+          }
         }
       }
       
@@ -292,11 +303,13 @@ export const formatToKrakenSymbol = (symbol: string): string => {
 export const createKrakenSubscription = (symbols: string[]): any => {
   const krakenSymbols = symbols.map(formatToKrakenSymbol);
   
+  // Following the exact format from Kraken documentation
   return {
     method: "subscribe",
     params: {
       channel: "ticker",
       symbol: krakenSymbols
+      // snapshot defaults to true, event_trigger defaults to trades
     }
   };
 };

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { parseKrakenMessage, formatToKrakenSymbol, KrakenPrice } from '@/lib/kraken';
 import { useWebSocketLogs } from '@/contexts/WebSocketLogContext';
+import { createAndLogError, ErrorCategory, ErrorSeverity } from '@/lib/errorLogger';
 
 // Constants for WebSocket connection management
 const PING_INTERVAL = 15000; // 15 seconds
@@ -29,6 +30,33 @@ export function useKrakenWebSocket({
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 5;
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Helper function to log errors with consistent format
+  const logError = useCallback((message: string, error: any, code: string, context: Record<string, any> = {}) => {
+    console.error(`[${code}] ${message}:`, error);
+    
+    // Create structured error log
+    const errorDetails = createAndLogError(
+      ErrorCategory.WEBSOCKET,
+      ErrorSeverity.ERROR,
+      parseInt(code.split('-')[2], 10) || 1000,
+      message,
+      {
+        ...context,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        timestamp: Date.now()
+      }
+    );
+    
+    // Add to WebSocket logs context
+    addLog('error', message, { 
+      error: error instanceof Error ? error.message : String(error),
+      ...context
+    }, code);
+    
+    return errorDetails;
+  }, [addLog]);
 
   // Function to handle WebSocket messages
   const handleMessage = useCallback((data: string) => {

@@ -65,64 +65,103 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const currentPrice = crypto.lastPrice || crypto.purchasePrice;
     const totalAmount = currentPrice * Number(shares);
     
-    // Create the transaction with logging information
-    const transaction = await prisma.cryptoTransaction.create({
-      data: {
-        cryptoId: crypto.id,
-        action,
-        shares: Number(shares),
-        price: currentPrice,
-        totalAmount,
-        userId: user.id,
-        logInfo: JSON.stringify({
-          timestamp: new Date().toISOString(),
-          method: 'manual_trade',
+    // Execute the order using the Kraken API
+    try {
+      // Call the execute-order API endpoint to use the Kraken API
+      const executeOrderResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/api/cryptos/execute-order`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cryptoId: crypto.id,
+          action,
+          shares: Number(shares),
+          price: currentPrice,
+          isAutoOrder: req.body.isAutoOrder || false
+        })
+      });
+
+      const executeOrderResult = await executeOrderResponse.json();
+
+      if (!executeOrderResponse.ok) {
+        return res.status(400).json({ error: executeOrderResult.error || 'Failed to execute order via Kraken API' });
+      }
+
+      // Return the transaction from the execute-order API
+      return res.status(200).json({
+        transaction: executeOrderResult.transaction,
+        newShares: executeOrderResult.transaction.shares,
+        message: executeOrderResult.message,
+        krakenOrderId: executeOrderResult.krakenOrderId
+      });
+    } catch (error) {
+      console.error('Error executing order via Kraken API:', error);
+      
+      // Fallback to direct database update if Kraken API fails
+      console.log('Falling back to direct database update...');
+      
+      // Create the transaction with logging information
+      const transaction = await prisma.cryptoTransaction.create({
+        data: {
+          cryptoId: crypto.id,
           action,
           shares: Number(shares),
           price: currentPrice,
           totalAmount,
-          status: 'success',
-          message: `Successfully executed manual ${action} for ${shares} shares of ${crypto.symbol} at $${currentPrice}`
-        }, null, 2)
-      },
-    });
-    
-    // Update the crypto shares
-    const newShares = action === 'buy' 
-      ? crypto.shares + Number(shares) 
-      : crypto.shares - Number(shares);
-    
-    // If this is an auto order, flip the nextAction in the settings
-    if (req.body.isAutoOrder) {
-      // Get the current auto trade settings for this crypto
-      const autoTradeSettings = await prisma.cryptoAutoTradeSettings.findFirst({
-        where: { cryptoId: crypto.id }
+          userId: user.id,
+          logInfo: JSON.stringify({
+            timestamp: new Date().toISOString(),
+            method: 'manual_trade',
+            action,
+            shares: Number(shares),
+            price: currentPrice,
+            totalAmount,
+            status: 'success',
+            message: `Successfully executed manual ${action} for ${shares} shares of ${crypto.symbol} at $${currentPrice} (Kraken API fallback)`
+          }, null, 2)
+        },
       });
       
-      if (autoTradeSettings) {
-        // Flip the next action from buy to sell or vice versa
-        const nextAction = autoTradeSettings.nextAction === 'buy' ? 'sell' : 'buy';
-        
-        // Update the settings
-        await prisma.cryptoAutoTradeSettings.update({
-          where: { id: autoTradeSettings.id },
-          data: { nextAction }
+      // Update the crypto shares
+      const newShares = action === 'buy' 
+        ? crypto.shares + Number(shares) 
+        : crypto.shares - Number(shares);
+      
+      // If this is an auto order, flip the nextAction in the settings
+      if (req.body.isAutoOrder) {
+        // Get the current auto trade settings for this crypto
+        const autoTradeSettings = await prisma.cryptoAutoTradeSettings.findFirst({
+          where: { cryptoId: crypto.id }
         });
         
-        console.log(`Auto trade completed successfully. Next action flipped to: ${nextAction}`);
+        if (autoTradeSettings) {
+          // Flip the next action from buy to sell or vice versa
+          const nextAction = autoTradeSettings.nextAction === 'buy' ? 'sell' : 'buy';
+          
+          // Update the settings
+          await prisma.cryptoAutoTradeSettings.update({
+            where: { id: autoTradeSettings.id },
+            data: { nextAction }
+          });
+          
+          console.log(`Auto trade completed successfully. Next action flipped to: ${nextAction}`);
+        }
       }
+      
+      await prisma.crypto.update({
+        where: { id: crypto.id },
+        data: { shares: newShares },
+      });
+      
+      return res.status(200).json({
+        transaction,
+        newShares,
+        message: `Successfully ${action === 'buy' ? 'bought' : 'sold'} ${shares} shares of ${crypto.symbol} (Kraken API fallback)`,
+      });
     }
     
-    await prisma.crypto.update({
-      where: { id: crypto.id },
-      data: { shares: newShares },
-    });
-    
-    return res.status(200).json({
-      transaction,
-      newShares,
-      message: `Successfully ${action === 'buy' ? 'bought' : 'sold'} ${shares} shares of ${crypto.symbol}`,
-    });
+
   } catch (error) {
     console.error('API error:', error);
     return res.status(500).json({ error: 'Internal server error', details: error.message });

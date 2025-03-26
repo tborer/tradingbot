@@ -138,35 +138,27 @@ export async function processAutoCryptoTrades(
             continue;
           }
 
-          // Create transaction record
-          const transaction = await prisma.cryptoTransaction.create({
-            data: {
+          // Execute the order using the Kraken API
+          // Call the execute-order API endpoint to use the Kraken API
+          const executeOrderResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/api/cryptos/execute-order`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
               cryptoId: crypto.id,
               action,
               shares: sharesToTrade,
               price: priceData.price,
-              totalAmount: sharesToTrade * priceData.price,
-              userId,
-              logInfo: `Auto ${action} triggered at ${new Date().toISOString()}`
-            }
+              isAutoOrder: true
+            })
           });
 
-          // Update crypto shares and purchasePrice for buy transactions
-          const updateData: any = { 
-            shares: action === 'buy' 
-              ? crypto.shares + sharesToTrade 
-              : Math.max(0, crypto.shares - sharesToTrade)
-          };
-          
-          // For buy transactions, update the purchasePrice to the current price
-          if (action === 'buy') {
-            updateData.purchasePrice = priceData.price;
+          const executeOrderResult = await executeOrderResponse.json();
+
+          if (!executeOrderResponse.ok) {
+            throw new Error(executeOrderResult.error || 'Failed to execute order via Kraken API');
           }
-
-          await prisma.crypto.update({
-            where: { id: crypto.id },
-            data: updateData
-          });
 
           // If this is a one-time trade, disable the auto flag
           if (!enableContinuous) {
@@ -177,46 +169,17 @@ export async function processAutoCryptoTrades(
                 autoSell: action === 'buy' ? crypto.autoSell : false
               }
             });
-          } else {
-            // Flip the next action for continuous trading
-            const newNextAction = action === 'buy' ? 'sell' : 'buy';
-            
-            if (crypto.autoTradeSettings) {
-              await prisma.cryptoAutoTradeSettings.update({
-                where: { id: crypto.autoTradeSettings.id },
-                data: { nextAction: newNextAction }
-              });
-            } else {
-              // Create settings if they don't exist
-              await prisma.cryptoAutoTradeSettings.create({
-                data: {
-                  cryptoId: crypto.id,
-                  buyThresholdPercent: buyThreshold,
-                  sellThresholdPercent: sellThreshold,
-                  enableContinuousTrading: true,
-                  nextAction: newNextAction
-                }
-              });
-            }
-            
-            // Update the crypto's auto flags
-            await prisma.crypto.update({
-              where: { id: crypto.id },
-              data: {
-                autoBuy: newNextAction === 'buy',
-                autoSell: newNextAction === 'sell'
-              }
-            });
           }
 
           results.push({
             success: true,
-            message: `Successfully executed auto ${action} for ${crypto.symbol}`,
+            message: `Successfully executed auto ${action} for ${crypto.symbol} via Kraken API`,
             cryptoId: crypto.id,
             symbol: crypto.symbol,
             action,
             shares: sharesToTrade,
-            price: priceData.price
+            price: priceData.price,
+            krakenOrderId: executeOrderResult.krakenOrderId
           });
         } catch (error) {
           console.error(`Error executing auto ${action} for ${crypto.symbol}:`, error);
@@ -356,35 +319,27 @@ export async function checkCryptoForAutoTrade(
           };
         }
 
-        // Create transaction record
-        const transaction = await prisma.cryptoTransaction.create({
-          data: {
+        // Execute the order using the Kraken API
+        // Call the execute-order API endpoint to use the Kraken API
+        const executeOrderResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/api/cryptos/execute-order`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
             cryptoId: crypto.id,
             action,
             shares: sharesToTrade,
             price,
-            totalAmount: sharesToTrade * price,
-            userId,
-            logInfo: `Auto ${action} triggered at ${new Date().toISOString()}`
-          }
+            isAutoOrder: true
+          })
         });
 
-        // Update crypto shares and purchasePrice for buy transactions
-        const updateData: any = { 
-          shares: action === 'buy' 
-            ? crypto.shares + sharesToTrade 
-            : Math.max(0, crypto.shares - sharesToTrade)
-        };
-        
-        // For buy transactions, update the purchasePrice to the current price
-        if (action === 'buy') {
-          updateData.purchasePrice = price;
+        const executeOrderResult = await executeOrderResponse.json();
+
+        if (!executeOrderResponse.ok) {
+          throw new Error(executeOrderResult.error || 'Failed to execute order via Kraken API');
         }
-
-        await prisma.crypto.update({
-          where: { id: crypto.id },
-          data: updateData
-        });
 
         // If this is a one-time trade, disable the auto flag
         if (!enableContinuous) {
@@ -416,25 +371,17 @@ export async function checkCryptoForAutoTrade(
               }
             });
           }
-          
-          // Update the crypto's auto flags
-          await prisma.crypto.update({
-            where: { id: crypto.id },
-            data: {
-              autoBuy: newNextAction === 'buy',
-              autoSell: newNextAction === 'sell'
-            }
-          });
         }
 
         return {
           success: true,
-          message: `Successfully executed auto ${action} for ${crypto.symbol}`,
+          message: `Successfully executed auto ${action} for ${crypto.symbol} via Kraken API`,
           cryptoId: crypto.id,
           symbol: crypto.symbol,
           action,
           shares: sharesToTrade,
-          price
+          price,
+          krakenOrderId: executeOrderResult.krakenOrderId
         };
       } catch (error) {
         console.error(`Error executing auto ${action} for ${crypto.symbol}:`, error);

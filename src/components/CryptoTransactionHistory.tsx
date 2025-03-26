@@ -172,6 +172,14 @@ export default function CryptoTransactionHistory() {
                   </div>
                 </div>
               )}
+              
+              {!selectedTransaction.apiRequest && !selectedTransaction.apiResponse && (
+                <div className="text-sm text-muted-foreground italic">
+                  {selectedTransaction.logInfo?.includes('manual_trade') 
+                    ? "This was a manual transaction without Kraken API integration." 
+                    : "No API request/response data available for this transaction."}
+                </div>
+              )}
             </div>
           )}
           

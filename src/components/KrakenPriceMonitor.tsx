@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/use-toast';
-import { processAutoCryptoTrades } from '@/lib/autoTradeService';
+
 
 interface KrakenPriceMonitorProps {
   symbols: string[];
@@ -52,7 +52,21 @@ export default function KrakenPriceMonitor({
     if (!user || !autoTradeEnabled || prices.length === 0) return;
     
     try {
-      const results = await processAutoCryptoTrades(prices, user.id);
+      // Call the server-side API endpoint instead of using the client-side function
+      const response = await fetch('/api/cryptos/process-auto-trades', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prices }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to process auto trades');
+      }
+      
+      const data = await response.json();
+      const results = data.results || [];
       
       // Filter for successful trades
       const successfulTrades = results.filter(result => result.success && result.action);

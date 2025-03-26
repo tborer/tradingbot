@@ -139,11 +139,20 @@ export function useKrakenWebSocket({
 
       socket.onerror = (event) => {
         console.error('Kraken WebSocket error:', event);
-        addLog('error', 'Kraken WebSocket error', { 
+        
+        // Create a more detailed error log
+        const errorDetails = {
           event: 'error',
           url,
-          timestamp: Date.now()
-        });
+          timestamp: Date.now(),
+          readyState: socket.readyState,
+          protocol: socket.protocol,
+          extensions: socket.extensions,
+          bufferedAmount: socket.bufferedAmount
+        };
+        
+        console.error('Detailed Kraken WebSocket error:', JSON.stringify(errorDetails));
+        addLog('error', 'Kraken WebSocket error', errorDetails);
         
         setError(new Error('WebSocket connection error'));
         setIsConnected(false);
@@ -238,11 +247,21 @@ export function useKrakenWebSocket({
               
               altSocket.onerror = (event) => {
                 console.error('Alternative Kraken WebSocket error:', event);
-                addLog('error', 'Alternative Kraken WebSocket error', { 
+                
+                // Create a more detailed error log
+                const errorDetails = {
                   event: 'error',
                   url: v1Url,
-                  timestamp: Date.now()
-                });
+                  timestamp: Date.now(),
+                  readyState: altSocket.readyState,
+                  protocol: altSocket.protocol,
+                  extensions: altSocket.extensions,
+                  bufferedAmount: altSocket.bufferedAmount
+                };
+                
+                console.error('Detailed alternative Kraken WebSocket error:', JSON.stringify(errorDetails));
+                addLog('error', 'Alternative Kraken WebSocket error', errorDetails);
+                
                 setError(new Error('Alternative WebSocket connection error'));
                 setIsConnected(false);
               };

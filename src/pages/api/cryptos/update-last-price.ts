@@ -6,6 +6,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     // Only allow POST requests
     if (req.method !== 'POST') {
+      console.log('Method not allowed in update-last-price:', req.method);
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
@@ -16,19 +17,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
+      console.log('Unauthorized access attempt to update-last-price');
       return res.status(401).json({ error: 'Unauthorized' });
     }
     
     const { symbol, lastPrice } = req.body;
     
     if (!symbol || lastPrice === undefined) {
+      console.log('Missing required fields in update-last-price:', { symbol, lastPrice });
       return res.status(400).json({ error: 'Missing required fields: symbol, lastPrice' });
     }
     
     // Validate lastPrice is a number
     if (isNaN(Number(lastPrice))) {
+      console.log('Invalid lastPrice in update-last-price:', lastPrice);
       return res.status(400).json({ error: 'lastPrice must be a valid number' });
     }
+    
+    console.log(`Processing update-last-price for ${symbol}: ${lastPrice}`);
     
     // Find the crypto by symbol for this user
     const crypto = await prisma.crypto.findFirst({
@@ -41,6 +47,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!crypto) {
       // If the crypto doesn't exist for this user, we'll just ignore the update
       // This can happen if the WebSocket is receiving prices for symbols the user doesn't own
+      console.log(`No crypto found with symbol ${symbol} for user ${user.id}`);
       return res.status(200).json({ message: `No crypto found with symbol ${symbol} for this user` });
     }
     
@@ -50,7 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       data: { lastPrice: Number(lastPrice) },
     });
     
-    console.log(`Updated lastPrice for ${symbol} to ${lastPrice}`);
+    console.log(`Successfully updated lastPrice for ${symbol} to ${lastPrice}`);
     
     return res.status(200).json({ 
       message: `Successfully updated lastPrice for ${symbol}`,
@@ -58,7 +65,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       lastPrice: Number(lastPrice)
     });
   } catch (error) {
-    console.error('API error:', error);
-    return res.status(500).json({ error: 'Internal server error', details: error.message });
+    console.error('API error in update-last-price:', error);
+    return res.status(500).json({ 
+      error: 'Internal server error', 
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 }

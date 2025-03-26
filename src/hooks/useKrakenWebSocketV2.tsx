@@ -38,19 +38,20 @@ export function useKrakenWebSocket({
       
       if (prices.length > 0) {
         console.log('Successfully parsed Kraken prices:', prices);
-        addLog('success', 'Successfully parsed Kraken prices', { prices });
+        addLog('success', 'Successfully parsed Kraken prices', { prices }, 'WS-SUCCESS-0001');
         
         if (onPriceUpdate) {
           onPriceUpdate(prices);
         }
       }
     } catch (err) {
-      console.error('Error processing Kraken message:', err);
-      addLog('error', 'Error processing Kraken message', { 
-        error: err instanceof Error ? err.message : String(err)
+      // Use the enhanced error logging
+      logError('Error processing Kraken message', err, 'WS-ERROR-1002', {
+        messagePreview: data.substring(0, 200),
+        timestamp: Date.now()
       });
     }
-  }, [onPriceUpdate, addLog]);
+  }, [onPriceUpdate, addLog, logError]);
 
   // Function to establish WebSocket connection
   const connect = useCallback(() => {

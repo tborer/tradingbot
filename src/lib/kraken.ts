@@ -23,6 +23,8 @@ export interface KrakenTickerMessage {
   type: string;
 }
 
+import { createAndLogError, ErrorCategory, ErrorSeverity, WebSocketErrorCodes } from './errorLogger';
+
 // Parse Kraken websocket message
 export const parseKrakenMessage = (message: string): KrakenPrice[] => {
   // Add detailed logging to help diagnose parsing issues
@@ -45,7 +47,18 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
     
     // Handle error messages
     if (parsed.event === 'error') {
-      console.error('Kraken WebSocket error:', parsed);
+      // Log the error with our enhanced error logging
+      createAndLogError(
+        ErrorCategory.WEBSOCKET,
+        ErrorSeverity.ERROR,
+        1003,
+        `Kraken WebSocket API error: ${parsed.message || 'Unknown error'}`,
+        {
+          krakenError: parsed,
+          timestamp: Date.now(),
+          errorCode: parsed.code || 'UNKNOWN'
+        }
+      );
       return [];
     }
     

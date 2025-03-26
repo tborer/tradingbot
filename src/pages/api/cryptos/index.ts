@@ -1,6 +1,14 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
+import { 
+  handleApiError, 
+  ApiErrorCodes, 
+  ErrorCategory, 
+  ErrorSeverity, 
+  createAndLogError, 
+  formatErrorForResponse 
+} from '@/lib/errorLogger';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -11,7 +19,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session || !session.user) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      const errorDetails = createAndLogError(
+        ErrorCategory.AUTH,
+        ErrorSeverity.ERROR,
+        4001,
+        'Unauthorized access attempt to cryptos API',
+        { 
+          path: req.url,
+          method: req.method,
+          headers: req.headers,
+          timestamp: Date.now()
+        }
+      );
+      return res.status(401).json(formatErrorForResponse(errorDetails));
     }
     
     const user = session.user;
@@ -31,7 +51,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const { symbol, purchasePrice, shares } = req.body;
       
       if (!symbol || !purchasePrice) {
-        return res.status(400).json({ error: 'Symbol and purchase price are required' });
+        const errorDetails = createAndLogError(
+          ErrorCategory.VALIDATION,
+          ErrorSeverity.ERROR,
+          2002,
+          'Missing required fields for crypto creation',
+          { 
+            path: req.url,
+            method: req.method,
+            body: { symbol, purchasePrice },
+            userId: user.id,
+            timestamp: Date.now()
+          }
+        );
+        return res.status(400).json(formatErrorForResponse(errorDetails));
       }
       
       // Check if crypto already exists for this user
@@ -43,7 +76,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
       
       if (existingCrypto) {
-        return res.status(400).json({ error: 'You already have this crypto in your portfolio' });
+        const errorDetails = createAndLogError(
+          ErrorCategory.VALIDATION,
+          ErrorSeverity.ERROR,
+          2003,
+          'Duplicate crypto in portfolio',
+          { 
+            path: req.url,
+            method: req.method,
+            symbol: symbol.toUpperCase(),
+            userId: user.id,
+            timestamp: Date.now()
+          }
+        );
+        return res.status(400).json(formatErrorForResponse(errorDetails));
       }
       
       // Get the highest priority to add the new crypto at the end
@@ -76,7 +122,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const { cryptos } = req.body;
       
       if (!cryptos || !Array.isArray(cryptos)) {
-        return res.status(400).json({ error: 'Invalid request body' });
+        const errorDetails = createAndLogError(
+          ErrorCategory.VALIDATION,
+          ErrorSeverity.ERROR,
+          2004,
+          'Invalid request body for crypto priority update',
+          { 
+            path: req.url,
+            method: req.method,
+            body: req.body,
+            userId: user.id,
+            timestamp: Date.now()
+          }
+        );
+        return res.status(400).json(formatErrorForResponse(errorDetails));
       }
       
       // Update each crypto's priority
@@ -92,9 +151,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json({ message: 'Crypto order updated successfully' });
     }
     
-    return res.status(405).json({ error: 'Method not allowed' });
+    const errorDetails = createAndLogError(
+      ErrorCategory.API,
+      ErrorSeverity.ERROR,
+      2005,
+      'Method not allowed',
+      { 
+        path: req.url,
+        method: req.method,
+        timestamp: Date.now()
+      }
+    );
+    return res.status(405).json(formatErrorForResponse(errorDetails));
   } catch (error) {
-    console.error('API error:', error);
-    return res.status(500).json({ error: 'Internal server error', details: error });
+    // Use the handleApiError utility for consistent error handling
+    const errorDetails = handleApiError(error, ErrorCategory.API, 'Error processing crypto request');
+    
+    // Add request-specific context to the error
+    errorDetails.context = {
+      ...errorDetails.context,
+      path: req.url,
+      method: req.method,
+      userId: session?.user?.id || 'unknown'
+    };
+    
+    // Log the error with full details
+    console.error(`[${errorDetails.code}] API Error:`, errorDetails.message, errorDetails.context);
+    
+    // Return a sanitized error response to the client
+    return res.status(500).json(formatErrorForResponse(errorDetails));
   }
 }

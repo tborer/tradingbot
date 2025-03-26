@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const LogLevelBadge = ({ level }: { level: LogLevel }) => {
   const colorMap: Record<LogLevel, string> = {
@@ -140,6 +141,20 @@ const WebSocketLogger: React.FC = () => {
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center gap-2">
                         <LogLevelBadge level={log.level} />
+                        {log.code ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge variant="outline" className="cursor-help mr-2">
+                                  {log.code}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Error Code: {log.code}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : null}
                         <span className="font-medium">{log.message}</span>
                       </div>
                       <span className="text-xs text-muted-foreground">

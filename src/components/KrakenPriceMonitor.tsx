@@ -9,7 +9,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/use-toast';
 import WebSocketConnectionStatus from '@/components/WebSocketConnectionStatus';
 
-
 interface KrakenPriceMonitorProps {
   symbols: string[];
   websocketUrl?: string;
@@ -187,59 +186,59 @@ export default function KrakenPriceMonitor({
           <CardTitle>Kraken Price Monitor</CardTitle>
         </CardHeader>
         <CardContent>
-        
-        {autoTradeEnabled && (
-          <Alert variant="default" className="mb-4 bg-blue-50 dark:bg-blue-900/20 border-blue-500">
-            <AlertTitle className="text-blue-700 dark:text-blue-300">Auto Trading Enabled</AlertTitle>
-            <AlertDescription className="text-blue-700 dark:text-blue-300">
-              Automatic trading is enabled for cryptocurrencies.
-              {lastAutoTradeCheck && (
-                <div className="text-xs mt-1">Last check: {lastAutoTradeCheck.toLocaleTimeString()}</div>
+          {autoTradeEnabled && (
+            <Alert variant="default" className="mb-4 bg-blue-50 dark:bg-blue-900/20 border-blue-500">
+              <AlertTitle className="text-blue-700 dark:text-blue-300">Auto Trading Enabled</AlertTitle>
+              <AlertDescription className="text-blue-700 dark:text-blue-300">
+                Automatic trading is enabled for cryptocurrencies.
+                {lastAutoTradeCheck && (
+                  <div className="text-xs mt-1">Last check: {lastAutoTradeCheck.toLocaleTimeString()}</div>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          {autoTradeResults.length > 0 && (
+            <Alert variant="default" className="mb-4 bg-green-50 dark:bg-green-900/20 border-green-500">
+              <AlertTitle className="text-green-700 dark:text-green-300">Recent Auto Trades</AlertTitle>
+              <AlertDescription className="text-green-700 dark:text-green-300">
+                <ul className="text-xs mt-1 space-y-1">
+                  {autoTradeResults.map((result, index) => (
+                    <li key={index}>
+                      {result.action === 'buy' ? 'Bought' : 'Sold'} {result.shares?.toFixed(6)} {result.symbol} at ${result.price?.toFixed(2)}
+                    </li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          {symbols.length === 0 ? (
+            <p className="text-muted-foreground">No symbols to monitor</p>
+          ) : (
+            <>
+              <div className="space-y-2">
+                {prices.length > 0 ? (
+                  prices.map(price => (
+                    <div key={price.symbol} className="flex justify-between items-center p-2 border rounded">
+                      <span className="font-medium">{price.symbol}</span>
+                      <span>${price.price.toFixed(2)}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-muted-foreground">Waiting for price data...</p>
+                )}
+              </div>
+              
+              {lastUpdated && (
+                <p className="text-xs text-muted-foreground mt-4">
+                  Last updated: {lastUpdated.toLocaleTimeString()}
+                </p>
               )}
-            </AlertDescription>
-          </Alert>
-        )}
-        
-        {autoTradeResults.length > 0 && (
-          <Alert variant="default" className="mb-4 bg-green-50 dark:bg-green-900/20 border-green-500">
-            <AlertTitle className="text-green-700 dark:text-green-300">Recent Auto Trades</AlertTitle>
-            <AlertDescription className="text-green-700 dark:text-green-300">
-              <ul className="text-xs mt-1 space-y-1">
-                {autoTradeResults.map((result, index) => (
-                  <li key={index}>
-                    {result.action === 'buy' ? 'Bought' : 'Sold'} {result.shares?.toFixed(6)} {result.symbol} at ${result.price?.toFixed(2)}
-                  </li>
-                ))}
-              </ul>
-            </AlertDescription>
-          </Alert>
-        )}
-        
-        {symbols.length === 0 ? (
-          <p className="text-muted-foreground">No symbols to monitor</p>
-        ) : (
-          <>
-            <div className="space-y-2">
-              {prices.length > 0 ? (
-                prices.map(price => (
-                  <div key={price.symbol} className="flex justify-between items-center p-2 border rounded">
-                    <span className="font-medium">{price.symbol}</span>
-                    <span>${price.price.toFixed(2)}</span>
-                  </div>
-                ))
-              ) : (
-                <p className="text-muted-foreground">Waiting for price data...</p>
-              )}
-            </div>
-            
-            {lastUpdated && (
-              <p className="text-xs text-muted-foreground mt-4">
-                Last updated: {lastUpdated.toLocaleTimeString()}
-              </p>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

@@ -54,6 +54,22 @@ export default function AutoTradeModal({
     sharesAmount: initialSettings.sharesAmount || 0,
     totalValue: initialSettings.totalValue || 0,
   });
+  
+  // Update settings when initialSettings change (when a different crypto is selected)
+  React.useEffect(() => {
+    setSettings({
+      buyThresholdPercent: initialSettings.buyThresholdPercent || 5,
+      sellThresholdPercent: initialSettings.sellThresholdPercent || 5,
+      enableContinuousTrading: initialSettings.enableContinuousTrading || false,
+      oneTimeBuy: initialSettings.oneTimeBuy || false,
+      oneTimeSell: initialSettings.oneTimeSell || false,
+      tradeByShares: initialSettings.tradeByShares || true,
+      tradeByValue: initialSettings.tradeByValue || false,
+      nextAction: initialSettings.nextAction || 'buy',
+      sharesAmount: initialSettings.sharesAmount || 0,
+      totalValue: initialSettings.totalValue || 0,
+    });
+  }, [initialSettings, itemName]);
 
   const handleSave = async () => {
     setIsSubmitting(true);

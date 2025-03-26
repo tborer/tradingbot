@@ -346,6 +346,11 @@ export default function SortableCryptoList({
           totalValue: 0
         });
         console.error("Failed to fetch auto trade settings");
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load auto trade settings for this cryptocurrency. Default settings will be used.",
+        });
       }
     } catch (error) {
       console.error("Error fetching auto trade settings:", error);
@@ -360,6 +365,11 @@ export default function SortableCryptoList({
         tradeByValue: false,
         sharesAmount: 0,
         totalValue: 0
+      });
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load auto trade settings for this cryptocurrency. Default settings will be used.",
       });
     }
     

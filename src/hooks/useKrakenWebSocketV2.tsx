@@ -2,6 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { parseKrakenMessage, formatToKrakenSymbol, KrakenPrice } from '@/lib/kraken';
 import { useWebSocketLogs } from '@/contexts/WebSocketLogContext';
 
+// Constants for WebSocket connection management
+const PING_INTERVAL = 15000; // 15 seconds
+const RECONNECT_BASE_DELAY = 1000; // 1 second
+const MAX_RECONNECT_ATTEMPTS = 5;
+const CONNECTION_TIMEOUT = 10000; // 10 seconds
+
 interface UseKrakenWebSocketOptions {
   symbols: string[];
   url?: string;
@@ -62,18 +68,48 @@ export function useKrakenWebSocket({
       socketRef.current = null;
     }
 
+    // Clear any existing timeouts and intervals
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    
+    if (pingIntervalRef.current) {
+      clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = null;
+    }
+
     try {
-      // Add timestamp to prevent caching
+      // Add timestamp and random string to prevent caching issues
       const timestamp = Date.now();
-      const wsUrl = `${url}?t=${timestamp}`;
+      const randomStr = Math.random().toString(36).substring(2, 15);
+      const wsUrl = `${url}?t=${timestamp}&r=${randomStr}`;
       
       console.log(`Connecting to Kraken WebSocket at ${wsUrl}`);
       addLog('info', 'Connecting to Kraken WebSocket', { url: wsUrl });
       
       const socket = new WebSocket(wsUrl);
       socketRef.current = socket;
+      
+      // Set a connection timeout
+      const connectionTimeoutId = setTimeout(() => {
+        if (socket.readyState !== WebSocket.OPEN) {
+          console.error('WebSocket connection timeout');
+          addLog('error', 'WebSocket connection timeout', { url: wsUrl });
+          
+          // Force close and try to reconnect
+          try {
+            socket.close();
+          } catch (err) {
+            console.error('Error closing socket after timeout:', err);
+          }
+        }
+      }, CONNECTION_TIMEOUT);
 
       socket.onopen = () => {
+        // Clear the connection timeout
+        clearTimeout(connectionTimeoutId);
+        
         console.log('Kraken WebSocket connected successfully');
         addLog('success', 'Kraken WebSocket connected', { url });
         setIsConnected(true);
@@ -94,9 +130,19 @@ export function useKrakenWebSocket({
           }
         };
 
-        console.log('Sending subscription message:', JSON.stringify(subscribeMessage));
-        addLog('info', 'Sending Kraken subscription', { symbols: krakenSymbols });
-        socket.send(JSON.stringify(subscribeMessage));
+        // Delay subscription slightly to ensure connection is fully established
+        setTimeout(() => {
+          try {
+            console.log('Sending subscription message:', JSON.stringify(subscribeMessage));
+            addLog('info', 'Sending Kraken subscription', { symbols: krakenSymbols });
+            socket.send(JSON.stringify(subscribeMessage));
+          } catch (err) {
+            console.error('Error sending subscription:', err);
+            addLog('error', 'Error sending subscription', { 
+              error: err instanceof Error ? err.message : String(err) 
+            });
+          }
+        }, 500);
         
         // Set up ping interval to keep connection alive
         if (pingIntervalRef.current) {
@@ -108,11 +154,36 @@ export function useKrakenWebSocket({
             try {
               console.log('Sending ping to Kraken WebSocket');
               socket.send(JSON.stringify({ method: "ping" }));
+              
+              // Set a timeout to check if we received a pong response
+              const pongTimeoutId = setTimeout(() => {
+                console.log('No pong response received, reconnecting...');
+                addLog('warning', 'No pong response received', { url });
+                reconnect();
+              }, 5000);
+              
+              // Store the timeout ID so it can be cleared when we receive a pong
+              (socket as any)._pongTimeoutId = pongTimeoutId;
             } catch (err) {
               console.error('Error sending ping:', err);
+              addLog('error', 'Error sending ping', { 
+                error: err instanceof Error ? err.message : String(err) 
+              });
+              
+              // If we can't send a ping, the connection might be dead
+              if (socket.readyState !== WebSocket.OPEN) {
+                reconnect();
+              }
             }
+          } else if (socket.readyState !== WebSocket.CONNECTING) {
+            // If the socket is not open or connecting, reconnect
+            console.log('WebSocket not open during ping interval, reconnecting...');
+            addLog('warning', 'WebSocket not open during ping interval', { 
+              readyState: socket.readyState 
+            });
+            reconnect();
           }
-        }, 30000); // Send ping every 30 seconds
+        }, PING_INTERVAL);
       };
 
       socket.onmessage = (event) => {
@@ -128,8 +199,31 @@ export function useKrakenWebSocket({
         console.log("Received Kraken message:", truncatedMessage);
         
         // Check for ping/pong messages
-        if (event.data.includes('"method":"ping"') || event.data.includes('"method":"pong"')) {
-          console.log('Received ping/pong message from Kraken');
+        if (event.data.includes('"method":"ping"')) {
+          console.log('Received ping message from Kraken, sending pong');
+          try {
+            socket.send(JSON.stringify({ method: "pong" }));
+          } catch (err) {
+            console.error('Error sending pong response:', err);
+          }
+          return;
+        }
+        
+        // Handle pong responses
+        if (event.data.includes('"method":"pong"')) {
+          console.log('Received pong response from Kraken');
+          
+          // Clear the pong timeout if it exists
+          if ((socket as any)._pongTimeoutId) {
+            clearTimeout((socket as any)._pongTimeoutId);
+            (socket as any)._pongTimeoutId = null;
+          }
+          return;
+        }
+        
+        // Handle heartbeat messages
+        if (event.data.includes('"channel":"heartbeat"')) {
+          console.log('Received heartbeat from Kraken');
           return;
         }
         
@@ -221,9 +315,19 @@ export function useKrakenWebSocket({
                   pair: krakenSymbols
                 };
                 
-                console.log('Sending v1 subscription:', JSON.stringify(v1SubscribeMessage));
-                addLog('info', 'Sending v1 subscription', { symbols: krakenSymbols });
-                altSocket.send(JSON.stringify(v1SubscribeMessage));
+                // Delay subscription slightly to ensure connection is fully established
+                setTimeout(() => {
+                  try {
+                    console.log('Sending v1 subscription:', JSON.stringify(v1SubscribeMessage));
+                    addLog('info', 'Sending v1 subscription', { symbols: krakenSymbols });
+                    altSocket.send(JSON.stringify(v1SubscribeMessage));
+                  } catch (err) {
+                    console.error('Error sending v1 subscription:', err);
+                    addLog('error', 'Error sending v1 subscription', { 
+                      error: err instanceof Error ? err.message : String(err) 
+                    });
+                  }
+                }, 500);
                 
                 // Set up ping interval
                 if (pingIntervalRef.current) {
@@ -235,11 +339,51 @@ export function useKrakenWebSocket({
                     try {
                       console.log('Sending ping to alternative Kraken WebSocket');
                       altSocket.send(JSON.stringify({ name: "ping" }));
+                      
+                      // Set a timeout to check if we received a pong response
+                      const pongTimeoutId = setTimeout(() => {
+                        console.log('No pong response received from alternative WebSocket, reconnecting...');
+                        addLog('warning', 'No pong response received from alternative WebSocket', { url: v1Url });
+                        
+                        // Force close and reconnect
+                        try {
+                          altSocket.close();
+                        } catch (err) {
+                          console.error('Error closing alternative socket after pong timeout:', err);
+                        }
+                        
+                        // Reset and try the main URL again
+                        reconnectAttemptsRef.current = 0;
+                        connect();
+                      }, 5000);
+                      
+                      // Store the timeout ID so it can be cleared when we receive a pong
+                      (altSocket as any)._pongTimeoutId = pongTimeoutId;
                     } catch (err) {
                       console.error('Error sending ping to alternative WebSocket:', err);
+                      addLog('error', 'Error sending ping to alternative WebSocket', { 
+                        error: err instanceof Error ? err.message : String(err) 
+                      });
+                      
+                      // If we can't send a ping, the connection might be dead
+                      if (altSocket.readyState !== WebSocket.OPEN) {
+                        // Reset and try the main URL again
+                        reconnectAttemptsRef.current = 0;
+                        connect();
+                      }
                     }
+                  } else if (altSocket.readyState !== WebSocket.CONNECTING) {
+                    // If the socket is not open or connecting, reconnect
+                    console.log('Alternative WebSocket not open during ping interval, reconnecting...');
+                    addLog('warning', 'Alternative WebSocket not open during ping interval', { 
+                      readyState: altSocket.readyState 
+                    });
+                    
+                    // Reset and try the main URL again
+                    reconnectAttemptsRef.current = 0;
+                    connect();
                   }
-                }, 30000);
+                }, PING_INTERVAL);
               };
               
               // Set up other event handlers for the alternative socket

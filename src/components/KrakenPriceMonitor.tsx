@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/use-toast';
+import WebSocketConnectionStatus from '@/components/WebSocketConnectionStatus';
 
 
 interface KrakenPriceMonitorProps {
@@ -172,31 +173,20 @@ export default function KrakenPriceMonitor({
   }, [JSON.stringify(symbols)]);
   
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex justify-between items-center">
-          <span>Kraken Price Monitor</span>
-          <div className="flex items-center gap-2">
-            <div className={`h-3 w-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-            <span className="text-sm text-muted-foreground">
-              {isConnected ? 'Connected' : 'Disconnected'}
-            </span>
-            {!isConnected && (
-              <Button size="sm" variant="outline" onClick={reconnect}>
-                Reconnect
-              </Button>
-            )}
-          </div>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {error && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertDescription>
-              Error connecting to Kraken: {error.message}
-            </AlertDescription>
-          </Alert>
-        )}
+    <div className="space-y-4">
+      <WebSocketConnectionStatus
+        isConnected={isConnected}
+        url={websocketUrl}
+        error={error}
+        reconnect={reconnect}
+        lastMessageTime={lastUpdated}
+      />
+      
+      <Card>
+        <CardHeader>
+          <CardTitle>Kraken Price Monitor</CardTitle>
+        </CardHeader>
+        <CardContent>
         
         {autoTradeEnabled && (
           <Alert variant="default" className="mb-4 bg-blue-50 dark:bg-blue-900/20 border-blue-500">

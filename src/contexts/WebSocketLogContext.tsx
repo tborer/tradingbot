@@ -108,6 +108,33 @@ export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ chil
       setLogs((prevLogs) => [enabledLog, ...prevLogs]);
     }
   }, []);
+  
+  const setErrorLoggingEnabled = useCallback((enabled: boolean) => {
+    setIsErrorLoggingEnabled(enabled);
+    if (!enabled) {
+      // Add a system log entry when error logging is disabled
+      const disabledLog: WebSocketLog = {
+        id: crypto.randomUUID(),
+        timestamp: new Date(),
+        level: 'info',
+        message: 'WebSocket error logging has been disabled',
+        code: 'WS-INFO-0003',
+        details: { timestamp: Date.now() },
+      };
+      setLogs((prevLogs) => [disabledLog, ...prevLogs]);
+    } else {
+      // Add a system log entry when error logging is enabled
+      const enabledLog: WebSocketLog = {
+        id: crypto.randomUUID(),
+        timestamp: new Date(),
+        level: 'info',
+        message: 'WebSocket error logging has been enabled',
+        code: 'WS-INFO-0004',
+        details: { timestamp: Date.now() },
+      };
+      setLogs((prevLogs) => [enabledLog, ...prevLogs]);
+    }
+  }, []);
 
   const addLog = useCallback((
     level: LogLevel, 
@@ -216,6 +243,24 @@ export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ chil
   const clearLogs = useCallback(() => {
     setLogs([]);
   }, []);
+  
+  const handleSetErrorSampleRate = useCallback((rate: number) => {
+    // Ensure rate is between 1 and 100
+    const validRate = Math.max(1, Math.min(100, rate));
+    // Use the state setter function directly
+    setErrorSampleRate(validRate);
+    
+    // Add a system log entry when error sample rate is changed
+    const rateChangedLog: WebSocketLog = {
+      id: crypto.randomUUID(),
+      timestamp: new Date(),
+      level: 'info',
+      message: `WebSocket error sampling rate set to ${validRate}%`,
+      code: 'WS-INFO-0005',
+      details: { timestamp: Date.now(), rate: validRate },
+    };
+    setLogs((prevLogs) => [rateChangedLog, ...prevLogs]);
+  }, []);
 
   return (
     <WebSocketLogContext.Provider value={{ 
@@ -228,7 +273,7 @@ export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ chil
       isErrorLoggingEnabled,
       setErrorLoggingEnabled,
       errorSampleRate,
-      setErrorSampleRate
+      setErrorSampleRate: handleSetErrorSampleRate
     }}>
       {children}
     </WebSocketLogContext.Provider>

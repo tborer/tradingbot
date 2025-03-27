@@ -21,6 +21,7 @@ import WebSocketLogger from "@/components/WebSocketLogger";
 import Research from "@/components/Research";
 import UserManagement from "@/components/UserManagement";
 import { Stock, StockWithPrice as StockWithCurrentPrice, Settings, Crypto, CryptoWithPrice } from "@/types/stock";
+import { useKrakenWebSocket } from "@/contexts/KrakenWebSocketContext";
 
 export default function Dashboard() {
   const { signOut, user } = useAuth();

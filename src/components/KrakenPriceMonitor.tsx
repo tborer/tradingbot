@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { KrakenPrice } from '@/lib/kraken';
 import { useWebSocketLogs } from '@/contexts/WebSocketLogContext';
-import { useKrakenWebSocket } from '@/hooks/useKrakenWebSocketV2';
+import { useKrakenWebSocketConnection } from '@/hooks/useKrakenWebSocketConnection';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -159,11 +159,29 @@ export default function KrakenPriceMonitor({
     processAutoTrades(newPrices);
   }, [onPriceUpdate, processAutoTrades, user]);
   
-  const { isConnected, error, reconnect } = useKrakenWebSocket({
+  // Get settings for auto-connect
+  const [autoConnect, setAutoConnect] = useState<boolean>(false);
+  
+  useEffect(() => {
+    // Load auto-connect setting from localStorage
+    const savedAutoConnect = localStorage.getItem('kraken-websocket-auto-connect');
+    if (savedAutoConnect !== null) {
+      setAutoConnect(savedAutoConnect === 'true');
+    }
+  }, []);
+  
+  // Use our new WebSocket hook
+  const { 
+    isConnected, 
+    error, 
+    connect, 
+    disconnect,
+    lastPingTime,
+    lastPongTime
+  } = useKrakenWebSocketConnection({
     symbols,
-    url: websocketUrl,
     onPriceUpdate: handlePriceUpdate,
-    enabled: symbols.length > 0
+    autoConnect
   });
   
   // Clear prices when symbols change
@@ -171,14 +189,25 @@ export default function KrakenPriceMonitor({
     setPrices([]);
   }, [JSON.stringify(symbols)]);
   
+  // Handle auto-connect toggle
+  const handleAutoConnectChange = useCallback((enabled: boolean) => {
+    setAutoConnect(enabled);
+    localStorage.setItem('kraken-websocket-auto-connect', enabled.toString());
+  }, []);
+
   return (
     <div className="space-y-4">
       <WebSocketConnectionStatus
         isConnected={isConnected}
         url={websocketUrl}
         error={error}
-        reconnect={reconnect}
+        connect={connect}
+        disconnect={disconnect}
         lastMessageTime={lastUpdated}
+        lastPingTime={lastPingTime}
+        lastPongTime={lastPongTime}
+        autoConnect={autoConnect}
+        onAutoConnectChange={handleAutoConnectChange}
       />
       
       <Card>

@@ -2,46 +2,82 @@ import React from 'react';
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import { InfoCircledIcon } from "@radix-ui/react-icons";
 
 interface KrakenWebSocketSettingsProps {
-  websocketUrl: string;
+  websocketUrl?: string;
   enableManualCryptoTrading: boolean;
-  onWebsocketUrlChange: (url: string) => void;
+  autoConnectWebSocket: boolean;
   onEnableManualCryptoTradingChange: (enabled: boolean) => void;
+  onAutoConnectWebSocketChange: (enabled: boolean) => void;
 }
 
 const KrakenWebSocketSettings: React.FC<KrakenWebSocketSettingsProps> = ({
-  websocketUrl,
+  websocketUrl = 'wss://ws.kraken.com/v2',
   enableManualCryptoTrading,
-  onWebsocketUrlChange,
-  onEnableManualCryptoTradingChange
+  autoConnectWebSocket,
+  onEnableManualCryptoTradingChange,
+  onAutoConnectWebSocketChange
 }) => {
   return (
     <div className="border-t pt-4 mt-4">
       <h3 className="text-lg font-medium mb-2">Kraken WebSocket Settings</h3>
       <div className="space-y-4">
         <div>
-          <Label htmlFor="krakenWebsocketUrl">Kraken WebSocket URL</Label>
-          <Input
-            id="krakenWebsocketUrl"
-            placeholder="Enter Kraken WebSocket URL"
-            value={websocketUrl}
-            onChange={(e) => onWebsocketUrlChange(e.target.value)}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="krakenWebsocketUrl">Kraken WebSocket URL</Label>
+              <p className="text-sm text-muted-foreground">
+                The primary WebSocket endpoint for Kraken price data
+              </p>
+            </div>
+            <div className="text-sm font-medium text-muted-foreground">
+              {websocketUrl}
+            </div>
+          </div>
+        </div>
+        
+        <Separator />
+        
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="autoConnectWebSocket">Auto-Connect WebSocket</Label>
+            <p className="text-sm text-muted-foreground">
+              Automatically connect to Kraken WebSocket on page load
+            </p>
+          </div>
+          <Switch
+            id="autoConnectWebSocket"
+            checked={autoConnectWebSocket}
+            onCheckedChange={onAutoConnectWebSocketChange}
           />
         </div>
-        <div className="flex items-center space-x-2">
-          <Checkbox
+        
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="enableManualCryptoTrading">Manual Crypto Trading</Label>
+            <p className="text-sm text-muted-foreground">
+              Enable manual trading for cryptocurrencies
+            </p>
+          </div>
+          <Switch
             id="enableManualCryptoTrading"
             checked={enableManualCryptoTrading}
-            onCheckedChange={(checked) => 
-              onEnableManualCryptoTradingChange(checked as boolean)
-            }
+            onCheckedChange={onEnableManualCryptoTradingChange}
           />
-          <Label htmlFor="enableManualCryptoTrading">Enable Manual Crypto Trading</Label>
         </div>
-        <p className="text-sm text-muted-foreground">
-          The WebSocket URL is used for real-time crypto price updates. The default URL is wss://ws.kraken.com/v2
-        </p>
+        
+        <div className="bg-muted p-3 rounded-md flex items-start gap-2 text-sm">
+          <InfoCircledIcon className="h-5 w-5 text-muted-foreground mt-0.5" />
+          <div>
+            <p className="text-muted-foreground">
+              The Kraken WebSocket connection sends a ping every 30 seconds to keep the connection alive. 
+              The connection will close after 1 minute of inactivity.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

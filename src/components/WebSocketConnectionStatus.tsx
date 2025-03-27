@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
@@ -9,8 +10,14 @@ interface WebSocketConnectionStatusProps {
   isConnected: boolean;
   url: string;
   error: Error | null;
-  reconnect: () => void;
+  reconnect?: () => void;
+  connect?: () => void;
+  disconnect?: () => void;
   lastMessageTime?: Date | null;
+  lastPingTime?: Date | null;
+  lastPongTime?: Date | null;
+  autoConnect?: boolean;
+  onAutoConnectChange?: (autoConnect: boolean) => void;
 }
 
 const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
@@ -18,7 +25,13 @@ const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
   url,
   error,
   reconnect,
-  lastMessageTime
+  connect,
+  disconnect,
+  lastMessageTime,
+  lastPingTime,
+  lastPongTime,
+  autoConnect,
+  onAutoConnectChange
 }) => {
   const [connectionDuration, setConnectionDuration] = useState<string>('');
   const [connectionStartTime, setConnectionStartTime] = useState<Date | null>(null);
@@ -72,7 +85,17 @@ const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
             >
               {isConnected ? 'Connected' : 'Disconnected'}
             </Badge>
-            {!isConnected && (
+            {!isConnected && connect && (
+              <Button size="sm" variant="outline" onClick={connect}>
+                Connect
+              </Button>
+            )}
+            {isConnected && disconnect && (
+              <Button size="sm" variant="outline" onClick={disconnect}>
+                Disconnect
+              </Button>
+            )}
+            {reconnect && (
               <Button size="sm" variant="outline" onClick={reconnect}>
                 Reconnect
               </Button>
@@ -104,6 +127,20 @@ const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
                 <div>{lastMessageTime.toLocaleTimeString()}</div>
               </>
             )}
+            
+            {lastPingTime && (
+              <>
+                <div className="font-medium">Last ping:</div>
+                <div>{lastPingTime.toLocaleTimeString()}</div>
+              </>
+            )}
+            
+            {lastPongTime && (
+              <>
+                <div className="font-medium">Last pong:</div>
+                <div>{lastPongTime.toLocaleTimeString()}</div>
+              </>
+            )}
           </div>
           
           {error && (
@@ -111,6 +148,26 @@ const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
               <AlertTitle>Connection Error</AlertTitle>
               <AlertDescription>{error.message}</AlertDescription>
             </Alert>
+          )}
+          
+          {onAutoConnectChange && (
+            <div className="flex items-center justify-between mt-4 p-3 border rounded-md">
+              <div>
+                <div className="font-medium">Auto-Connect</div>
+                <div className="text-sm text-muted-foreground">
+                  Automatically connect on page load
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <label className="text-sm">
+                  {autoConnect ? 'On' : 'Off'}
+                </label>
+                <Switch
+                  checked={autoConnect}
+                  onCheckedChange={onAutoConnectChange}
+                />
+              </div>
+            </div>
           )}
           
           <Accordion type="single" collapsible>
@@ -127,14 +184,34 @@ const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
                     <li>Error code 1006 typically indicates an abnormal closure - the connection was closed without a proper close frame</li>
                   </ol>
                   
-                  <div className="mt-4">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={reconnect}
-                    >
-                      Manual Reconnect
-                    </Button>
+                  <div className="mt-4 flex gap-2">
+                    {connect && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={connect}
+                      >
+                        Connect
+                      </Button>
+                    )}
+                    {disconnect && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={disconnect}
+                      >
+                        Disconnect
+                      </Button>
+                    )}
+                    {reconnect && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={reconnect}
+                      >
+                        Reconnect
+                      </Button>
+                    )}
                   </div>
                 </div>
               </AccordionContent>

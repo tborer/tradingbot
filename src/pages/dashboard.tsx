@@ -1441,7 +1441,7 @@ export default function Dashboard() {
             <TabsTrigger value="crypto">Crypto</TabsTrigger>
             <TabsTrigger value="reporting">Reporting</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
-            <TabsTrigger value="websocket-logs">WebSocket Logs</TabsTrigger>
+            <TabsTrigger value="websocket-logs">API Logs</TabsTrigger>
             <TabsTrigger value="research">Research</TabsTrigger>
             <TabsTrigger value="user-management">User Management</TabsTrigger>
           </TabsList>

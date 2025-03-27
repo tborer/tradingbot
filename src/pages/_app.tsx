@@ -2,6 +2,7 @@ import type { AppProps } from 'next/app'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { WebSocketLogProvider } from '@/contexts/WebSocketLogContext'
 import { KrakenWebSocketProvider } from '@/contexts/KrakenWebSocketContext'
+import { ResearchApiLogProvider } from '@/contexts/ResearchApiLogContext'
 import '../styles/globals.css';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { Toaster } from "@/components/ui/toaster"
@@ -32,12 +33,14 @@ export default function App({ Component, pageProps }: AppProps) {
     <div className="min-h-screen">
       <AuthProvider>
         <WebSocketLogProvider>
-          <KrakenWebSocketProvider>
-            <ProtectedRoute>
-              <Component {...pageProps} />
-            </ProtectedRoute>
-            <Toaster />
-          </KrakenWebSocketProvider>
+          <ResearchApiLogProvider>
+            <KrakenWebSocketProvider>
+              <ProtectedRoute>
+                <Component {...pageProps} />
+              </ProtectedRoute>
+              <Toaster />
+            </KrakenWebSocketProvider>
+          </ResearchApiLogProvider>
         </WebSocketLogProvider>
       </AuthProvider>
     </div>

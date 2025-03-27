@@ -9,6 +9,7 @@ import { CheckCircledIcon, CrossCircledIcon } from '@radix-ui/react-icons';
 import { useToast } from '@/components/ui/use-toast';
 import { fetchHistoricalData } from '@/lib/alphaVantage';
 import { useAuth } from '@/contexts/AuthContext';
+import { useResearchApiLogs } from '@/contexts/ResearchApiLogContext';
 
 const Research: React.FC = () => {
   const [symbol, setSymbol] = useState('');
@@ -38,6 +39,8 @@ const Research: React.FC = () => {
     }
   }, [user]);
 
+  const { addLog } = useResearchApiLogs();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -63,7 +66,23 @@ const Research: React.FC = () => {
     setResult(null);
 
     try {
-      const data = await fetchHistoricalData(symbol, market, apiKey);
+      const data = await fetchHistoricalData(
+        symbol, 
+        market, 
+        apiKey,
+        // Pass the logging function to the API call
+        (url, method, requestBody, response, status, error, duration) => {
+          addLog({
+            url,
+            method,
+            requestBody,
+            response,
+            status,
+            error,
+            duration
+          });
+        }
+      );
       
       if (data.Error) {
         setResult({

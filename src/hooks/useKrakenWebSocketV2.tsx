@@ -109,12 +109,30 @@ export function useKrakenWebSocket({
     }
 
     try {
+      // Ensure we're using the secure WebSocket protocol (wss://)
+      let secureUrl = url;
+      if (secureUrl.startsWith('ws://')) {
+        console.warn('Insecure WebSocket URL detected, upgrading to secure wss:// protocol');
+        addLog('warning', 'Insecure WebSocket URL detected, upgrading to secure protocol', { 
+          originalUrl: url, 
+          timestamp: Date.now() 
+        });
+        secureUrl = secureUrl.replace('ws://', 'wss://');
+      } else if (!secureUrl.startsWith('wss://')) {
+        console.warn('WebSocket URL does not specify protocol, adding secure wss:// protocol');
+        addLog('warning', 'WebSocket URL does not specify protocol, adding secure protocol', { 
+          originalUrl: url, 
+          timestamp: Date.now() 
+        });
+        secureUrl = `wss://${secureUrl}`;
+      }
+      
       // Add timestamp and random string to prevent caching issues
       const timestamp = Date.now();
       const randomStr = Math.random().toString(36).substring(2, 15);
-      const wsUrl = `${url}?t=${timestamp}&r=${randomStr}`;
+      const wsUrl = `${secureUrl}?t=${timestamp}&r=${randomStr}`;
       
-      console.log(`Connecting to Kraken WebSocket at ${wsUrl}`);
+      console.log(`Connecting to Kraken WebSocket using secure URL: ${wsUrl}`);
       addLog('info', 'Connecting to Kraken WebSocket', { url: wsUrl });
       
       const socket = new WebSocket(wsUrl);
@@ -319,13 +337,18 @@ export function useKrakenWebSocket({
             
             // Try the v1 WebSocket URL as a fallback
             reconnectTimeoutRef.current = setTimeout(() => {
-              // Create a new connection with v1 URL
+              // Create a new connection with v1 URL - ensure it uses secure protocol
               const v1Url = 'wss://ws.kraken.com';
               
-              console.log(`Connecting to alternative Kraken WebSocket at ${v1Url}`);
+              console.log(`Connecting to alternative Kraken WebSocket using secure URL: ${v1Url}`);
               addLog('info', 'Connecting to alternative Kraken WebSocket', { url: v1Url });
               
-              const altSocket = new WebSocket(v1Url);
+              // Add timestamp and random string to prevent caching issues
+              const timestamp = Date.now();
+              const randomStr = Math.random().toString(36).substring(2, 15);
+              const secureV1Url = `${v1Url}?t=${timestamp}&r=${randomStr}`;
+              
+              const altSocket = new WebSocket(secureV1Url);
               socketRef.current = altSocket;
               
               altSocket.onopen = () => {

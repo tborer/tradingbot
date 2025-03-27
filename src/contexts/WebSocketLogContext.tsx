@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef } from 'react';
 import { 
   ErrorCategory, 
   ErrorSeverity, 
@@ -24,6 +24,10 @@ interface WebSocketLogContextType {
   clearLogs: () => void;
   isLoggingEnabled: boolean;
   setLoggingEnabled: (enabled: boolean) => void;
+  isErrorLoggingEnabled: boolean;
+  setErrorLoggingEnabled: (enabled: boolean) => void;
+  errorSampleRate: number;
+  setErrorSampleRate: (rate: number) => void;
 }
 
 const WebSocketLogContext = createContext<WebSocketLogContextType | undefined>(undefined);
@@ -43,19 +47,40 @@ interface WebSocketLogProviderProps {
 export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ children }) => {
   const [logs, setLogs] = useState<WebSocketLog[]>([]);
   const [isLoggingEnabled, setIsLoggingEnabled] = useState<boolean>(true);
+  const [isErrorLoggingEnabled, setIsErrorLoggingEnabled] = useState<boolean>(true);
+  const [errorSampleRate, setErrorSampleRate] = useState<number>(100); // 100% by default
+  const errorCountRef = useRef<number>(0);
 
-  // Load logging preference from localStorage on mount
+  // Load logging preferences from localStorage on mount
   useEffect(() => {
-    const savedPreference = localStorage.getItem('websocket-logging-enabled');
-    if (savedPreference !== null) {
-      setIsLoggingEnabled(savedPreference === 'true');
+    const savedLoggingPreference = localStorage.getItem('websocket-logging-enabled');
+    if (savedLoggingPreference !== null) {
+      setIsLoggingEnabled(savedLoggingPreference === 'true');
+    }
+    
+    const savedErrorLoggingPreference = localStorage.getItem('websocket-error-logging-enabled');
+    if (savedErrorLoggingPreference !== null) {
+      setIsErrorLoggingEnabled(savedErrorLoggingPreference === 'true');
+    }
+    
+    const savedErrorSampleRate = localStorage.getItem('websocket-error-sample-rate');
+    if (savedErrorSampleRate !== null) {
+      setErrorSampleRate(parseInt(savedErrorSampleRate, 10));
     }
   }, []);
 
-  // Save logging preference to localStorage when it changes
+  // Save logging preferences to localStorage when they change
   useEffect(() => {
     localStorage.setItem('websocket-logging-enabled', isLoggingEnabled.toString());
   }, [isLoggingEnabled]);
+  
+  useEffect(() => {
+    localStorage.setItem('websocket-error-logging-enabled', isErrorLoggingEnabled.toString());
+  }, [isErrorLoggingEnabled]);
+  
+  useEffect(() => {
+    localStorage.setItem('websocket-error-sample-rate', errorSampleRate.toString());
+  }, [errorSampleRate]);
 
   const setLoggingEnabled = useCallback((enabled: boolean) => {
     setIsLoggingEnabled(enabled);
@@ -90,32 +115,51 @@ export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ chil
     details?: Record<string, any>, 
     errorCode?: string
   ) => {
-    // Only add logs if logging is enabled
-    if (isLoggingEnabled) {
-      const newLog: WebSocketLog = {
-        id: crypto.randomUUID(),
-        timestamp: new Date(),
-        level,
-        message,
-        code: errorCode,
-        details,
-      };
+    // For error logs, check if error logging is enabled and respect sample rate
+    if (level === 'error') {
+      // If error logging is disabled, don't log errors
+      if (!isErrorLoggingEnabled) {
+        return;
+      }
       
-      setLogs((prevLogs) => [newLog, ...prevLogs]);
+      // Apply error sampling if sample rate is less than 100%
+      if (errorSampleRate < 100) {
+        errorCountRef.current += 1;
+        // Only log errors based on the sample rate
+        // For example, if rate is 10%, log every 10th error
+        if (errorCountRef.current % Math.floor(100 / errorSampleRate) !== 0) {
+          return;
+        }
+      }
+    } 
+    // For non-error logs, check if general logging is enabled
+    else if (!isLoggingEnabled) {
+      return;
     }
     
-    // Always log errors to console regardless of logging state
+    // Add log to the UI logs collection
+    const newLog: WebSocketLog = {
+      id: crypto.randomUUID(),
+      timestamp: new Date(),
+      level,
+      message,
+      code: errorCode,
+      details,
+    };
+    
+    setLogs((prevLogs) => [newLog, ...prevLogs]);
+    
+    // Console logging
     if (level === 'error') {
       console.error(`[${errorCode || 'WebSocket error'}]`, message, details || '');
-    } else if (isLoggingEnabled) {
-      // Only log non-errors to console if logging is enabled
+    } else {
       const consoleMethod = level === 'warning' ? console.warn : 
-                            level === 'success' ? console.info : 
-                            console.log;
-      
+                          level === 'success' ? console.info : 
+                          console.log;
+    
       consoleMethod(`[${errorCode || `WebSocket ${level}`}]`, message, details || '');
     }
-  }, [isLoggingEnabled]);
+  }, [isLoggingEnabled, isErrorLoggingEnabled, errorSampleRate]);
 
   // Enhanced error logging function that integrates with the errorLogger utility
   const logError = useCallback((
@@ -124,6 +168,20 @@ export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ chil
     code?: string, 
     context?: Record<string, any>
   ) => {
+    // If error logging is disabled, don't log errors
+    if (!isErrorLoggingEnabled) {
+      return;
+    }
+    
+    // Apply error sampling if sample rate is less than 100%
+    if (errorSampleRate < 100) {
+      errorCountRef.current += 1;
+      // Only log errors based on the sample rate
+      if (errorCountRef.current % Math.floor(100 / errorSampleRate) !== 0) {
+        return;
+      }
+    }
+    
     // Extract error details
     let errorMessage = message;
     let errorDetails = context || {};
@@ -141,7 +199,7 @@ export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ chil
     // Use the error code if provided, otherwise use a generic WebSocket error code
     const errorCode = code || WebSocketErrorCodes.INVALID_MESSAGE_FORMAT;
     
-    // Log using the error logger utility
+    // Log using the error logger utility only if error logging is enabled
     createAndLogError(
       ErrorCategory.WEBSOCKET,
       ErrorSeverity.ERROR,
@@ -153,7 +211,7 @@ export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ chil
     
     // Add to the WebSocket logs UI
     addLog('error', errorMessage, { ...errorDetails, stack: errorStack }, errorCode);
-  }, [addLog]);
+  }, [addLog, isErrorLoggingEnabled, errorSampleRate]);
 
   const clearLogs = useCallback(() => {
     setLogs([]);
@@ -166,7 +224,11 @@ export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ chil
       logError,
       clearLogs, 
       isLoggingEnabled, 
-      setLoggingEnabled 
+      setLoggingEnabled,
+      isErrorLoggingEnabled,
+      setErrorLoggingEnabled,
+      errorSampleRate,
+      setErrorSampleRate
     }}>
       {children}
     </WebSocketLogContext.Provider>

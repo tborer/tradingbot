@@ -34,10 +34,11 @@ export const useKrakenWebSocket = ({
     }
     
     console.log('Trying alternative Kraken WebSocket URL...');
-    // Try the v1 WebSocket URL as a fallback
+    // Try the v1 WebSocket URL as a fallback - ensure it uses secure protocol
     const alternativeUrl = 'wss://ws.kraken.com';
     
     try {
+      console.log(`Connecting to alternative Kraken WebSocket using secure URL: ${alternativeUrl}`);
       const socket = new WebSocket(alternativeUrl);
       socketRef.current = socket;
       
@@ -114,8 +115,18 @@ export const useKrakenWebSocket = ({
     }
 
     try {
-      console.log(`Connecting to Kraken WebSocket at URL: ${url}`);
-      const socket = new WebSocket(url);
+      // Ensure we're using the secure WebSocket protocol (wss://)
+      let secureUrl = url;
+      if (secureUrl.startsWith('ws://')) {
+        console.warn('Insecure WebSocket URL detected, upgrading to secure wss:// protocol');
+        secureUrl = secureUrl.replace('ws://', 'wss://');
+      } else if (!secureUrl.startsWith('wss://')) {
+        console.warn('WebSocket URL does not specify protocol, adding secure wss:// protocol');
+        secureUrl = `wss://${secureUrl}`;
+      }
+      
+      console.log(`Connecting to Kraken WebSocket using secure URL: ${secureUrl}`);
+      const socket = new WebSocket(secureUrl);
       socketRef.current = socket;
 
       socket.onopen = () => {

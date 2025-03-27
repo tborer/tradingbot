@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Slider } from '@/components/ui/slider';
 
 const LogLevelBadge = ({ level }: { level: LogLevel }) => {
   const colorMap: Record<LogLevel, string> = {
@@ -28,7 +29,16 @@ const LogLevelBadge = ({ level }: { level: LogLevel }) => {
 };
 
 const WebSocketLogger: React.FC = () => {
-  const { logs, clearLogs, isLoggingEnabled, setLoggingEnabled } = useWebSocketLogs();
+  const { 
+    logs, 
+    clearLogs, 
+    isLoggingEnabled, 
+    setLoggingEnabled,
+    isErrorLoggingEnabled,
+    setErrorLoggingEnabled,
+    errorSampleRate,
+    setErrorSampleRate
+  } = useWebSocketLogs();
   const [filter, setFilter] = useState('');
   const [activeTab, setActiveTab] = useState<LogLevel | 'all'>('all');
   const [ignoreHeartbeat, setIgnoreHeartbeat] = useState(false);
@@ -90,7 +100,7 @@ const WebSocketLogger: React.FC = () => {
         <CardDescription>
           Monitor WebSocket connections, messages, and errors
         </CardDescription>
-        <div className="flex flex-col gap-2 mt-2">
+        <div className="flex flex-col gap-4 mt-2">
           <div className="flex gap-2">
             <Input 
               placeholder="Filter logs..." 
@@ -99,13 +109,81 @@ const WebSocketLogger: React.FC = () => {
               className="max-w-sm"
             />
           </div>
-          <div className="flex items-center space-x-2 mt-2">
-            <Checkbox 
-              id="ignore-heartbeat" 
-              checked={ignoreHeartbeat} 
-              onCheckedChange={(checked) => setIgnoreHeartbeat(checked === true)}
-            />
-            <Label htmlFor="ignore-heartbeat">Ignore Heartbeat</Label>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border p-4 rounded-md">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="error-logging-toggle"
+                    checked={isErrorLoggingEnabled}
+                    onCheckedChange={setErrorLoggingEnabled}
+                  />
+                  <Label htmlFor="error-logging-toggle" className="text-sm font-medium">
+                    {isErrorLoggingEnabled ? "Error Logging Enabled" : "Error Logging Disabled"}
+                  </Label>
+                </div>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-6 w-6">
+                        <span className="sr-only">Info</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="M12 16v-4" />
+                          <path d="M12 8h.01" />
+                        </svg>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">Toggle error logging to reduce performance impact from high-volume WebSocket errors</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <Label htmlFor="error-sample-rate" className="text-sm">Error Sample Rate: {errorSampleRate}%</Label>
+                </div>
+                <Slider
+                  id="error-sample-rate"
+                  min={1}
+                  max={100}
+                  step={1}
+                  value={[errorSampleRate]}
+                  onValueChange={(value) => setErrorSampleRate(value[0])}
+                  disabled={!isErrorLoggingEnabled}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {errorSampleRate < 100 
+                    ? `Logging ${errorSampleRate}% of errors (1 in ${Math.floor(100 / errorSampleRate)})`
+                    : "Logging all errors"}
+                </p>
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="ignore-heartbeat" 
+                  checked={ignoreHeartbeat} 
+                  onCheckedChange={(checked) => setIgnoreHeartbeat(checked === true)}
+                />
+                <Label htmlFor="ignore-heartbeat">Ignore Heartbeat Messages</Label>
+              </div>
+              
+              <div className="text-xs text-muted-foreground space-y-2">
+                <p>
+                  <strong>Performance Tips:</strong>
+                </p>
+                <ul className="list-disc pl-4 space-y-1">
+                  <li>Disable error logging when experiencing high-volume errors</li>
+                  <li>Use sample rate to capture only a percentage of errors</li>
+                  <li>Clear logs regularly to improve UI performance</li>
+                </ul>
+              </div>
+            </div>
           </div>
         </div>
       </CardHeader>
@@ -182,11 +260,20 @@ const WebSocketLogger: React.FC = () => {
           <div className="flex items-center text-amber-500">
             <span>WebSocket logging is disabled. No new logs will be captured.</span>
           </div>
+        ) : !isErrorLoggingEnabled ? (
+          <div className="flex items-center text-amber-500">
+            <span>Error logging is disabled. WebSocket errors will not be captured.</span>
+          </div>
         ) : (
           <div>
             Showing {filteredLogs.length} of {logs.length} logs
             {ignoreHeartbeat && heartbeatCount > 0 && (
               <span className="ml-2">({heartbeatCount} heartbeat messages hidden)</span>
+            )}
+            {errorSampleRate < 100 && (
+              <span className="ml-2 text-amber-500">
+                (Sampling {errorSampleRate}% of errors)
+              </span>
             )}
           </div>
         )}

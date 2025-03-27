@@ -31,12 +31,30 @@ export function useKrakenWebSocket({
 
     const connect = () => {
       try {
-        console.log(`Connecting to Kraken WebSocket at URL: ${url}`);
-        addLog('info', 'Connecting to WebSocket', { url, timestamp: Date.now() });
+        // Ensure we're using the secure WebSocket protocol (wss://)
+        let secureUrl = url;
+        if (secureUrl.startsWith('ws://')) {
+          console.warn('Insecure WebSocket URL detected, upgrading to secure wss:// protocol');
+          addLog('warning', 'Insecure WebSocket URL detected, upgrading to secure protocol', { 
+            originalUrl: url, 
+            timestamp: Date.now() 
+          });
+          secureUrl = secureUrl.replace('ws://', 'wss://');
+        } else if (!secureUrl.startsWith('wss://')) {
+          console.warn('WebSocket URL does not specify protocol, adding secure wss:// protocol');
+          addLog('warning', 'WebSocket URL does not specify protocol, adding secure protocol', { 
+            originalUrl: url, 
+            timestamp: Date.now() 
+          });
+          secureUrl = `wss://${secureUrl}`;
+        }
+        
+        console.log(`Connecting to Kraken WebSocket using secure URL: ${secureUrl}`);
+        addLog('info', 'Connecting to WebSocket', { url: secureUrl, timestamp: Date.now() });
         
         // Add a timestamp to prevent caching
         const timestamp = Date.now();
-        const socket = new WebSocket(`${url}?t=${timestamp}`);
+        const socket = new WebSocket(`${secureUrl}?t=${timestamp}`);
         socketRef.current = socket;
 
         socket.onopen = () => {

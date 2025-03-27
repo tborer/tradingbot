@@ -106,9 +106,9 @@ export default function AutoTradeModal({
           <div className="space-y-2">
             <Label>Buy Threshold: {settings.buyThresholdPercent}%</Label>
             <Slider
-              min={1}
-              max={50}
-              step={0.5}
+              min={0.25}
+              max={10}
+              step={0.25}
               value={[settings.buyThresholdPercent]}
               onValueChange={(value) => 
                 setSettings({ ...settings, buyThresholdPercent: value[0] })
@@ -122,9 +122,9 @@ export default function AutoTradeModal({
           <div className="space-y-2">
             <Label>Sell Threshold: {settings.sellThresholdPercent}%</Label>
             <Slider
-              min={1}
-              max={50}
-              step={0.5}
+              min={0.25}
+              max={10}
+              step={0.25}
               value={[settings.sellThresholdPercent]}
               onValueChange={(value) => 
                 setSettings({ ...settings, sellThresholdPercent: value[0] })

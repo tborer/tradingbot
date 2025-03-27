@@ -64,6 +64,7 @@ export default function CryptoTransactionHistory() {
               <TableHead>Shares</TableHead>
               <TableHead>Price ($Per Share)</TableHead>
               <TableHead>Total Amount</TableHead>
+              <TableHead>Available Until</TableHead>
               <TableHead>Details</TableHead>
             </TableRow>
           </TableHeader>
@@ -80,6 +81,7 @@ export default function CryptoTransactionHistory() {
                 <TableCell>{transaction.shares.toFixed(8)}</TableCell>
                 <TableCell>${transaction.price.toFixed(6)}</TableCell>
                 <TableCell>${transaction.totalAmount.toFixed(2)}</TableCell>
+                <TableCell>{transaction.expiresAt ? format(new Date(transaction.expiresAt), 'MMM d, yyyy') : 'N/A'}</TableCell>
                 <TableCell>
                   <Button 
                     variant="outline" 
@@ -137,6 +139,12 @@ export default function CryptoTransactionHistory() {
                 <div>
                   <h3 className="text-sm font-medium">Total Amount</h3>
                   <p className="text-sm text-muted-foreground">${selectedTransaction.totalAmount.toFixed(2)}</p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium">Available Until</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedTransaction.expiresAt ? format(new Date(selectedTransaction.expiresAt), 'MMM d, yyyy h:mm a') : 'N/A'}
+                  </p>
                 </div>
               </div>
 

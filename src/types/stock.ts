@@ -77,4 +77,5 @@ export interface CryptoTransaction {
   apiResponse?: string;
   logInfo?: string;
   createdAt: string;
+  expiresAt?: string;
 }

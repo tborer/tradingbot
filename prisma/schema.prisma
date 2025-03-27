@@ -95,6 +95,7 @@ model CryptoTransaction {
   apiResponse  String?  @db.Text  // Store the API response for troubleshooting
   logInfo      String?  @db.Text  // Additional logging information
   createdAt    DateTime @default(now())
+  expiresAt    DateTime @default(dbgenerated("(now() + interval '7 days')")) // Default 7-day retention
   userId       String   @db.Uuid
 }
 

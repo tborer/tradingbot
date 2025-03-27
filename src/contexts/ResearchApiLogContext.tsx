@@ -80,7 +80,7 @@ export const ResearchApiLogProvider: React.FC<ResearchApiLogProviderProps> = ({ 
       addLog, 
       clearLogs, 
       isLoggingEnabled, 
-      setLoggingEnabled
+      setLoggingEnabled: setIsLoggingEnabled
     }}>
       {children}
     </ResearchApiLogContext.Provider>

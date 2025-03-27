@@ -3,6 +3,7 @@ import { AuthProvider } from '@/contexts/AuthContext'
 import { WebSocketLogProvider } from '@/contexts/WebSocketLogContext'
 import { KrakenWebSocketProvider } from '@/contexts/KrakenWebSocketContext'
 import { ResearchApiLogProvider } from '@/contexts/ResearchApiLogContext'
+import { AnalysisProvider } from '@/contexts/AnalysisContext'
 import '../styles/globals.css';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { Toaster } from "@/components/ui/toaster"
@@ -35,10 +36,12 @@ export default function App({ Component, pageProps }: AppProps) {
         <WebSocketLogProvider>
           <ResearchApiLogProvider>
             <KrakenWebSocketProvider>
-              <ProtectedRoute>
-                <Component {...pageProps} />
-              </ProtectedRoute>
-              <Toaster />
+              <AnalysisProvider>
+                <ProtectedRoute>
+                  <Component {...pageProps} />
+                </ProtectedRoute>
+                <Toaster />
+              </AnalysisProvider>
             </KrakenWebSocketProvider>
           </ResearchApiLogProvider>
         </WebSocketLogProvider>

@@ -17,6 +17,7 @@ import SortableCryptoList from "@/components/SortableCryptoList";
 import TransactionHistory from "@/components/TransactionHistory";
 import CryptoTransactionHistory from "@/components/CryptoTransactionHistory";
 import KrakenWebSocketSettings from "@/components/KrakenWebSocketSettings";
+import AlphaVantageSettings from "@/components/AlphaVantageSettings";
 import WebSocketLogger from "@/components/WebSocketLogger";
 import Research from "@/components/Research";
 import UserManagement from "@/components/UserManagement";
@@ -923,6 +924,7 @@ export default function Dashboard() {
           tradePlatformApiKey: settings.tradePlatformApiKey,
           tradePlatformApiSecret: settings.tradePlatformApiSecret,
           finnhubApiKey: settings.finnhubApiKey,
+          alphaVantageApiKey: settings.alphaVantageApiKey,
           enableAutoStockTrading: settings.enableAutoStockTrading,
           enableAutoCryptoTrading: settings.enableAutoCryptoTrading,
           enableManualCryptoTrading: settings.enableManualCryptoTrading,
@@ -1851,13 +1853,20 @@ export default function Dashboard() {
                       <KrakenWebSocketSettings
                         websocketUrl={settings.krakenWebsocketUrl || "wss://ws.kraken.com/v2"}
                         enableManualCryptoTrading={settings.enableManualCryptoTrading === true}
-                        onWebsocketUrlChange={(url) => 
-                          setSettings({ ...settings, krakenWebsocketUrl: url })
-                        }
+                        autoConnectWebSocket={true}
                         onEnableManualCryptoTradingChange={(enabled) => {
                           console.log("Setting enableManualCryptoTrading to:", enabled);
                           setSettings({ ...settings, enableManualCryptoTrading: enabled });
                         }}
+                        onAutoConnectWebSocketChange={() => {}}
+                      />
+                      
+                      {/* AlphaVantage API Settings */}
+                      <AlphaVantageSettings
+                        apiKey={settings.alphaVantageApiKey || ''}
+                        onApiKeyChange={(apiKey) => 
+                          setSettings({ ...settings, alphaVantageApiKey: apiKey })
+                        }
                       />
                     </div>
                     

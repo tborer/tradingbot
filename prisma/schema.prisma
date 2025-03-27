@@ -44,6 +44,7 @@ model Settings {
   finnhubApiKey     String?
   krakenApiKey      String?
   krakenApiSign     String?
+  alphaVantageApiKey String?
   enableAutoStockTrading Boolean @default(false)
   enableAutoCryptoTrading Boolean @default(false)
   enableManualCryptoTrading Boolean @default(false)

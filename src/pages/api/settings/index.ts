@@ -45,6 +45,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         finnhubApiKey,
         krakenApiKey,
         krakenApiSign,
+        alphaVantageApiKey,
         enableAutoStockTrading,
         enableAutoCryptoTrading,
         enableManualCryptoTrading,
@@ -89,6 +90,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (finnhubApiKey !== undefined) updateData['finnhubApiKey'] = finnhubApiKey;
       if (krakenApiKey !== undefined) updateData['krakenApiKey'] = krakenApiKey;
       if (krakenApiSign !== undefined) updateData['krakenApiSign'] = krakenApiSign;
+      if (alphaVantageApiKey !== undefined) updateData['alphaVantageApiKey'] = alphaVantageApiKey;
       if (krakenWebsocketUrl !== undefined) updateData['krakenWebsocketUrl'] = krakenWebsocketUrl;
       
       const settings = await prisma.settings.upsert({

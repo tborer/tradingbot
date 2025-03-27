@@ -28,6 +28,7 @@ export interface Settings {
   finnhubApiKey?: string;
   krakenApiKey?: string;
   krakenApiSign?: string;
+  alphaVantageApiKey?: string;
   krakenWebsocketUrl?: string;
   enableAutoStockTrading: boolean;
   enableAutoCryptoTrading: boolean;

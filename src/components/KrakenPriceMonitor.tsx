@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { KrakenPrice } from '@/lib/kraken';
 import { useWebSocketLogs } from '@/contexts/WebSocketLogContext';
-import { useKrakenWebSocketConnection } from '@/hooks/useKrakenWebSocketConnection';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/use-toast';
 import WebSocketConnectionStatus from '@/components/WebSocketConnectionStatus';
+import { useKrakenWebSocket } from '@/contexts/KrakenWebSocketContext';
 
 interface KrakenPriceMonitorProps {
   symbols: string[];
@@ -170,19 +170,28 @@ export default function KrakenPriceMonitor({
     }
   }, []);
   
-  // Use our new WebSocket hook
+  // Use the shared WebSocket context
   const { 
     isConnected, 
     error, 
     connect, 
     disconnect,
     lastPingTime,
-    lastPongTime
-  } = useKrakenWebSocketConnection({
-    symbols,
-    onPriceUpdate: handlePriceUpdate,
-    autoConnect
-  });
+    lastPongTime,
+    lastPrices,
+    lastUpdated: contextLastUpdated,
+    autoConnect: contextAutoConnect,
+    setAutoConnect: setContextAutoConnect,
+    updateSymbols
+  } = useKrakenWebSocket();
+  
+  // Update symbols in the shared context when they change
+  useEffect(() => {
+    if (symbols.length > 0) {
+      // Update the symbols in the shared context
+      updateSymbols(symbols);
+    }
+  }, [symbols, updateSymbols]);
   
   // Clear prices when symbols change
   useEffect(() => {
@@ -203,11 +212,11 @@ export default function KrakenPriceMonitor({
         error={error}
         connect={connect}
         disconnect={disconnect}
-        lastMessageTime={lastUpdated}
+        lastMessageTime={contextLastUpdated}
         lastPingTime={lastPingTime}
         lastPongTime={lastPongTime}
-        autoConnect={autoConnect}
-        onAutoConnectChange={handleAutoConnectChange}
+        autoConnect={contextAutoConnect}
+        onAutoConnectChange={setContextAutoConnect}
       />
       
       <Card>
@@ -247,8 +256,8 @@ export default function KrakenPriceMonitor({
           ) : (
             <>
               <div className="space-y-2">
-                {prices.length > 0 ? (
-                  prices.map(price => (
+                {lastPrices.length > 0 ? (
+                  lastPrices.map(price => (
                     <div key={price.symbol} className="flex justify-between items-center p-2 border rounded">
                       <span className="font-medium">{price.symbol}</span>
                       <span>${price.price.toFixed(2)}</span>
@@ -259,9 +268,9 @@ export default function KrakenPriceMonitor({
                 )}
               </div>
               
-              {lastUpdated && (
+              {contextLastUpdated && (
                 <p className="text-xs text-muted-foreground mt-4">
-                  Last updated: {lastUpdated.toLocaleTimeString()}
+                  Last updated: {contextLastUpdated.toLocaleTimeString()}
                 </p>
               )}
             </>

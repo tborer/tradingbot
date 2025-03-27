@@ -677,7 +677,37 @@ export default function Dashboard() {
     });
   };
   
-  // Update crypto prices from Kraken websocket data
+  // Import the shared Kraken WebSocket context
+  const { 
+    isConnected: krakenConnected, 
+    lastPrices: krakenPrices, 
+    updateSymbols: updateKrakenSymbols,
+    lastUpdated: krakenLastUpdated
+  } = useKrakenWebSocket();
+  
+  // Update crypto symbols in the shared context when they change
+  useEffect(() => {
+    if (cryptos.length > 0) {
+      const symbols = cryptos.map(crypto => crypto.symbol);
+      updateKrakenSymbols(symbols);
+    }
+  }, [cryptos, updateKrakenSymbols]);
+  
+  // Update crypto prices when new prices come from the shared WebSocket context
+  useEffect(() => {
+    if (krakenPrices.length > 0) {
+      console.log('Updating crypto prices from shared WebSocket context:', krakenPrices);
+      updateCryptoPrices(krakenPrices);
+      
+      // Update the last updated timestamp
+      if (krakenLastUpdated) {
+        setLastUpdated(krakenLastUpdated);
+      }
+    }
+  }, [krakenPrices, krakenLastUpdated]);
+  
+  // Update crypto prices from Kraken websocket data - this will be called both from the shared context
+  // and from the legacy WebSocket connection during transition
   const updateCryptoPrices = (cryptoPrices: KrakenPrice[]) => {
     if (cryptoPrices.length === 0) {
       console.log('No crypto prices to update');
@@ -1520,9 +1550,9 @@ export default function Dashboard() {
             {/* Connection Status */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className={`h-3 w-3 rounded-full ${cryptoConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <div className={`h-3 w-3 rounded-full ${krakenConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
                 <span className="text-sm text-muted-foreground">
-                  {cryptoConnected ? 'Connected to Crypto Data' : 'Disconnected'}
+                  {krakenConnected ? 'Connected to Kraken WebSocket' : 'Disconnected from Kraken WebSocket'}
                 </span>
               </div>
               {lastUpdated && (

@@ -8,7 +8,7 @@ interface AlphaVantageResponse {
     '6. Last Refreshed': string;
     '7. Time Zone': string;
   };
-  'Time Series (Digital Currency Monthly)'?: Record<string, {
+  'Time Series (Digital Currency Daily)'?: Record<string, {
     '1. open': string;
     '2. high': string;
     '3. low': string;
@@ -39,7 +39,7 @@ export async function fetchHistoricalData(
   logApiCall?: LogApiCall
 ): Promise<AlphaVantageResponse> {
   const startTime = Date.now();
-  const url = `https://www.alphavantage.co/query?function=DIGITAL_CURRENCY_MONTHLY&symbol=${symbol}&market=${market}&apikey=${apiKey}`;
+  const url = `https://www.alphavantage.co/query?function=DIGITAL_CURRENCY_DAILY&symbol=${symbol}&market=${market}&apikey=${apiKey}`;
   
   try {
     const response = await fetch(url);

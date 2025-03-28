@@ -121,13 +121,18 @@ const Research: React.FC = () => {
         
         // Get the current price from the most recent data point
         let currentPrice = 0;
-        if (data['Time Series (Digital Currency Monthly)']) {
-          const dates = Object.keys(data['Time Series (Digital Currency Monthly)']);
+        // Check for daily data first, then fall back to monthly if needed
+        const timeSeriesKey = data['Time Series (Digital Currency Daily)'] 
+          ? 'Time Series (Digital Currency Daily)' 
+          : 'Time Series (Digital Currency Monthly)';
+          
+        if (data[timeSeriesKey]) {
+          const dates = Object.keys(data[timeSeriesKey]);
           if (dates.length > 0) {
             // Sort dates in descending order
             dates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
             const latestDate = dates[0];
-            currentPrice = parseFloat(data['Time Series (Digital Currency Monthly)'][latestDate]['4. close']);
+            currentPrice = parseFloat(data[timeSeriesKey][latestDate]['4. close']);
           }
         }
         

@@ -9,7 +9,9 @@ import {
   identifyTrendLines, 
   getTrendLinesMessage,
   generateRecommendation,
-  extractHistoricalPrices
+  extractHistoricalPrices,
+  calculateFibonacciRetracements,
+  getFibonacciMessage
 } from '@/lib/analysisUtils';
 
 interface AnalysisCardProps {
@@ -35,6 +37,7 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
     resistance: null
   });
   const [recommendation, setRecommendation] = useState<string>('');
+  const [fibonacciLevels, setFibonacciLevels] = useState<ReturnType<typeof calculateFibonacciRetracements> | null>(null);
 
   useEffect(() => {
     if (historicalData) {
@@ -50,6 +53,18 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
       // Identify trend lines
       const trendLinesValues = identifyTrendLines(extractedPrices);
       setTrendLines(trendLinesValues);
+
+      // Calculate Fibonacci retracement levels
+      if (extractedPrices.length >= 2) {
+        // Find highest and lowest prices in the dataset
+        const sortedPrices = [...extractedPrices].sort((a, b) => a - b);
+        const lowestPrice = sortedPrices[0];
+        const highestPrice = sortedPrices[sortedPrices.length - 1];
+        
+        // Calculate Fibonacci levels
+        const fibLevels = calculateFibonacciRetracements(highestPrice, lowestPrice);
+        setFibonacciLevels(fibLevels);
+      }
 
       // Generate recommendation
       const price = currentPrice || (extractedPrices.length > 0 ? extractedPrices[0] : purchasePrice);
@@ -116,6 +131,17 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
                     {trendLines.support !== null && trendLines.resistance !== null
                       ? getTrendLinesMessage(price, trendLines.support, trendLines.resistance)
                       : "Identifying support and resistance levels..."}
+                  </p>
+                </div>
+                
+                <Separator />
+                
+                <div>
+                  <h4 className="font-medium mb-1">Fibonacci Retracements</h4>
+                  <p className="text-sm">
+                    {fibonacciLevels !== null
+                      ? getFibonacciMessage(price, fibonacciLevels)
+                      : "Calculating Fibonacci retracement levels..."}
                   </p>
                 </div>
               </div>

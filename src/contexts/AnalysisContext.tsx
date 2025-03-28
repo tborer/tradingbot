@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 
 interface AnalysisItem {
   id: string;
@@ -33,6 +33,31 @@ interface AnalysisProviderProps {
 
 export const AnalysisProvider: React.FC<AnalysisProviderProps> = ({ children }) => {
   const [items, setItems] = useState<AnalysisItem[]>([]);
+  
+  // Load saved items from localStorage on initial render
+  useEffect(() => {
+    const loadSavedItems = () => {
+      try {
+        const savedItems = localStorage.getItem('analysisItems');
+        if (savedItems) {
+          setItems(JSON.parse(savedItems));
+        }
+      } catch (error) {
+        console.error('Failed to load saved analysis items:', error);
+      }
+    };
+    
+    loadSavedItems();
+  }, []);
+
+  // Save items to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('analysisItems', JSON.stringify(items));
+    } catch (error) {
+      console.error('Failed to save analysis items:', error);
+    }
+  }, [items]);
 
   const addItem = useCallback((newItem: Omit<AnalysisItem, 'id'>) => {
     // Check if item with this symbol already exists

@@ -10,16 +10,20 @@ interface KrakenWebSocketSettingsProps {
   websocketUrl?: string;
   enableManualCryptoTrading: boolean;
   autoConnectWebSocket: boolean;
+  enableKrakenWebSocket?: boolean;
   onEnableManualCryptoTradingChange: (enabled: boolean) => void;
   onAutoConnectWebSocketChange: (enabled: boolean) => void;
+  onEnableKrakenWebSocketChange?: (enabled: boolean) => void;
 }
 
 const KrakenWebSocketSettings: React.FC<KrakenWebSocketSettingsProps> = ({
   websocketUrl = 'wss://ws.kraken.com/v2',
   enableManualCryptoTrading,
   autoConnectWebSocket,
+  enableKrakenWebSocket = true,
   onEnableManualCryptoTradingChange,
-  onAutoConnectWebSocketChange
+  onAutoConnectWebSocketChange,
+  onEnableKrakenWebSocketChange
 }) => {
   return (
     <div className="border-t pt-4 mt-4">
@@ -40,6 +44,20 @@ const KrakenWebSocketSettings: React.FC<KrakenWebSocketSettingsProps> = ({
         </div>
         
         <Separator />
+        
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="enableKrakenWebSocket">Enable Kraken WebSocket</Label>
+            <p className="text-sm text-muted-foreground">
+              Enable or disable the Kraken WebSocket connection completely
+            </p>
+          </div>
+          <Switch
+            id="enableKrakenWebSocket"
+            checked={enableKrakenWebSocket}
+            onCheckedChange={onEnableKrakenWebSocketChange}
+          />
+        </div>
         
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">

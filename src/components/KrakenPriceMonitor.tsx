@@ -28,7 +28,9 @@ export default function KrakenPriceMonitor({
   const [lastAutoTradeCheck, setLastAutoTradeCheck] = useState<Date | null>(null);
   const [autoTradeResults, setAutoTradeResults] = useState<any[]>([]);
   
-  // Fetch settings to check if auto trading is enabled
+  // Fetch settings to check if auto trading is enabled and WebSocket is enabled
+  const [enableKrakenWebSocket, setEnableKrakenWebSocket] = useState<boolean>(true);
+  
   useEffect(() => {
     const fetchSettings = async () => {
       try {
@@ -36,6 +38,7 @@ export default function KrakenPriceMonitor({
         if (response.ok) {
           const settings = await response.json();
           setAutoTradeEnabled(settings.enableAutoCryptoTrading || false);
+          setEnableKrakenWebSocket(settings.enableKrakenWebSocket !== false);
         }
       } catch (error) {
         console.error('Error fetching settings:', error);
@@ -203,6 +206,26 @@ export default function KrakenPriceMonitor({
     setAutoConnect(enabled);
     localStorage.setItem('kraken-websocket-auto-connect', enabled.toString());
   }, []);
+
+  // If Kraken WebSocket is disabled, show a message
+  if (!enableKrakenWebSocket) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Kraken Price Monitor</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Alert variant="default" className="mb-4 bg-amber-50 dark:bg-amber-900/20 border-amber-500">
+            <AlertTitle className="text-amber-700 dark:text-amber-300">WebSocket Disabled</AlertTitle>
+            <AlertDescription className="text-amber-700 dark:text-amber-300">
+              The Kraken WebSocket connection is currently disabled in settings. 
+              Enable it in the settings tab to receive real-time crypto price updates.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-4">

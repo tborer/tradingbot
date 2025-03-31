@@ -16,6 +16,8 @@ interface KrakenWebSocketContextType {
   updateSymbols: (symbols: string[]) => void;
   autoConnect: boolean;
   setAutoConnect: (autoConnect: boolean) => void;
+  enableKrakenWebSocket: boolean;
+  setEnableKrakenWebSocket: (enabled: boolean) => void;
 }
 
 const KrakenWebSocketContext = createContext<KrakenWebSocketContextType | null>(null);
@@ -121,12 +123,32 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
     }
   }, [krakenSocket]);
 
-  // Auto-connect when autoConnect is true
+  // Check if Kraken WebSocket is enabled in settings
+  const [enableKrakenWebSocket, setEnableKrakenWebSocket] = useState<boolean>(true);
+  
+  // Load enableKrakenWebSocket setting from localStorage
   useEffect(() => {
-    if (autoConnect && krakenSocket && !status.isConnected) {
-      krakenSocket.connect();
+    const savedEnableKrakenWebSocket = localStorage.getItem('kraken-websocket-enabled');
+    if (savedEnableKrakenWebSocket !== null) {
+      setEnableKrakenWebSocket(savedEnableKrakenWebSocket === 'true');
     }
-  }, [autoConnect, krakenSocket, status.isConnected]);
+  }, []);
+  
+  // Auto-connect when autoConnect is true and WebSocket is enabled
+  useEffect(() => {
+    if (autoConnect && krakenSocket && !status.isConnected && enableKrakenWebSocket) {
+      krakenSocket.connect();
+    } else if (!enableKrakenWebSocket && krakenSocket && status.isConnected) {
+      // Disconnect if WebSocket is disabled but connected
+      krakenSocket.disconnect();
+    }
+  }, [autoConnect, krakenSocket, status.isConnected, enableKrakenWebSocket]);
+
+  // Save enableKrakenWebSocket setting to localStorage when it changes
+  const handleEnableKrakenWebSocketChange = useCallback((value: boolean) => {
+    setEnableKrakenWebSocket(value);
+    localStorage.setItem('kraken-websocket-enabled', value.toString());
+  }, []);
 
   const value = {
     isConnected: status.isConnected,
@@ -140,7 +162,9 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
     disconnect,
     updateSymbols,
     autoConnect,
-    setAutoConnect: handleAutoConnectChange
+    setAutoConnect: handleAutoConnectChange,
+    enableKrakenWebSocket,
+    setEnableKrakenWebSocket: handleEnableKrakenWebSocketChange
   };
 
   return (

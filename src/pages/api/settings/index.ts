@@ -50,6 +50,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         enableAutoCryptoTrading,
         enableManualCryptoTrading,
         enableFinnHubWebSocket,
+        enableKrakenWebSocket,
         krakenWebsocketUrl
       } = req.body;
       
@@ -83,7 +84,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Only set these if they're explicitly provided in the request
         // This ensures we don't accidentally set them to false when undefined
         ...(enableManualCryptoTrading !== undefined && { enableManualCryptoTrading: enableManualCryptoTrading === true }),
-        ...(enableFinnHubWebSocket !== undefined && { enableFinnHubWebSocket: enableFinnHubWebSocket === true })
+        ...(enableFinnHubWebSocket !== undefined && { enableFinnHubWebSocket: enableFinnHubWebSocket === true }),
+        ...(enableKrakenWebSocket !== undefined && { enableKrakenWebSocket: enableKrakenWebSocket === true })
       };
       
       // Only add optional fields if they are defined

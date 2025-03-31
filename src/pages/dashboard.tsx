@@ -389,7 +389,7 @@ export default function Dashboard() {
       wsRef.current = ws;
       
       // Connect to Kraken for crypto data
-      if (cryptos.length > 0) {
+      if (cryptos.length > 0 && settings?.enableKrakenWebSocket !== false) {
         console.log("Attempting to connect to Kraken WebSocket...");
         
         // Close any existing Kraken connection
@@ -949,6 +949,7 @@ export default function Dashboard() {
           enableAutoCryptoTrading: settings.enableAutoCryptoTrading,
           enableManualCryptoTrading: settings.enableManualCryptoTrading,
           enableFinnHubWebSocket: settings.enableFinnHubWebSocket,
+          enableKrakenWebSocket: settings.enableKrakenWebSocket,
           krakenWebsocketUrl: settings.krakenWebsocketUrl,
           krakenApiKey: settings.krakenApiKey,
           krakenApiSign: settings.krakenApiSign,
@@ -1881,11 +1882,16 @@ export default function Dashboard() {
                         websocketUrl={settings.krakenWebsocketUrl || "wss://ws.kraken.com/v2"}
                         enableManualCryptoTrading={settings.enableManualCryptoTrading === true}
                         autoConnectWebSocket={true}
+                        enableKrakenWebSocket={settings.enableKrakenWebSocket !== false}
                         onEnableManualCryptoTradingChange={(enabled) => {
                           console.log("Setting enableManualCryptoTrading to:", enabled);
                           setSettings({ ...settings, enableManualCryptoTrading: enabled });
                         }}
                         onAutoConnectWebSocketChange={() => {}}
+                        onEnableKrakenWebSocketChange={(enabled) => {
+                          console.log("Setting enableKrakenWebSocket to:", enabled);
+                          setSettings({ ...settings, enableKrakenWebSocket: enabled });
+                        }}
                       />
                       
                       {/* AlphaVantage API Settings */}

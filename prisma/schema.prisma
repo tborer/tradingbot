@@ -48,6 +48,7 @@ model Settings {
   enableAutoStockTrading Boolean @default(false)
   enableAutoCryptoTrading Boolean @default(false)
   enableManualCryptoTrading Boolean @default(false)
+  enableFinnHubWebSocket Boolean @default(true)
   krakenWebsocketUrl String @default("wss://ws.kraken.com/v2")
   userId            String   @unique @db.Uuid
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)

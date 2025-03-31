@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import AutoTradeModal, { AutoTradeSettings } from "@/components/AutoTradeModal";
 import { Settings } from "@/icons/Settings";
+import { formatDecimal } from "@/util/number";
 
 interface SortableStockItemProps {
   stock: StockWithPrice;
@@ -115,7 +116,7 @@ function SortableStockItem({
         </div>
       </TableCell>
       <TableCell className="font-medium">{stock.ticker}</TableCell>
-      <TableCell>${stock.purchasePrice.toFixed(2)}</TableCell>
+      <TableCell>${formatDecimal(stock.purchasePrice, 2)}</TableCell>
       <TableCell>
         {isEditing ? (
           <Input
@@ -139,13 +140,13 @@ function SortableStockItem({
             }}
             data-no-row-click
           >
-            {Number(stock.shares).toFixed(2)}
+            {formatDecimal(Number(stock.shares), 2)}
           </div>
         )}
       </TableCell>
       <TableCell>
         {stock.currentPrice 
-          ? `$${stock.currentPrice.toFixed(2)}` 
+          ? `$${formatDecimal(stock.currentPrice, 2)}` 
           : "Waiting..."}
       </TableCell>
       <TableCell>

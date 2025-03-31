@@ -17,6 +17,7 @@ import SortableCryptoList from "@/components/SortableCryptoList";
 import TransactionHistory from "@/components/TransactionHistory";
 import CryptoTransactionHistory from "@/components/CryptoTransactionHistory";
 import KrakenWebSocketSettings from "@/components/KrakenWebSocketSettings";
+import FinnHubWebSocketSettings from "@/components/FinnHubWebSocketSettings";
 import AlphaVantageSettings from "@/components/AlphaVantageSettings";
 import WebSocketLogger from "@/components/WebSocketLogger";
 import Research from "@/components/Research";
@@ -112,6 +113,12 @@ export default function Dashboard() {
 
   // Connect to WebSockets (Finnhub for stocks, Kraken for crypto)
   const connectWebSocket = useCallback(() => {
+    // Check if FinnHub websocket is enabled in settings
+    if (settings?.enableFinnHubWebSocket === false) {
+      console.log("FinnHub WebSocket is disabled in settings, skipping connection");
+      return;
+    }
+    
     // Check if we have a Finnhub API key from environment or settings
     const apiKey = process.env.NEXT_PUBLIC_FINNHUB_API_KEY || (settings?.finnhubApiKey || "");
     
@@ -765,15 +772,28 @@ export default function Dashboard() {
         clearInterval(timerRef.current);
       }
       
-      // Connect initially
-      connectWebSocket();
-      
-      // Set up periodic reconnection
-      timerRef.current = setInterval(() => {
-        if (!stocksConnected || !cryptoConnected) {
-          connectWebSocket();
+      // Connect initially if FinnHub websocket is enabled
+      if (settings.enableFinnHubWebSocket !== false) {
+        connectWebSocket();
+        
+        // Set up periodic reconnection
+        timerRef.current = setInterval(() => {
+          if (!stocksConnected || !cryptoConnected) {
+            connectWebSocket();
+          }
+        }, settings.checkFrequencySeconds * 1000);
+      } else {
+        // If FinnHub websocket is disabled, close any existing connection
+        if (wsRef.current) {
+          try {
+            wsRef.current.close();
+          } catch (closeError) {
+            console.error("Error closing existing Finnhub WebSocket:", closeError);
+          }
+          wsRef.current = null;
+          setStocksConnected(false);
         }
-      }, settings.checkFrequencySeconds * 1000);
+      }
       
       return () => {
         if (timerRef.current) {
@@ -928,6 +948,7 @@ export default function Dashboard() {
           enableAutoStockTrading: settings.enableAutoStockTrading,
           enableAutoCryptoTrading: settings.enableAutoCryptoTrading,
           enableManualCryptoTrading: settings.enableManualCryptoTrading,
+          enableFinnHubWebSocket: settings.enableFinnHubWebSocket,
           krakenWebsocketUrl: settings.krakenWebsocketUrl,
           krakenApiKey: settings.krakenApiKey,
           krakenApiSign: settings.krakenApiSign,
@@ -1758,6 +1779,12 @@ export default function Dashboard() {
                               }
                             />
                           </div>
+                          <FinnHubWebSocketSettings
+                            enabled={settings.enableFinnHubWebSocket !== false}
+                            onEnabledChange={(enabled) => 
+                              setSettings({ ...settings, enableFinnHubWebSocket: enabled })
+                            }
+                          />
                           <p className="text-sm text-muted-foreground">
                             This API key is required for real-time stock price updates. You can get a free API key from <a href="https://finnhub.io/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Finnhub.io</a>.
                           </p>

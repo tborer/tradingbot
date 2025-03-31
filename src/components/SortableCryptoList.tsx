@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import AutoTradeModal, { AutoTradeSettings } from "@/components/AutoTradeModal";
 import { Settings } from "@/icons/Settings";
+import { formatDecimal } from "@/util/number";
 
 interface SortableCryptoItemProps {
   crypto: CryptoWithPrice;
@@ -113,7 +114,7 @@ function SortableCryptoItem({
         </div>
       </TableCell>
       <TableCell className="font-medium">{crypto.symbol}</TableCell>
-      <TableCell>${crypto.purchasePrice.toFixed(6)}</TableCell>
+      <TableCell>${formatDecimal(crypto.purchasePrice, 6)}</TableCell>
       <TableCell>
         {isEditing ? (
           <Input
@@ -137,13 +138,13 @@ function SortableCryptoItem({
             }}
             data-no-row-click
           >
-            {Number(crypto.shares).toFixed(6)}
+            {formatDecimal(Number(crypto.shares), 6)}
           </div>
         )}
       </TableCell>
       <TableCell>
         {crypto.currentPrice !== undefined && crypto.currentPrice !== null
-          ? `$${crypto.currentPrice.toFixed(2)}` 
+          ? `$${formatDecimal(crypto.currentPrice, 2)}` 
           : "Waiting..."}
       </TableCell>
       <TableCell>

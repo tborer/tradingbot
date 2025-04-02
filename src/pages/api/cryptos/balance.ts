@@ -45,14 +45,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Create the nonce (current timestamp in milliseconds)
-    const nonce = Date.now().toString();
+    const nonce = Date.now();
 
     // Create the request path and post data
     const path = '/0/private/Balance';
-    // The postData must include the nonce parameter
-    const postData = new URLSearchParams({
+    
+    // Create the payload as JSON with nonce as a number (not a string)
+    const payload = JSON.stringify({
       nonce: nonce
-    }).toString();
+    });
 
     // Create the signature according to Kraken API documentation
     // https://docs.kraken.com/rest/#section/Authentication/Headers-and-Signature
@@ -60,12 +61,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // 1. Decode the base64 secret key
     const secret = Buffer.from(settings.krakenApiSign, 'base64');
     
-    // 2. Create the SHA256 hash of (nonce + postData)
+    // 2. Create the SHA256 hash of the payload
     const sha256 = crypto.createHash('sha256')
-      .update(postData)
+      .update(payload)
       .digest();
     
-    // 3. Create the HMAC-SHA512 of (URI path + SHA256(nonce + postData))
+    // 3. Create the HMAC-SHA512 of (URI path + SHA256(payload))
     // using the base64-decoded secret key
     const signature = crypto.createHmac('sha512', secret)
       .update(path + sha256)
@@ -76,11 +77,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       url: 'https://api.kraken.com' + path,
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
         'API-Key': settings.krakenApiKey.substring(0, 5) + '...',
         'API-Sign': signature.substring(0, 5) + '...'
       },
-      body: postData
+      body: payload
     };
 
     // Update log with request details
@@ -91,20 +93,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const response = await fetch('https://api.kraken.com' + path, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
         'API-Key': settings.krakenApiKey,
         'API-Sign': signature
       },
-      body: postData
+      body: payload
     });
 
     // Log the request for debugging
     console.log('Kraken Balance API Request:', {
       path,
       nonce,
-      postData,
+      payload,
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
         'API-Key': '[REDACTED]',
         'API-Sign': '[REDACTED]'
       }

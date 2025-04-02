@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useWebSocketLogs, LogLevel } from '@/contexts/WebSocketLogContext';
 import { useResearchApiLogs } from '@/contexts/ResearchApiLogContext';
+import { useBalanceApiLogs } from '@/contexts/BalanceApiLogContext';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -50,10 +51,18 @@ const WebSocketLogger: React.FC = () => {
     setLoggingEnabled: setResearchLoggingEnabled
   } = useResearchApiLogs();
   
+  // Balance API logs
+  const {
+    logs: balanceLogs,
+    clearLogs: clearBalanceLogs,
+    isLoggingEnabled: isBalanceLoggingEnabled,
+    setLoggingEnabled: setBalanceLoggingEnabled
+  } = useBalanceApiLogs();
+  
   const [filter, setFilter] = useState('');
   const [activeTab, setActiveTab] = useState<LogLevel | 'all'>('all');
   const [ignoreHeartbeat, setIgnoreHeartbeat] = useState(false);
-  const [activeSection, setActiveSection] = useState<'websocket' | 'research'>('websocket');
+  const [activeSection, setActiveSection] = useState<'websocket' | 'research' | 'balance'>('websocket');
   
   const filteredLogs = logs.filter(log => {
     // Filter by search term
@@ -118,7 +127,7 @@ const WebSocketLogger: React.FC = () => {
                   Clear Logs
                 </Button>
               </>
-            ) : (
+            ) : activeSection === 'research' ? (
               <>
                 <div className="flex items-center space-x-2">
                   <Switch
@@ -134,6 +143,22 @@ const WebSocketLogger: React.FC = () => {
                   Clear Logs
                 </Button>
               </>
+            ) : (
+              <>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="balance-logging-toggle-header"
+                    checked={isBalanceLoggingEnabled}
+                    onCheckedChange={setBalanceLoggingEnabled}
+                  />
+                  <Label htmlFor="balance-logging-toggle-header" className="text-sm">
+                    {isBalanceLoggingEnabled ? "Logging Enabled" : "Logging Disabled"}
+                  </Label>
+                </div>
+                <Button variant="destructive" size="sm" onClick={clearBalanceLogs}>
+                  Clear Logs
+                </Button>
+              </>
             )}
           </div>
         </CardTitle>
@@ -143,10 +168,11 @@ const WebSocketLogger: React.FC = () => {
         
         {/* Section Tabs */}
         <div className="mt-4">
-          <Tabs value={activeSection} onValueChange={(value) => setActiveSection(value as 'websocket' | 'research')}>
+          <Tabs value={activeSection} onValueChange={(value) => setActiveSection(value as 'websocket' | 'research' | 'balance')}>
             <TabsList className="mb-4">
               <TabsTrigger value="websocket">WebSocket Logs</TabsTrigger>
               <TabsTrigger value="research">Research/Historical API Logs</TabsTrigger>
+              <TabsTrigger value="balance">Balance API Logs</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -306,7 +332,7 @@ const WebSocketLogger: React.FC = () => {
               )}
             </ScrollArea>
           </Tabs>
-        ) : (
+        ) : activeSection === 'research' ? (
           // Research/Historical API Logs Section
           <div>
             <ScrollArea className="h-[400px] w-full rounded-md border p-4">
@@ -377,6 +403,90 @@ const WebSocketLogger: React.FC = () => {
               )}
             </ScrollArea>
           </div>
+        ) : (
+          // Balance API Logs Section
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="balance-logging-toggle"
+                  checked={isBalanceLoggingEnabled}
+                  onCheckedChange={setBalanceLoggingEnabled}
+                />
+                <Label htmlFor="balance-logging-toggle" className="text-sm">
+                  {isBalanceLoggingEnabled ? "Logging Enabled" : "Logging Disabled"}
+                </Label>
+              </div>
+              <Button variant="destructive" size="sm" onClick={clearBalanceLogs}>
+                Clear Logs
+              </Button>
+            </div>
+            
+            <ScrollArea className="h-[400px] w-full rounded-md border p-4">
+              {balanceLogs.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No balance API logs to display. Try retrieving your Kraken balance.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {balanceLogs.map((log) => (
+                    <div key={log.id} className="rounded-lg border p-3">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center gap-2">
+                          <Badge className={log.error ? 'bg-red-500' : 'bg-green-500'}>
+                            {log.requestMethod}
+                          </Badge>
+                          <span className="font-medium">{log.requestPath}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {log.responseStatus > 0 && (
+                            <Badge variant="outline" className={log.responseStatus >= 400 ? 'text-red-500' : 'text-green-500'}>
+                              {log.responseStatus}
+                            </Badge>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(log.timestamp).toLocaleTimeString()}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-2 text-sm">
+                        {log.error && (
+                          <div className="mb-2">
+                            <Badge variant="destructive">Error</Badge>
+                            <div className="mt-1 text-red-500">{log.error}</div>
+                          </div>
+                        )}
+                        
+                        <Separator className="my-2" />
+                        
+                        <div className="mb-4">
+                          <h4 className="text-sm font-medium mb-1">Request Headers:</h4>
+                          <pre className="bg-secondary p-2 rounded-md overflow-x-auto text-xs">
+                            {JSON.stringify(log.requestHeaders, null, 2)}
+                          </pre>
+                        </div>
+                        
+                        <div className="mb-4">
+                          <h4 className="text-sm font-medium mb-1">Request Body:</h4>
+                          <pre className="bg-secondary p-2 rounded-md overflow-x-auto text-xs">
+                            {JSON.stringify(log.requestBody, null, 2)}
+                          </pre>
+                        </div>
+                        
+                        <div>
+                          <h4 className="text-sm font-medium mb-1">Response:</h4>
+                          <pre className="bg-secondary p-2 rounded-md overflow-x-auto text-xs">
+                            {JSON.stringify(log.responseBody, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
         )}
       </CardContent>
       <CardFooter className="text-xs text-muted-foreground">
@@ -402,7 +512,7 @@ const WebSocketLogger: React.FC = () => {
               )}
             </div>
           )
-        ) : (
+        ) : activeSection === 'research' ? (
           <div>
             {!isResearchLoggingEnabled ? (
               <div className="flex items-center text-amber-500">
@@ -410,6 +520,16 @@ const WebSocketLogger: React.FC = () => {
               </div>
             ) : (
               <div>Showing {filteredResearchLogs.length} of {researchLogs.length} research API logs</div>
+            )}
+          </div>
+        ) : (
+          <div>
+            {!isBalanceLoggingEnabled ? (
+              <div className="flex items-center text-amber-500">
+                <span>Balance API logging is disabled. No new logs will be captured.</span>
+              </div>
+            ) : (
+              <div>Showing {balanceLogs.length} balance API logs</div>
             )}
           </div>
         )}

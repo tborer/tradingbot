@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBalanceApiLogs } from '@/contexts/BalanceApiLogContext';
 
 interface KrakenBalanceProps {
   className?: string;
@@ -11,6 +12,7 @@ interface KrakenBalanceProps {
 export default function KrakenBalance({ className }: KrakenBalanceProps) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { addLog } = useBalanceApiLogs();
   const [balance, setBalance] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,17 +24,34 @@ export default function KrakenBalance({ className }: KrakenBalanceProps) {
     setError(null);
 
     try {
+      const startTime = Date.now();
       const response = await fetch('/api/cryptos/balance');
+      const duration = Date.now() - startTime;
+      
+      let responseData;
+      try {
+        responseData = await response.json();
+      } catch (parseError) {
+        responseData = { error: 'Failed to parse response' };
+      }
+      
+      // Log the API call
+      addLog({
+        requestMethod: 'GET',
+        requestPath: '/api/cryptos/balance',
+        requestHeaders: {},
+        requestBody: {},
+        responseStatus: response.status,
+        responseBody: responseData,
+        error: !response.ok ? (responseData.error || `HTTP error ${response.status}`) : null
+      });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch Kraken balance');
+        throw new Error(responseData.error || 'Failed to fetch Kraken balance');
       }
 
-      const data = await response.json();
-      
       // Extract USD balance (USD.M is the cash balance)
-      const usdBalance = data['USD.M'] || data['ZUSD'] || '0';
+      const usdBalance = responseData['USD.M'] || responseData['ZUSD'] || '0';
       
       setBalance(usdBalance);
       

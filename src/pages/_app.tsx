@@ -3,6 +3,7 @@ import { AuthProvider } from '@/contexts/AuthContext'
 import { WebSocketLogProvider } from '@/contexts/WebSocketLogContext'
 import { KrakenWebSocketProvider } from '@/contexts/KrakenWebSocketContext'
 import { ResearchApiLogProvider } from '@/contexts/ResearchApiLogContext'
+import { BalanceApiLogProvider } from '@/contexts/BalanceApiLogContext'
 import { AnalysisProvider } from '@/contexts/AnalysisContext'
 import '../styles/globals.css';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -35,14 +36,16 @@ export default function App({ Component, pageProps }: AppProps) {
       <AuthProvider>
         <WebSocketLogProvider>
           <ResearchApiLogProvider>
-            <KrakenWebSocketProvider>
-              <AnalysisProvider>
-                <ProtectedRoute>
-                  <Component {...pageProps} />
-                </ProtectedRoute>
-                <Toaster />
-              </AnalysisProvider>
-            </KrakenWebSocketProvider>
+            <BalanceApiLogProvider>
+              <KrakenWebSocketProvider>
+                <AnalysisProvider>
+                  <ProtectedRoute>
+                    <Component {...pageProps} />
+                  </ProtectedRoute>
+                  <Toaster />
+                </AnalysisProvider>
+              </KrakenWebSocketProvider>
+            </BalanceApiLogProvider>
           </ResearchApiLogProvider>
         </WebSocketLogProvider>
       </AuthProvider>

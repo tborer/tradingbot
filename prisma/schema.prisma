@@ -45,6 +45,7 @@ model Settings {
   krakenApiKey      String?
   krakenApiSign     String?
   alphaVantageApiKey String?
+  coinDeskApiKey    String?
   enableAutoStockTrading Boolean @default(false)
   enableAutoCryptoTrading Boolean @default(false)
   enableManualCryptoTrading Boolean @default(false)

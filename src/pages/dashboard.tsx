@@ -20,6 +20,7 @@ import CryptoTransactionHistory from "@/components/CryptoTransactionHistory";
 import KrakenWebSocketSettings from "@/components/KrakenWebSocketSettings";
 import FinnHubWebSocketSettings from "@/components/FinnHubWebSocketSettings";
 import AlphaVantageSettings from "@/components/AlphaVantageSettings";
+import CoinDeskSettings from "@/components/CoinDeskSettings";
 import WebSocketLogger from "@/components/WebSocketLogger";
 import Research from "@/components/Research";
 import UserManagement from "@/components/UserManagement";
@@ -946,6 +947,7 @@ export default function Dashboard() {
           tradePlatformApiSecret: settings.tradePlatformApiSecret,
           finnhubApiKey: settings.finnhubApiKey,
           alphaVantageApiKey: settings.alphaVantageApiKey,
+          coinDeskApiKey: settings.coinDeskApiKey,
           enableAutoStockTrading: settings.enableAutoStockTrading,
           enableAutoCryptoTrading: settings.enableAutoCryptoTrading,
           enableManualCryptoTrading: settings.enableManualCryptoTrading,
@@ -1903,6 +1905,14 @@ export default function Dashboard() {
                         apiKey={settings.alphaVantageApiKey || ''}
                         onApiKeyChange={(apiKey) => 
                           setSettings({ ...settings, alphaVantageApiKey: apiKey })
+                        }
+                      />
+                      
+                      {/* CoinDesk API Settings */}
+                      <CoinDeskSettings
+                        apiKey={settings.coinDeskApiKey || ''}
+                        onApiKeyChange={(apiKey) => 
+                          setSettings({ ...settings, coinDeskApiKey: apiKey })
                         }
                       />
                     </div>

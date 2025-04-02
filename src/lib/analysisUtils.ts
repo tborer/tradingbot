@@ -93,8 +93,8 @@ export function getTrendLinesMessage(currentPrice: number, support: number | nul
 }
 
 /**
- * Extract historical prices from AlphaVantage API response
- * @param data AlphaVantage API response data
+ * Extract historical prices from AlphaVantage API response or CoinDesk API response
+ * @param data AlphaVantage or CoinDesk API response data
  * @returns Array of price data points (closing prices)
  */
 export function extractHistoricalPrices(data: any): number[] {
@@ -102,6 +102,27 @@ export function extractHistoricalPrices(data: any): number[] {
     return [];
   }
   
+  // Check if this is CoinDesk data format
+  if (data.data && data.data.entries && Array.isArray(data.data.entries)) {
+    console.log('Detected CoinDesk data format, extracting prices...');
+    const prices: number[] = [];
+    
+    // Sort entries by date (newest first)
+    const sortedEntries = [...data.data.entries].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+    
+    // Extract values
+    sortedEntries.forEach(entry => {
+      if (entry.value && !isNaN(entry.value)) {
+        prices.push(entry.value);
+      }
+    });
+    
+    return prices;
+  }
+  
+  // Otherwise, assume AlphaVantage format
   // Check for daily data first, then fall back to monthly if needed
   const timeSeriesKey = data['Time Series (Digital Currency Daily)'] 
     ? 'Time Series (Digital Currency Daily)' 

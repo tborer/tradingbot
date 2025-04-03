@@ -1,6 +1,106 @@
 // Analysis utility functions for stock and crypto data
 
 /**
+ * Calculate standard deviation for a set of values
+ * @param values Array of values
+ * @param mean The mean value of the array
+ * @returns The standard deviation
+ */
+export function calculateStandardDeviation(values: number[], mean: number): number {
+  if (!values || values.length === 0) {
+    return 0;
+  }
+  
+  const squaredDifferences = values.map(value => Math.pow(value - mean, 2));
+  const variance = squaredDifferences.reduce((sum, value) => sum + value, 0) / values.length;
+  return Math.sqrt(variance);
+}
+
+/**
+ * Calculate Bollinger Bands for a given period and standard deviation multiplier
+ * @param prices Array of price data points
+ * @param period Number of periods to calculate SMA for (typically 20)
+ * @param stdDevMultiplier Multiplier for standard deviation (typically 2)
+ * @returns Object containing upper band, middle band (SMA), and lower band values
+ */
+export function calculateBollingerBands(
+  prices: number[], 
+  period: number = 20, 
+  stdDevMultiplier: number = 2
+): { upper: number | null; middle: number | null; lower: number | null } {
+  if (!prices || prices.length < period) {
+    return { upper: null, middle: null, lower: null };
+  }
+
+  // Calculate SMA (middle band)
+  const periodPrices = prices.slice(0, period);
+  const sma = periodPrices.reduce((sum, price) => sum + price, 0) / period;
+  
+  // Calculate standard deviation
+  const stdDev = calculateStandardDeviation(periodPrices, sma);
+  
+  // Calculate upper and lower bands
+  const upperBand = sma + (stdDevMultiplier * stdDev);
+  const lowerBand = sma - (stdDevMultiplier * stdDev);
+  
+  return {
+    upper: upperBand,
+    middle: sma,
+    lower: lowerBand
+  };
+}
+
+/**
+ * Generate a message about Bollinger Bands analysis
+ * @param currentPrice Current price
+ * @param bands Bollinger Bands values
+ * @returns A message describing the Bollinger Bands analysis
+ */
+export function getBollingerBandsMessage(
+  currentPrice: number, 
+  bands: { upper: number | null; middle: number | null; lower: number | null }
+): string {
+  if (bands.upper === null || bands.middle === null || bands.lower === null) {
+    return "Not enough data to calculate Bollinger Bands.";
+  }
+
+  // Calculate bandwidth (volatility indicator)
+  const bandwidth = (bands.upper - bands.lower) / bands.middle;
+  const bandwidthPercentage = bandwidth * 100;
+  
+  // Calculate %B (position within the bands)
+  const percentB = (currentPrice - bands.lower) / (bands.upper - bands.lower);
+  const percentBFormatted = (percentB * 100).toFixed(2);
+  
+  let message = `Bollinger Bands: Upper: $${bands.upper.toFixed(2)}, Middle: $${bands.middle.toFixed(2)}, Lower: $${bands.lower.toFixed(2)}. `;
+  
+  // Add volatility assessment
+  message += `Volatility is ${bandwidthPercentage > 20 ? 'high' : bandwidthPercentage > 10 ? 'moderate' : 'low'} `;
+  message += `(bandwidth: ${bandwidthPercentage.toFixed(2)}%). `;
+  
+  // Add position assessment
+  if (currentPrice > bands.upper) {
+    message += `Price is above the upper band, suggesting overbought conditions. `;
+    message += `This could indicate a potential reversal or continuation of a strong trend.`;
+  } else if (currentPrice < bands.lower) {
+    message += `Price is below the lower band, suggesting oversold conditions. `;
+    message += `This could indicate a potential reversal or continuation of a strong downtrend.`;
+  } else {
+    message += `Price is within the bands (${percentBFormatted}% of the range from lower to upper band). `;
+    
+    if (percentB > 0.8) {
+      message += `Price is near the upper band, suggesting strong momentum but approaching overbought territory.`;
+    } else if (percentB < 0.2) {
+      message += `Price is near the lower band, suggesting weakness but approaching oversold territory.`;
+    } else {
+      message += `Price is near the middle band, suggesting neutral momentum.`;
+    }
+  }
+  
+  return message;
+}
+
+/**
  * Calculate Simple Moving Average (SMA) for a given period
  * @param prices Array of price data points
  * @param period Number of periods to calculate SMA for
@@ -247,13 +347,15 @@ export function getFibonacciMessage(currentPrice: number, fibLevels: ReturnType<
  * @param sma SMA value
  * @param support Support level
  * @param resistance Resistance level
+ * @param bollingerBands Bollinger Bands values
  * @returns A recommendation string
  */
 export function generateRecommendation(
   currentPrice: number,
   sma: number | null,
   support: number | null,
-  resistance: number | null
+  resistance: number | null,
+  bollingerBands: { upper: number | null; middle: number | null; lower: number | null } = { upper: null, middle: null, lower: null }
 ): string {
   if (sma === null || support === null || resistance === null) {
     return "Insufficient data for a recommendation.";
@@ -266,16 +368,70 @@ export function generateRecommendation(
   const nearSupport = support && Math.abs((currentPrice - support) / support) < 0.05; // Within 5% of support
   const nearResistance = resistance && Math.abs((currentPrice - resistance) / resistance) < 0.05; // Within 5% of resistance
   
-  // Generate recommendation
-  if (aboveSMA && nearResistance) {
-    return "Consider taking profits. Price is above SMA and near resistance level.";
-  } else if (aboveSMA && !nearResistance) {
-    return "Hold or buy. Price is above SMA and has room to grow before hitting resistance.";
-  } else if (!aboveSMA && nearSupport) {
-    return "Consider buying. Price is below SMA but near support level, suggesting potential upward movement.";
-  } else if (!aboveSMA && !nearSupport) {
-    return "Hold or wait. Price is below SMA and not near support level yet.";
-  } else {
-    return "Neutral outlook. Monitor for clearer signals.";
+  // Check Bollinger Bands signals if available
+  let bollingerSignal = "";
+  if (bollingerBands.upper !== null && bollingerBands.middle !== null && bollingerBands.lower !== null) {
+    if (currentPrice > bollingerBands.upper) {
+      bollingerSignal = "overbought";
+    } else if (currentPrice < bollingerBands.lower) {
+      bollingerSignal = "oversold";
+    } else {
+      // Calculate %B (position within the bands)
+      const percentB = (currentPrice - bollingerBands.lower) / (bollingerBands.upper - bollingerBands.lower);
+      if (percentB > 0.8) {
+        bollingerSignal = "approaching overbought";
+      } else if (percentB < 0.2) {
+        bollingerSignal = "approaching oversold";
+      } else {
+        bollingerSignal = "neutral";
+      }
+    }
   }
+  
+  // Generate recommendation incorporating Bollinger Bands
+  let recommendation = "";
+  
+  if (bollingerSignal === "overbought") {
+    if (nearResistance) {
+      recommendation = "Consider taking profits. Price is above the upper Bollinger Band and near resistance level, indicating overbought conditions.";
+    } else {
+      recommendation = "Consider reducing position. Price is above the upper Bollinger Band, indicating potential overbought conditions, but watch for continued momentum.";
+    }
+  } else if (bollingerSignal === "oversold") {
+    if (nearSupport) {
+      recommendation = "Consider buying. Price is below the lower Bollinger Band and near support level, indicating oversold conditions with potential for reversal.";
+    } else {
+      recommendation = "Watch for buying opportunity. Price is below the lower Bollinger Band, indicating potential oversold conditions, but may continue downward.";
+    }
+  } else {
+    // Use the original SMA and support/resistance based logic
+    if (aboveSMA && nearResistance) {
+      recommendation = "Consider taking profits. Price is above SMA and near resistance level.";
+      if (bollingerSignal === "approaching overbought") {
+        recommendation += " Bollinger Bands confirm approaching overbought conditions.";
+      }
+    } else if (aboveSMA && !nearResistance) {
+      recommendation = "Hold or buy. Price is above SMA and has room to grow before hitting resistance.";
+      if (bollingerSignal === "approaching overbought") {
+        recommendation += " However, Bollinger Bands suggest approaching overbought conditions.";
+      }
+    } else if (!aboveSMA && nearSupport) {
+      recommendation = "Consider buying. Price is below SMA but near support level, suggesting potential upward movement.";
+      if (bollingerSignal === "approaching oversold") {
+        recommendation += " Bollinger Bands confirm approaching oversold conditions.";
+      }
+    } else if (!aboveSMA && !nearSupport) {
+      recommendation = "Hold or wait. Price is below SMA and not near support level yet.";
+      if (bollingerSignal === "approaching oversold") {
+        recommendation += " Bollinger Bands suggest approaching oversold conditions, which may present a buying opportunity soon.";
+      }
+    } else {
+      recommendation = "Neutral outlook. Monitor for clearer signals.";
+      if (bollingerSignal !== "neutral") {
+        recommendation += ` Bollinger Bands suggest ${bollingerSignal} conditions.`;
+      }
+    }
+  }
+  
+  return recommendation;
 }

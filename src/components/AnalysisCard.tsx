@@ -11,7 +11,9 @@ import {
   generateRecommendation,
   extractHistoricalPrices,
   calculateFibonacciRetracements,
-  getFibonacciMessage
+  getFibonacciMessage,
+  calculateBollingerBands,
+  getBollingerBandsMessage
 } from '@/lib/analysisUtils';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -40,6 +42,11 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
   });
   const [recommendation, setRecommendation] = useState<string>('');
   const [fibonacciLevels, setFibonacciLevels] = useState<ReturnType<typeof calculateFibonacciRetracements> | null>(null);
+  const [bollingerBands, setBollingerBands] = useState<{ upper: number | null; middle: number | null; lower: number | null }>({
+    upper: null,
+    middle: null,
+    lower: null
+  });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [dataSource, setDataSource] = useState<string>('');
   
@@ -77,13 +84,18 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
                 setFibonacciLevels(fibLevels);
               }
               
+              // Calculate Bollinger Bands
+              const bands = calculateBollingerBands(extractedPrices, 20, 2);
+              setBollingerBands(bands);
+              
               // Generate recommendation
               const price = currentPrice || (extractedPrices.length > 0 ? extractedPrices[0] : purchasePrice);
               const recommendationText = generateRecommendation(
                 price,
                 sma20Value,
                 trendLinesValues.support,
-                trendLinesValues.resistance
+                trendLinesValues.resistance,
+                bands
               );
               setRecommendation(recommendationText);
             }
@@ -127,6 +139,10 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
         const fibLevels = calculateFibonacciRetracements(highestPrice, lowestPrice);
         setFibonacciLevels(fibLevels);
       }
+      
+      // Calculate Bollinger Bands
+      const bands = calculateBollingerBands(extractedPrices, 20, 2);
+      setBollingerBands(bands);
 
       // Generate recommendation
       const price = currentPrice || (extractedPrices.length > 0 ? extractedPrices[0] : purchasePrice);
@@ -134,7 +150,8 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
         price,
         sma20Value,
         trendLinesValues.support,
-        trendLinesValues.resistance
+        trendLinesValues.resistance,
+        bands
       );
       setRecommendation(recommendationText);
     }
@@ -212,6 +229,17 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
                       {fibonacciLevels !== null
                         ? getFibonacciMessage(price, fibonacciLevels)
                         : "Calculating Fibonacci retracement levels..."}
+                    </p>
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div>
+                    <h4 className="font-medium mb-1">Bollinger Bands</h4>
+                    <p className="text-sm">
+                      {bollingerBands.upper !== null && bollingerBands.middle !== null && bollingerBands.lower !== null
+                        ? getBollingerBandsMessage(price, bollingerBands)
+                        : "Calculating Bollinger Bands..."}
                     </p>
                   </div>
                 </div>

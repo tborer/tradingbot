@@ -8,6 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CheckCircledIcon, CrossCircledIcon } from '@radix-ui/react-icons';
 import { useToast } from '@/components/ui/use-toast';
 import { fetchHistoricalData } from '@/lib/alphaVantage';
+import { fetchCoinDeskHistoricalData, formatCoinDeskDataForAnalysis } from '@/lib/coinDesk';
 import { useAuth } from '@/contexts/AuthContext';
 import { useResearchApiLogs } from '@/contexts/ResearchApiLogContext';
 import { useAnalysis } from '@/contexts/AnalysisContext';
@@ -25,24 +26,157 @@ const Research: React.FC = () => {
   const { addLog } = useResearchApiLogs();
   const { items, addItem } = useAnalysis();
 
-  // Fetch the API key when the component mounts
+  // State for API keys
+  const [alphaVantageApiKey, setAlphaVantageApiKey] = useState<string | null>(null);
+  const [coinDeskApiKey, setCoinDeskApiKey] = useState<string | null>(null);
+
+  // Fetch API keys when the component mounts
   useEffect(() => {
-    const fetchApiKey = async () => {
+    const fetchApiKeys = async () => {
       try {
         const response = await fetch('/api/settings');
         if (response.ok) {
           const data = await response.json();
-          setApiKey(data.alphaVantageApiKey || null);
+          setAlphaVantageApiKey(data.alphaVantageApiKey || null);
+          setCoinDeskApiKey(data.coinDeskApiKey || null);
+          setApiKey(data.alphaVantageApiKey || null); // For backward compatibility
         }
       } catch (error) {
-        console.error('Failed to fetch API key:', error);
+        console.error('Failed to fetch API keys:', error);
       }
     };
 
     if (user) {
-      fetchApiKey();
+      fetchApiKeys();
     }
   }, [user]);
+
+  // Function to process and add data to the analysis dashboard
+  const processAndAddToAnalysis = (data: any, source: string, symbolName: string) => {
+    let symbolCode = symbol;
+    let currentPrice = 0;
+    let isCrypto = true; // Default to crypto for CoinDesk data
+    
+    if (source === 'alphavantage' && data['Meta Data']) {
+      symbolCode = data['Meta Data']['2. Digital Currency Code'] || symbol;
+      symbolName = data['Meta Data']['3. Digital Currency Name'] || symbolName;
+      isCrypto = !!data['Meta Data']['2. Digital Currency Code'];
+      
+      // Get the current price from the most recent data point
+      const timeSeriesKey = data['Time Series (Digital Currency Daily)'] 
+        ? 'Time Series (Digital Currency Daily)' 
+        : 'Time Series (Digital Currency Monthly)';
+        
+      if (data[timeSeriesKey]) {
+        const dates = Object.keys(data[timeSeriesKey]);
+        if (dates.length > 0) {
+          // Sort dates in descending order
+          dates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+          const latestDate = dates[0];
+          currentPrice = parseFloat(data[timeSeriesKey][latestDate]['4. close']);
+        }
+      }
+    } else if (source === 'coindesk' && data.data && data.data.entries) {
+      // For CoinDesk data, get the latest price from entries
+      const entries = [...data.data.entries];
+      if (entries.length > 0) {
+        // Sort entries by date (newest first)
+        entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        currentPrice = entries[0].value;
+      }
+    }
+    
+    // Add to analysis dashboard
+    addItem({
+      symbol: symbolCode,
+      currentPrice: currentPrice || undefined,
+      purchasePrice: currentPrice || 0,
+      type: isCrypto ? 'crypto' : 'stock',
+      historicalData: data
+    });
+    
+    setResult({
+      success: true,
+      message: `Successfully retrieved data for ${symbolCode} (${symbolName}) using ${source === 'alphavantage' ? 'AlphaVantage' : 'CoinDesk'} API`
+    });
+    
+    toast({
+      title: "Added to Analysis Dashboard",
+      description: `${symbolCode} has been added to your analysis dashboard.`,
+    });
+  };
+
+  // Function to try CoinDesk API as fallback
+  const tryWithCoinDesk = async () => {
+    if (!coinDeskApiKey) {
+      setResult({
+        success: false,
+        message: "Both AlphaVantage and CoinDesk APIs failed. Please check your API keys and the symbol."
+      });
+      setLoading(false);
+      return;
+    }
+    
+    try {
+      // Log that we're trying CoinDesk as fallback
+      addLog({
+        url: "CoinDesk API Fallback",
+        method: "INFO",
+        requestBody: { symbol, market },
+        response: "Attempting to use CoinDesk API as fallback",
+        status: 200
+      });
+      
+      const coinDeskData = await fetchCoinDeskHistoricalData(symbol, coinDeskApiKey);
+      
+      if (coinDeskData && coinDeskData.data && coinDeskData.data.entries && coinDeskData.data.entries.length > 0) {
+        // Log successful CoinDesk API call
+        addLog({
+          url: `https://data-api.coindesk.com/index/cc/v1/historical/days?market=cadli&instrument=${symbol}-USD`,
+          method: "GET",
+          requestBody: { symbol, market },
+          response: coinDeskData,
+          status: 200
+        });
+        
+        // Process CoinDesk data
+        processAndAddToAnalysis(coinDeskData, 'coindesk', symbol);
+      } else {
+        // Log failed CoinDesk API call
+        addLog({
+          url: `https://data-api.coindesk.com/index/cc/v1/historical/days?market=cadli&instrument=${symbol}-USD`,
+          method: "GET",
+          requestBody: { symbol, market },
+          response: coinDeskData,
+          status: 404,
+          error: "No data found for this symbol"
+        });
+        
+        // Both APIs failed
+        setResult({
+          success: false,
+          message: `Symbol ${symbol} not found in either AlphaVantage or CoinDesk APIs.`
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching CoinDesk data:', error);
+      
+      // Log error
+      addLog({
+        url: `https://data-api.coindesk.com/index/cc/v1/historical/days?market=cadli&instrument=${symbol}-USD`,
+        method: "GET",
+        requestBody: { symbol, market },
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+      
+      setResult({
+        success: false,
+        message: "Both AlphaVantage and CoinDesk APIs failed. Please try again later."
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,10 +190,10 @@ const Research: React.FC = () => {
       return;
     }
 
-    if (!apiKey) {
+    if (!alphaVantageApiKey && !coinDeskApiKey) {
       toast({
-        title: "API Key Missing",
-        description: "Please add your AlphaVantage API key in the settings tab",
+        title: "API Keys Missing",
+        description: "Please add at least one API key (AlphaVantage or CoinDesk) in the settings tab",
         variant: "destructive"
       });
       return;
@@ -67,102 +201,112 @@ const Research: React.FC = () => {
 
     setLoading(true);
     setResult(null);
+    setHistoricalData(null);
 
     try {
-      const data = await fetchHistoricalData(
-        symbol, 
-        market, 
-        apiKey,
-        // Pass the logging function to the API call
-        (url, method, requestBody, response, status, error, duration) => {
-          addLog({
-            url,
-            method,
-            requestBody,
-            response,
-            status,
-            error,
-            duration
-          });
-        }
-      );
-      
-      setHistoricalData(data);
-      
-      if (data.Error) {
-        setResult({
-          success: false,
-          message: `Error: ${data.Error}`
-        });
-      } else if (data.Note) {
-        // API call limit reached
-        setResult({
-          success: false,
-          message: `API Limit: ${data.Note}`
-        });
-      } else if (data.Information) {
-        // Invalid API key
-        setResult({
-          success: false,
-          message: `API Key Issue: ${data.Information}`
-        });
-      } else if (data['Meta Data']) {
-        // Success
-        const symbolCode = data['Meta Data']['2. Digital Currency Code'] || symbol;
-        const symbolName = data['Meta Data']['3. Digital Currency Name'] || 'Unknown';
+      // If AlphaVantage API key is available, try it first
+      if (alphaVantageApiKey) {
+        const data = await fetchHistoricalData(
+          symbol, 
+          market, 
+          alphaVantageApiKey,
+          // Pass the logging function to the API call
+          (url, method, requestBody, response, status, error, duration) => {
+            addLog({
+              url,
+              method,
+              requestBody,
+              response,
+              status,
+              error,
+              duration
+            });
+          }
+        );
         
-        setResult({
-          success: true,
-          message: `Successfully retrieved data for ${symbolCode} (${symbolName})`
-        });
-        
-        // Determine if this is a crypto or stock based on the response
-        const isCrypto = !!data['Meta Data']['2. Digital Currency Code'];
-        
-        // Get the current price from the most recent data point
-        let currentPrice = 0;
-        // Check for daily data first, then fall back to monthly if needed
-        const timeSeriesKey = data['Time Series (Digital Currency Daily)'] 
-          ? 'Time Series (Digital Currency Daily)' 
-          : 'Time Series (Digital Currency Monthly)';
-          
-        if (data[timeSeriesKey]) {
-          const dates = Object.keys(data[timeSeriesKey]);
-          if (dates.length > 0) {
-            // Sort dates in descending order
-            dates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-            const latestDate = dates[0];
-            currentPrice = parseFloat(data[timeSeriesKey][latestDate]['4. close']);
+        // Check if AlphaVantage returned valid data
+        if (data['Meta Data'] && (data['Time Series (Digital Currency Daily)'] || data['Time Series (Digital Currency Monthly)'])) {
+          // AlphaVantage success
+          setHistoricalData(data);
+          processAndAddToAnalysis(data, 'alphavantage', 'Unknown');
+          return; // Exit early on success
+        } else {
+          // AlphaVantage failed, log the error but don't show it to the user
+          if (data.Error) {
+            console.error(`AlphaVantage API error: ${data.Error}`);
+            addLog({
+              url: "AlphaVantage Error",
+              method: "ERROR",
+              requestBody: { symbol, market },
+              response: data,
+              error: data.Error
+            });
+          } else if (data.Note) {
+            console.error(`AlphaVantage API limit: ${data.Note}`);
+            addLog({
+              url: "AlphaVantage Limit",
+              method: "ERROR",
+              requestBody: { symbol, market },
+              response: data,
+              error: data.Note
+            });
+          } else if (data.Information) {
+            console.error(`AlphaVantage API key issue: ${data.Information}`);
+            addLog({
+              url: "AlphaVantage Key Issue",
+              method: "ERROR",
+              requestBody: { symbol, market },
+              response: data,
+              error: data.Information
+            });
+          } else {
+            console.error("Unexpected AlphaVantage API response format");
+            addLog({
+              url: "AlphaVantage Unexpected Format",
+              method: "ERROR",
+              requestBody: { symbol, market },
+              response: data,
+              error: "Unexpected response format"
+            });
           }
         }
-        
-        // Add to analysis dashboard
-        addItem({
-          symbol: symbolCode,
-          currentPrice: currentPrice || undefined,
-          purchasePrice: currentPrice || 0,
-          type: isCrypto ? 'crypto' : 'stock',
-          historicalData: data
-        });
-        
-        toast({
-          title: "Added to Analysis Dashboard",
-          description: `${symbolCode} has been added to your analysis dashboard.`,
-        });
       } else {
-        setResult({
-          success: false,
-          message: "Received unexpected response format from API"
+        // Log that we're skipping AlphaVantage because no API key is available
+        addLog({
+          url: "AlphaVantage Skipped",
+          method: "INFO",
+          requestBody: { symbol, market },
+          response: "AlphaVantage API key not available, skipping to CoinDesk",
+          status: 200
         });
       }
+      
+      // Try with CoinDesk (either as fallback or primary if AlphaVantage key is not available)
+      await tryWithCoinDesk();
     } catch (error) {
-      console.error('Error fetching historical data:', error);
-      setResult({
-        success: false,
-        message: "Failed to fetch data. Please try again."
+      console.error('Error in API request:', error);
+      
+      // Log the error
+      addLog({
+        url: alphaVantageApiKey 
+          ? `https://www.alphavantage.co/query?function=DIGITAL_CURRENCY_DAILY&symbol=${symbol}&market=${market}`
+          : "API Error",
+        method: "ERROR",
+        requestBody: { symbol, market },
+        error: error instanceof Error ? error.message : "Unknown error"
       });
-    } finally {
-      setLoading(false);
+      
+      // If error occurred with AlphaVantage, try CoinDesk as fallback
+      if (alphaVantageApiKey) {
+        await tryWithCoinDesk();
+      } else {
+        // If we're already trying CoinDesk as primary, show error
+        setResult({
+          success: false,
+          message: "Failed to fetch data. Please try again later."
+        });
+        setLoading(false);
+      }
     }
   };
 
@@ -204,12 +348,12 @@ const Research: React.FC = () => {
               </div>
             </div>
             
-            {!apiKey && (
+            {!alphaVantageApiKey && !coinDeskApiKey && (
               <Alert variant="destructive" className="mt-4">
                 <CrossCircledIcon className="h-4 w-4" />
-                <AlertTitle>API Key Missing</AlertTitle>
+                <AlertTitle>API Keys Missing</AlertTitle>
                 <AlertDescription>
-                  Please add your AlphaVantage API key in the settings tab to use this feature.
+                  Please add at least one API key (AlphaVantage or CoinDesk) in the settings tab to use this feature.
                 </AlertDescription>
               </Alert>
             )}
@@ -226,7 +370,10 @@ const Research: React.FC = () => {
               </Alert>
             )}
             
-            <Button type="submit" disabled={loading || !apiKey}>
+            <Button 
+              type="submit" 
+              disabled={loading || (!alphaVantageApiKey && !coinDeskApiKey)}
+            >
               {loading ? "Loading..." : "Get Historical Data"}
             </Button>
           </form>

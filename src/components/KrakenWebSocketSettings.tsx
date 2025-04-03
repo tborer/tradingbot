@@ -59,17 +59,17 @@ const KrakenWebSocketSettings: React.FC<KrakenWebSocketSettingsProps> = ({
           />
         </div>
         
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between opacity-50 cursor-not-allowed">
           <div className="space-y-0.5">
             <Label htmlFor="autoConnectWebSocket">Auto-Connect WebSocket</Label>
             <p className="text-sm text-muted-foreground">
-              Automatically connect to Kraken WebSocket on page load
+              This setting is managed on the crypto dashboard
             </p>
           </div>
           <Switch
             id="autoConnectWebSocket"
             checked={autoConnectWebSocket}
-            onCheckedChange={onAutoConnectWebSocketChange}
+            disabled={true}
           />
         </div>
         

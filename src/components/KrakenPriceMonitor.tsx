@@ -278,18 +278,9 @@ export default function KrakenPriceMonitor({
             <p className="text-muted-foreground">No symbols to monitor</p>
           ) : (
             <>
-              <div className="space-y-2">
-                {lastPrices.length > 0 ? (
-                  lastPrices.map(price => (
-                    <div key={price.symbol} className="flex justify-between items-center p-2 border rounded">
-                      <span className="font-medium">{price.symbol}</span>
-                      <span>${price.price.toFixed(2)}</span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-muted-foreground">Waiting for price data...</p>
-                )}
-              </div>
+              <p className="text-muted-foreground">
+                Monitoring {symbols.length} cryptocurrencies for price updates.
+              </p>
               
               {contextLastUpdated && (
                 <p className="text-xs text-muted-foreground mt-4">

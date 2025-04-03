@@ -113,7 +113,7 @@ export default function Dashboard() {
     }
   }, [user, fetchStocks, fetchCryptos, fetchSettings]);
 
-  // Connect to WebSockets (Finnhub for stocks, Kraken for crypto)
+  // Connect to WebSockets (Finnhub for stocks only - Kraken is handled by KrakenWebSocketContext)
   const connectWebSocket = useCallback(() => {
     // Check if FinnHub websocket is enabled in settings
     if (settings?.enableFinnHubWebSocket === false) {
@@ -1575,20 +1575,6 @@ export default function Dashboard() {
           </TabsContent>
           
           <TabsContent value="crypto" className="space-y-6">
-            {/* Connection Status */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className={`h-3 w-3 rounded-full ${krakenConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <span className="text-sm text-muted-foreground">
-                  {krakenConnected ? 'Connected to Kraken WebSocket' : 'Disconnected from Kraken WebSocket'}
-                </span>
-              </div>
-              {lastUpdated && (
-                <span className="text-sm text-muted-foreground">
-                  Last updated: {lastUpdated.toLocaleTimeString()}
-                </span>
-              )}
-            </div>
             
             {/* Kraken Balance */}
             <KrakenBalance />

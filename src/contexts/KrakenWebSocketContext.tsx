@@ -46,6 +46,10 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
   const [symbols, setSymbols] = useState<string[]>(initialSymbols);
   const [krakenSocket, setKrakenSocket] = useState<KrakenWebSocket | null>(null);
   const [autoConnect, setAutoConnect] = useState<boolean>(false);
+  // Check if Kraken WebSocket is enabled in settings
+  const [enableKrakenWebSocket, setEnableKrakenWebSocket] = useState<boolean>(true);
+  // Reconnection delay in milliseconds (default: 1000ms = 1 second)
+  const [reconnectDelay, setReconnectDelay] = useState<number>(1000);
 
   // Load auto-connect setting from localStorage
   useEffect(() => {
@@ -126,11 +130,7 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
     }
   }, [krakenSocket]);
 
-  // Check if Kraken WebSocket is enabled in settings
-  const [enableKrakenWebSocket, setEnableKrakenWebSocket] = useState<boolean>(true);
-  
-  // Reconnection delay in milliseconds (default: 1000ms = 1 second)
-  const [reconnectDelay, setReconnectDelay] = useState<number>(1000);
+  // These state variables are already declared above, so we don't need to declare them again
   
   // Load enableKrakenWebSocket setting from localStorage
   useEffect(() => {

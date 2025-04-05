@@ -122,37 +122,35 @@ const Research: React.FC = () => {
       addLog({
         url: "CoinDesk API Fallback",
         method: "INFO",
-        requestBody: { symbol, market },
+        requestBody: { instrument: `${symbol}-USD`, market: 'cadli' },
         response: "Attempting to use CoinDesk API as fallback",
         status: 200
       });
       
-      const coinDeskData = await fetchCoinDeskHistoricalData(symbol, coinDeskApiKey);
+      // Use the updated fetchCoinDeskHistoricalData with logging
+      const coinDeskData = await fetchCoinDeskHistoricalData(
+        symbol, 
+        coinDeskApiKey,
+        30, // Default to 30 days
+        // Pass the logging function
+        (url, method, requestBody, response, status, error, duration) => {
+          addLog({
+            url,
+            method,
+            requestBody,
+            response,
+            status,
+            error,
+            duration
+          });
+        }
+      );
       
       if (coinDeskData && coinDeskData.data && coinDeskData.data.entries && coinDeskData.data.entries.length > 0) {
-        // Log successful CoinDesk API call
-        addLog({
-          url: `https://data-api.coindesk.com/index/cc/v1/historical/days?market=cadli&instrument=${symbol}-USD`,
-          method: "GET",
-          requestBody: { symbol, market },
-          response: coinDeskData,
-          status: 200
-        });
-        
-        // Process CoinDesk data
+        // Process CoinDesk data (logging is handled in the fetchCoinDeskHistoricalData function)
         processAndAddToAnalysis(coinDeskData, 'coindesk', symbol);
       } else {
-        // Log failed CoinDesk API call
-        addLog({
-          url: `https://data-api.coindesk.com/index/cc/v1/historical/days?market=cadli&instrument=${symbol}-USD`,
-          method: "GET",
-          requestBody: { symbol, market },
-          response: coinDeskData,
-          status: 404,
-          error: "No data found for this symbol"
-        });
-        
-        // Both APIs failed
+        // Both APIs failed (logging is handled in the fetchCoinDeskHistoricalData function)
         setResult({
           success: false,
           message: `Symbol ${symbol} not found in either AlphaVantage or CoinDesk APIs.`
@@ -165,7 +163,7 @@ const Research: React.FC = () => {
       addLog({
         url: `https://data-api.coindesk.com/index/cc/v1/historical/days?market=cadli&instrument=${symbol}-USD`,
         method: "GET",
-        requestBody: { symbol, market },
+        requestBody: { instrument: `${symbol}-USD`, market: 'cadli' },
         error: error instanceof Error ? error.message : "Unknown error"
       });
       

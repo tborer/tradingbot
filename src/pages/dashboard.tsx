@@ -693,7 +693,9 @@ export default function Dashboard() {
     isConnected: krakenConnected, 
     lastPrices: krakenPrices, 
     updateSymbols: updateKrakenSymbols,
-    lastUpdated: krakenLastUpdated
+    lastUpdated: krakenLastUpdated,
+    reconnectDelay,
+    setReconnectDelay
   } = useKrakenWebSocket();
   
   // Update crypto symbols in the shared context when they change
@@ -1875,6 +1877,7 @@ export default function Dashboard() {
                         enableManualCryptoTrading={settings.enableManualCryptoTrading === true}
                         autoConnectWebSocket={true}
                         enableKrakenWebSocket={settings.enableKrakenWebSocket !== false}
+                        reconnectDelay={reconnectDelay}
                         onEnableManualCryptoTradingChange={(enabled) => {
                           console.log("Setting enableManualCryptoTrading to:", enabled);
                           setSettings({ ...settings, enableManualCryptoTrading: enabled });
@@ -1883,6 +1886,10 @@ export default function Dashboard() {
                         onEnableKrakenWebSocketChange={(enabled) => {
                           console.log("Setting enableKrakenWebSocket to:", enabled);
                           setSettings({ ...settings, enableKrakenWebSocket: enabled });
+                        }}
+                        onReconnectDelayChange={(delay) => {
+                          console.log("Setting reconnectDelay to:", delay);
+                          setReconnectDelay(delay);
                         }}
                       />
                       

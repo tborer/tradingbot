@@ -18,6 +18,8 @@ interface KrakenWebSocketContextType {
   setAutoConnect: (autoConnect: boolean) => void;
   enableKrakenWebSocket: boolean;
   setEnableKrakenWebSocket: (enabled: boolean) => void;
+  reconnectDelay: number;
+  setReconnectDelay: (delay: number) => void;
 }
 
 const KrakenWebSocketContext = createContext<KrakenWebSocketContextType | null>(null);
@@ -88,6 +90,7 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
       onMessage: handleMessage,
       onStatusChange: handleStatusChange,
       autoConnect,
+      reconnectDelay,
       addLog
     });
     
@@ -99,7 +102,7 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
         socket.disconnect();
       }
     };
-  }, [symbols, handleMessage, handleStatusChange, autoConnect, addLog]);
+  }, [symbols, handleMessage, handleStatusChange, autoConnect, reconnectDelay, addLog]);
 
   // Connect function
   const connect = useCallback(() => {
@@ -126,11 +129,20 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
   // Check if Kraken WebSocket is enabled in settings
   const [enableKrakenWebSocket, setEnableKrakenWebSocket] = useState<boolean>(true);
   
+  // Reconnection delay in milliseconds (default: 1000ms = 1 second)
+  const [reconnectDelay, setReconnectDelay] = useState<number>(1000);
+  
   // Load enableKrakenWebSocket setting from localStorage
   useEffect(() => {
     const savedEnableKrakenWebSocket = localStorage.getItem('kraken-websocket-enabled');
     if (savedEnableKrakenWebSocket !== null) {
       setEnableKrakenWebSocket(savedEnableKrakenWebSocket === 'true');
+    }
+    
+    // Load reconnectDelay from localStorage
+    const savedReconnectDelay = localStorage.getItem('kraken-websocket-reconnect-delay');
+    if (savedReconnectDelay !== null) {
+      setReconnectDelay(parseInt(savedReconnectDelay, 10));
     }
   }, []);
   
@@ -149,6 +161,12 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
     setEnableKrakenWebSocket(value);
     localStorage.setItem('kraken-websocket-enabled', value.toString());
   }, []);
+  
+  // Save reconnectDelay setting to localStorage when it changes
+  const handleReconnectDelayChange = useCallback((value: number) => {
+    setReconnectDelay(value);
+    localStorage.setItem('kraken-websocket-reconnect-delay', value.toString());
+  }, []);
 
   const value = {
     isConnected: status.isConnected,
@@ -164,7 +182,9 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
     autoConnect,
     setAutoConnect: handleAutoConnectChange,
     enableKrakenWebSocket,
-    setEnableKrakenWebSocket: handleEnableKrakenWebSocketChange
+    setEnableKrakenWebSocket: handleEnableKrakenWebSocketChange,
+    reconnectDelay,
+    setReconnectDelay: handleReconnectDelayChange
   };
 
   return (

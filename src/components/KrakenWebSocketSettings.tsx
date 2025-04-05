@@ -5,15 +5,18 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { InfoCircledIcon } from "@radix-ui/react-icons";
+import { Slider } from "@/components/ui/slider";
 
 interface KrakenWebSocketSettingsProps {
   websocketUrl?: string;
   enableManualCryptoTrading: boolean;
   autoConnectWebSocket: boolean;
   enableKrakenWebSocket?: boolean;
+  reconnectDelay?: number;
   onEnableManualCryptoTradingChange: (enabled: boolean) => void;
   onAutoConnectWebSocketChange: (enabled: boolean) => void;
   onEnableKrakenWebSocketChange?: (enabled: boolean) => void;
+  onReconnectDelayChange?: (delay: number) => void;
 }
 
 const KrakenWebSocketSettings: React.FC<KrakenWebSocketSettingsProps> = ({
@@ -21,9 +24,11 @@ const KrakenWebSocketSettings: React.FC<KrakenWebSocketSettingsProps> = ({
   enableManualCryptoTrading,
   autoConnectWebSocket,
   enableKrakenWebSocket = true,
+  reconnectDelay = 1000,
   onEnableManualCryptoTradingChange,
   onAutoConnectWebSocketChange,
-  onEnableKrakenWebSocketChange
+  onEnableKrakenWebSocketChange,
+  onReconnectDelayChange
 }) => {
   return (
     <div className="border-t pt-4 mt-4">
@@ -85,6 +90,27 @@ const KrakenWebSocketSettings: React.FC<KrakenWebSocketSettingsProps> = ({
             checked={enableManualCryptoTrading}
             onCheckedChange={onEnableManualCryptoTradingChange}
           />
+        </div>
+        
+        <Separator />
+        
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="reconnectDelay">Reconnection Frequency</Label>
+            <span className="text-sm font-medium">{reconnectDelay}ms</span>
+          </div>
+          <Slider
+            id="reconnectDelay"
+            min={500}
+            max={5000}
+            step={100}
+            value={[reconnectDelay]}
+            onValueChange={(value) => onReconnectDelayChange?.(value[0])}
+            disabled={!enableKrakenWebSocket}
+          />
+          <p className="text-xs text-muted-foreground">
+            Base delay in milliseconds between reconnection attempts. Lower values will attempt to reconnect more quickly.
+          </p>
         </div>
         
         <div className="bg-muted p-3 rounded-md flex items-start gap-2 text-sm">

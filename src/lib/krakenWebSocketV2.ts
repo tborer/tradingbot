@@ -2,7 +2,7 @@ import { WebSocketLog } from '@/contexts/WebSocketLogContext';
 
 // Constants for WebSocket connection management
 const PING_INTERVAL = 30000; // 30 seconds as requested
-const RECONNECT_BASE_DELAY = 1000; // 1 second
+const DEFAULT_RECONNECT_BASE_DELAY = 1000; // 1 second default
 const MAX_RECONNECT_ATTEMPTS = 5;
 const CONNECTION_TIMEOUT = 10000; // 10 seconds
 const KRAKEN_WEBSOCKET_URL = 'wss://ws.kraken.com/v2';
@@ -15,6 +15,7 @@ export interface KrakenWebSocketOptions {
   onOpen?: () => void;
   onStatusChange?: (status: ConnectionStatus) => void;
   autoConnect?: boolean;
+  reconnectDelay?: number; // Base delay in ms for reconnection attempts
   addLog?: (level: 'info' | 'warning' | 'error' | 'success', message: string, details?: Record<string, any>, errorCode?: string) => void;
 }
 
@@ -39,10 +40,12 @@ export class KrakenWebSocket {
   private pingCounter = 100; // Starting counter for req_id
   private options: KrakenWebSocketOptions;
   private symbols: string[];
+  private reconnectBaseDelay: number;
 
   constructor(options: KrakenWebSocketOptions) {
     this.options = options;
     this.symbols = options.symbols || [];
+    this.reconnectBaseDelay = options.reconnectDelay || DEFAULT_RECONNECT_BASE_DELAY;
     
     // Auto-connect if enabled
     if (options.autoConnect) {
@@ -314,12 +317,13 @@ export class KrakenWebSocket {
     
     // Attempt to reconnect with exponential backoff
     if (this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-      const delay = RECONNECT_BASE_DELAY * Math.pow(2, this.reconnectAttempts);
+      const delay = this.reconnectBaseDelay * Math.pow(2, this.reconnectAttempts);
       
       this.log('info', 'Attempting to reconnect', {
         attempt: this.reconnectAttempts + 1,
         maxAttempts: MAX_RECONNECT_ATTEMPTS,
-        delay
+        delay,
+        baseDelay: this.reconnectBaseDelay
       });
       
       this.reconnectTimeout = setTimeout(() => {

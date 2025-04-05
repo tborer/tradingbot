@@ -390,239 +390,10 @@ export default function Dashboard() {
       
       wsRef.current = ws;
       
-      // Connect to Kraken for crypto data
-      if (cryptos.length > 0 && settings?.enableKrakenWebSocket !== false) {
-        console.log("Attempting to connect to Kraken WebSocket...");
-        
-        // Close any existing Kraken connection
-        if (krakenWsRef.current) {
-          try {
-            krakenWsRef.current.close();
-          } catch (closeError) {
-            console.error("Error closing existing Kraken WebSocket:", closeError);
-          }
-          krakenWsRef.current = null;
-        }
-        
-        // Add a timestamp parameter to prevent caching issues
-        const timestamp = Date.now();
-        const krakenWs = new WebSocket(`wss://ws.kraken.com/v2?t=${timestamp}`);
-        
-        // Set a connection timeout for Kraken
-        const krakenConnectionTimeout = setTimeout(() => {
-          if (krakenWs && krakenWs.readyState !== WebSocket.OPEN) {
-            console.error("Kraken WebSocket connection timeout");
-            try {
-              krakenWs.close();
-            } catch (closeError) {
-              console.error("Error closing timed out Kraken WebSocket:", closeError);
-            }
-            setCryptoConnected(false);
-            toast({
-              variant: "destructive",
-              title: "Connection Timeout",
-              description: "Kraken WebSocket connection timed out. Will retry shortly.",
-            });
-          }
-        }, 10000); // 10 second timeout
-        
-        // Set up a heartbeat to keep the connection alive
-        let krakenHeartbeatInterval: NodeJS.Timeout | null = null;
-        
-        const startKrakenHeartbeat = () => {
-          if (krakenHeartbeatInterval) {
-            clearInterval(krakenHeartbeatInterval);
-          }
-          
-          krakenHeartbeatInterval = setInterval(() => {
-            if (krakenWs && krakenWs.readyState === WebSocket.OPEN) {
-              try {
-                console.log("Sending ping to Kraken WebSocket");
-                krakenWs.send(JSON.stringify({ "name": "ping" }));
-              } catch (pingError) {
-                console.error("Error sending ping to Kraken:", pingError);
-                // If ping fails, try to reconnect
-                if (krakenWs) {
-                  try {
-                    krakenWs.close();
-                  } catch (closeError) {
-                    console.error("Error closing Kraken WebSocket after ping failure:", closeError);
-                  }
-                }
-              }
-            } else {
-              // If connection is not open, clear the interval
-              if (krakenHeartbeatInterval) {
-                clearInterval(krakenHeartbeatInterval);
-                krakenHeartbeatInterval = null;
-              }
-            }
-          }, 30000); // Send ping every 30 seconds
-        };
-        
-        krakenWs.onopen = () => {
-          clearTimeout(krakenConnectionTimeout);
-          console.log("Kraken WebSocket connection established successfully");
-          setCryptoConnected(true);
-          toast({
-            title: "Connected",
-            description: "Connected to Kraken websocket for crypto",
-          });
-          
-          // Start the heartbeat
-          startKrakenHeartbeat();
-          
-          // Subscribe to all cryptos
-          if (cryptos.length > 0) {
-            console.log(`Subscribing to ${cryptos.length} cryptos on Kraken`);
-            const symbols = cryptos.map(crypto => crypto.symbol);
-            const subscriptionMessage = createKrakenSubscription(symbols);
-            
-            // Log the subscription message for debugging
-            console.log("Sending Kraken subscription:", JSON.stringify(subscriptionMessage));
-            
-            try {
-              krakenWs.send(JSON.stringify(subscriptionMessage));
-              console.log(`Sent subscription for ${symbols.join(', ')}`);
-            } catch (subError) {
-              console.error("Error sending subscription to Kraken:", subError);
-            }
-            
-            // Send a ping to verify the connection is working
-            setTimeout(() => {
-              try {
-                if (krakenWs && krakenWs.readyState === WebSocket.OPEN) {
-                  console.log("Sending initial ping to Kraken WebSocket");
-                  krakenWs.send(JSON.stringify({ "name": "ping" }));
-                }
-              } catch (pingError) {
-                console.error("Error sending initial ping to Kraken:", pingError);
-              }
-            }, 2000);
-          }
-        };
-        
-        krakenWs.onmessage = (event) => {
-          try {
-            if (typeof event.data === 'string') {
-              // Log the raw message for debugging (truncated for readability)
-              const truncatedMessage = event.data.length > 200 ? event.data.substring(0, 200) + "..." : event.data;
-              console.log("Received Kraken message:", truncatedMessage);
-              
-              // Check if it's a pong response
-              if (event.data.includes('"name":"pong"')) {
-                console.log("Received pong from Kraken");
-                return;
-              }
-              
-              // Check for error messages
-              if (event.data.includes('"name":"error"')) {
-                console.error("Kraken WebSocket error message:", event.data);
-                return;
-              }
-              
-              const cryptoPrices = parseKrakenMessage(event.data);
-              
-              if (cryptoPrices.length > 0) {
-                console.log("Parsed crypto prices:", cryptoPrices);
-                updateCryptoPrices(cryptoPrices);
-                setLastUpdated(new Date());
-              } else {
-                console.log("No crypto prices parsed from message");
-              }
-            } else {
-              console.log("Received non-string message from Kraken WebSocket");
-            }
-          } catch (parseError) {
-            console.error("Error processing Kraken WebSocket message:", parseError);
-            console.log("Raw message that caused error:", typeof event.data === 'string' ? 
-              (event.data.length > 200 ? event.data.substring(0, 200) + "..." : event.data) : 
-              "Non-string data");
-          }
-        };
-        
-        krakenWs.onerror = (error) => {
-          clearTimeout(krakenConnectionTimeout);
-          
-          // Clean up heartbeat
-          if (krakenHeartbeatInterval) {
-            clearInterval(krakenHeartbeatInterval);
-            krakenHeartbeatInterval = null;
-          }
-          
-          // Log error properties
-          console.error("Kraken WebSocket error event:", error.type);
-          
-          // Extract more useful information from the error event
-          const errorInfo = {
-            type: error.type,
-            isTrusted: error.isTrusted,
-            timeStamp: error.timeStamp,
-            target: {
-              url: krakenWs.url,
-              readyState: krakenWs.readyState,
-              protocol: krakenWs.protocol,
-              extensions: krakenWs.extensions,
-              bufferedAmount: krakenWs.bufferedAmount
-            }
-          };
-          
-          console.error("Kraken WebSocket error details:", JSON.stringify(errorInfo));
-          setCryptoConnected(false);
-          
-          toast({
-            variant: "destructive",
-            title: "Crypto Connection Error",
-            description: "Failed to connect to Kraken for crypto data. Will retry shortly.",
-          });
-        };
-        
-        krakenWs.onclose = (event) => {
-          clearTimeout(krakenConnectionTimeout);
-          
-          // Clean up heartbeat
-          if (krakenHeartbeatInterval) {
-            clearInterval(krakenHeartbeatInterval);
-            krakenHeartbeatInterval = null;
-          }
-          
-          console.log(`Kraken WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason || "No reason provided"}, Clean: ${event.wasClean}`);
-          setCryptoConnected(false);
-          
-          // Attempt to reconnect after a delay, with exponential backoff
-          const baseDelay = 5000;
-          const maxDelay = 60000; // 1 minute max
-          
-          // Calculate reconnect delay with some randomness to avoid thundering herd
-          const reconnectAttempts = krakenWsRef.current?.reconnectAttempts || 0;
-          const exponentialDelay = Math.min(baseDelay * Math.pow(1.5, reconnectAttempts), maxDelay);
-          const jitter = Math.random() * 1000; // Add up to 1 second of jitter
-          const reconnectDelay = exponentialDelay + jitter;
-          
-          console.log(`Will attempt to reconnect to Kraken in ${Math.round(reconnectDelay/1000)} seconds (attempt ${reconnectAttempts + 1})`);
-          
-          // Store the timeout so we can clear it if needed
-          const reconnectTimeout = setTimeout(() => {
-            console.log("Executing reconnection to Kraken WebSocket");
-            // Only reconnect if we still have cryptos to track
-            if (cryptos.length > 0) {
-              connectWebSocket();
-            }
-          }, reconnectDelay);
-          
-          // Store the reconnect attempt count on the websocket ref
-          if (krakenWsRef.current) {
-            krakenWsRef.current.reconnectAttempts = reconnectAttempts + 1;
-            krakenWsRef.current.reconnectTimeout = reconnectTimeout;
-          }
-        };
-        
-        // Add custom properties to track reconnection attempts
-        krakenWs.reconnectAttempts = 0;
-        krakenWs.reconnectTimeout = null;
-        
-        krakenWsRef.current = krakenWs;
-      }
+      // We're now using the KrakenWebSocketContext for crypto data
+      // No need to create a separate WebSocket connection here
+      // Set crypto connected status based on the shared context
+      setCryptoConnected(krakenConnected);
       
       // Clean up on unmount
       return () => {
@@ -639,10 +410,7 @@ export default function Dashboard() {
           wsRef.current.close();
         }
         
-        if (krakenWsRef.current?.readyState === WebSocket.OPEN) {
-          console.log("Cleaning up Kraken WebSocket connection");
-          krakenWsRef.current.close();
-        }
+        // Kraken WebSocket is now managed by KrakenWebSocketContext
       };
     } catch (error) {
       console.error("WebSocket connection error:", error);
@@ -695,7 +463,9 @@ export default function Dashboard() {
     updateSymbols: updateKrakenSymbols,
     lastUpdated: krakenLastUpdated,
     reconnectDelay,
-    setReconnectDelay
+    setReconnectDelay,
+    enableKrakenWebSocket,
+    setEnableKrakenWebSocket
   } = useKrakenWebSocket();
   
   // Update crypto symbols in the shared context when they change

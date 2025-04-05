@@ -185,7 +185,9 @@ export default function KrakenPriceMonitor({
     lastUpdated: contextLastUpdated,
     autoConnect: contextAutoConnect,
     setAutoConnect: setContextAutoConnect,
-    updateSymbols
+    updateSymbols,
+    enableKrakenWebSocket: contextEnableKrakenWebSocket,
+    setEnableKrakenWebSocket: setContextEnableKrakenWebSocket
   } = useKrakenWebSocket();
   
   // Update symbols in the shared context when they change
@@ -195,6 +197,14 @@ export default function KrakenPriceMonitor({
       updateSymbols(symbols);
     }
   }, [symbols, updateSymbols]);
+  
+  // Process price updates from the shared context
+  useEffect(() => {
+    if (lastPrices.length > 0) {
+      console.log('Processing price updates from shared context:', lastPrices);
+      handlePriceUpdate(lastPrices);
+    }
+  }, [lastPrices, handlePriceUpdate]);
   
   // Clear prices when symbols change
   useEffect(() => {

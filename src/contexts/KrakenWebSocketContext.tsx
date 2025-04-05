@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { KrakenWebSocket, ConnectionStatus } from '@/lib/krakenWebSocketV2';
-import { KrakenPrice } from '@/lib/kraken';
+import { KrakenPrice, parseKrakenMessage, formatToKrakenSymbol } from '@/lib/kraken';
 import { useWebSocketLogs } from './WebSocketLogContext';
 
 interface KrakenWebSocketContextType {
@@ -69,17 +69,29 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
   const handleMessage = useCallback((data: any) => {
     try {
       // Store the raw message for debugging
-      setLastMessage(JSON.stringify(data));
+      const dataString = typeof data === 'string' ? data : JSON.stringify(data);
+      setLastMessage(dataString);
       
-      // Check if data contains price information
-      if (data && Array.isArray(data.prices) && data.prices.length > 0) {
-        setLastPrices(data.prices);
+      // Parse the message to extract price data
+      const prices = parseKrakenMessage(dataString);
+      
+      if (prices.length > 0) {
+        console.log('Successfully parsed Kraken prices:', prices);
+        addLog('success', 'Successfully parsed Kraken prices', { prices });
+        
+        setLastPrices(prices);
         setLastUpdated(new Date());
       }
     } catch (err) {
       console.error('Error processing Kraken message:', err);
+      addLog('error', 'Error processing Kraken message', { 
+        error: err instanceof Error ? err.message : String(err),
+        dataPreview: typeof data === 'string' 
+          ? data.substring(0, 200) 
+          : JSON.stringify(data).substring(0, 200)
+      });
     }
-  }, []);
+  }, [addLog]);
 
   // Handle status changes
   const handleStatusChange = useCallback((newStatus: ConnectionStatus) => {
@@ -88,9 +100,15 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
 
   // Initialize the WebSocket connection
   useEffect(() => {
+    // Format symbols to Kraken format (e.g., BTC -> XBT/USD)
+    const formattedSymbols = symbols.map(formatToKrakenSymbol);
+    
+    console.log('Initializing Kraken WebSocket with symbols:', formattedSymbols);
+    addLog('info', 'Initializing Kraken WebSocket', { symbols: formattedSymbols });
+    
     // Create a new KrakenWebSocket instance
     const socket = new KrakenWebSocket({
-      symbols,
+      symbols: formattedSymbols,
       onMessage: handleMessage,
       onStatusChange: handleStatusChange,
       autoConnect,
@@ -126,7 +144,9 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
   const updateSymbols = useCallback((newSymbols: string[]) => {
     setSymbols(newSymbols);
     if (krakenSocket) {
-      krakenSocket.updateSymbols(newSymbols);
+      // Format symbols to Kraken format (e.g., BTC -> XBT/USD)
+      const formattedSymbols = newSymbols.map(formatToKrakenSymbol);
+      krakenSocket.updateSymbols(formattedSymbols);
     }
   }, [krakenSocket]);
 

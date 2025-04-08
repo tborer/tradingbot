@@ -56,6 +56,7 @@ const Research: React.FC = () => {
     let symbolCode = symbol;
     let currentPrice = 0;
     let isCrypto = true; // Default to crypto for CoinDesk data
+    let processedData = data; // Default to using the original data
     
     if (source === 'alphavantage' && data['Meta Data']) {
       symbolCode = data['Meta Data']['2. Digital Currency Code'] || symbol;
@@ -84,6 +85,18 @@ const Research: React.FC = () => {
         entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         currentPrice = entries[0].value;
       }
+      
+      // Format CoinDesk data to be compatible with analysis functions
+      processedData = formatCoinDeskDataForAnalysis(data);
+      
+      // Log the formatted data for debugging
+      console.log('Formatted CoinDesk data for analysis:', processedData);
+      
+      // If formatting failed, use the original data
+      if (!processedData) {
+        processedData = data;
+        console.warn('Failed to format CoinDesk data, using original format');
+      }
     }
     
     // Add to analysis dashboard
@@ -92,7 +105,7 @@ const Research: React.FC = () => {
       currentPrice: currentPrice || undefined,
       purchasePrice: currentPrice || 0,
       type: isCrypto ? 'crypto' : 'stock',
-      historicalData: data
+      historicalData: processedData
     });
     
     setResult({

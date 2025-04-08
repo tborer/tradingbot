@@ -60,10 +60,20 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
           if (response.ok) {
             const data = await response.json();
             if (data && data.data) {
+              // Determine the data source
+              let source = 'unknown';
+              if (data.source) {
+                source = data.source;
+              } else if (data.data.data && data.data.data.entries) {
+                source = 'coindesk';
+              } else if (data.data['Meta Data']) {
+                source = 'alphavantage';
+              }
+              setDataSource(source);
+              
               // Process the historical data
               const extractedPrices = extractHistoricalPrices(data.data);
               setPrices(extractedPrices);
-              setDataSource(data.source || 'unknown');
               
               // Calculate SMA values
               const sma20Value = calculateSMA(extractedPrices, 20);
@@ -115,8 +125,20 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
 
   useEffect(() => {
     if (historicalData) {
+      // Determine the data source
+      if (historicalData.data && historicalData.data.entries) {
+        setDataSource('coindesk');
+      } else if (historicalData['Meta Data']) {
+        setDataSource('alphavantage');
+      } else if (historicalData['Time Series (Digital Currency Daily)'] && !historicalData['Meta Data']) {
+        setDataSource('coindesk-formatted');
+      }
+      
+      // Extract prices from the historical data
       const extractedPrices = extractHistoricalPrices(historicalData);
       setPrices(extractedPrices);
+      
+      console.log(`Extracted ${extractedPrices.length} prices from ${dataSource} data`);
 
       // Calculate SMA values
       const sma20Value = calculateSMA(extractedPrices, 20);
@@ -155,7 +177,7 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
       );
       setRecommendation(recommendationText);
     }
-  }, [historicalData, currentPrice, purchasePrice]);
+  }, [historicalData, currentPrice, purchasePrice, dataSource]);
 
   const price = currentPrice || (prices.length > 0 ? prices[0] : purchasePrice);
   const percentChange = purchasePrice > 0 

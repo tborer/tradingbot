@@ -1,16 +1,45 @@
 // CoinDesk API utility functions
 
 /**
- * Interface for CoinDesk API response
+ * Interface for CoinDesk API response (original format)
  */
 export interface CoinDeskHistoricalResponse {
   data: {
-    entries: Array<{
+    entries?: Array<{
       date: string;
       value: number;
     }>;
-    market: string;
-    instrument: string;
+    market?: string;
+    instrument?: string;
+  } | {
+    Data?: Array<{
+      UNIT: string;
+      TIMESTAMP: number;
+      TYPE: string;
+      MARKET: string;
+      INSTRUMENT: string;
+      OPEN: number;
+      HIGH: number;
+      LOW: number;
+      CLOSE: number;
+      FIRST_MESSAGE_TIMESTAMP: number;
+      LAST_MESSAGE_TIMESTAMP: number;
+      FIRST_MESSAGE_VALUE: number;
+      HIGH_MESSAGE_VALUE: number;
+      HIGH_MESSAGE_TIMESTAMP: number;
+      LOW_MESSAGE_VALUE: number;
+      LOW_MESSAGE_TIMESTAMP: number;
+      LAST_MESSAGE_VALUE: number;
+      TOTAL_INDEX_UPDATES: number;
+      VOLUME: number;
+      QUOTE_VOLUME: number;
+      VOLUME_TOP_TIER: number;
+      QUOTE_VOLUME_TOP_TIER: number;
+      VOLUME_DIRECT: number;
+      QUOTE_VOLUME_DIRECT: number;
+      VOLUME_TOP_TIER_DIRECT: number;
+      QUOTE_VOLUME_TOP_TIER_DIRECT: number;
+    }>;
   };
 }
 
@@ -136,7 +165,7 @@ export async function fetchCoinDeskHistoricalData(
  * @returns Formatted data compatible with existing analysis utilities
  */
 export function formatCoinDeskDataForAnalysis(data: CoinDeskHistoricalResponse): any {
-  if (!data || !data.data || !data.data.entries || data.data.entries.length === 0) {
+  if (!data || !data.data) {
     return null;
   }
   
@@ -145,21 +174,56 @@ export function formatCoinDeskDataForAnalysis(data: CoinDeskHistoricalResponse):
     'Time Series (Digital Currency Daily)': {}
   };
   
-  // Sort entries by date (newest first)
-  const sortedEntries = [...data.data.entries].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+  // Check which format we're dealing with
+  if ('entries' in data.data && data.data.entries && data.data.entries.length > 0) {
+    // Original format with entries array
+    console.log('Processing original CoinDesk format with entries array');
+    
+    // Sort entries by date (newest first)
+    const sortedEntries = [...data.data.entries].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+    
+    // Format each entry to match the expected structure
+    sortedEntries.forEach(entry => {
+      formattedData['Time Series (Digital Currency Daily)'][entry.date] = {
+        '1. open': entry.value.toString(),
+        '2. high': entry.value.toString(),
+        '3. low': entry.value.toString(),
+        '4. close': entry.value.toString(),
+        '5. volume': '0', // CoinDesk might not provide volume data
+      };
+    });
+    
+    return formattedData;
+  } 
+  else if ('Data' in data.data && Array.isArray(data.data.Data) && data.data.Data.length > 0) {
+    // New format with Data array
+    console.log('Processing new CoinDesk format with Data array');
+    
+    // Sort data by timestamp (newest first)
+    const sortedData = [...data.data.Data].sort(
+      (a, b) => b.TIMESTAMP - a.TIMESTAMP
+    );
+    
+    // Format each entry to match the expected structure
+    sortedData.forEach(entry => {
+      // Convert timestamp to date string (YYYY-MM-DD format)
+      const date = new Date(entry.TIMESTAMP * 1000).toISOString().split('T')[0];
+      
+      formattedData['Time Series (Digital Currency Daily)'][date] = {
+        '1. open': entry.OPEN.toString(),
+        '2. high': entry.HIGH.toString(),
+        '3. low': entry.LOW.toString(),
+        '4. close': entry.CLOSE.toString(),
+        '5. volume': entry.VOLUME.toString(),
+      };
+    });
+    
+    return formattedData;
+  }
   
-  // Format each entry to match the expected structure
-  sortedEntries.forEach(entry => {
-    formattedData['Time Series (Digital Currency Daily)'][entry.date] = {
-      '1. open': entry.value.toString(),
-      '2. high': entry.value.toString(),
-      '3. low': entry.value.toString(),
-      '4. close': entry.value.toString(),
-      '5. volume': '0', // CoinDesk might not provide volume data
-    };
-  });
-  
-  return formattedData;
+  // If we couldn't process either format
+  console.warn('Unknown CoinDesk data format:', data);
+  return null;
 }

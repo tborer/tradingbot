@@ -128,6 +128,8 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
       // Determine the data source
       if (historicalData.data && historicalData.data.entries) {
         setDataSource('coindesk');
+      } else if (historicalData.data && historicalData.data.Data) {
+        setDataSource('coindesk');
       } else if (historicalData['Meta Data']) {
         setDataSource('alphavantage');
       } else if (historicalData['Time Series (Digital Currency Daily)'] && !historicalData['Meta Data']) {

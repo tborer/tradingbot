@@ -77,13 +77,24 @@ const Research: React.FC = () => {
           currentPrice = parseFloat(data[timeSeriesKey][latestDate]['4. close']);
         }
       }
-    } else if (source === 'coindesk' && data.data && data.data.entries) {
-      // For CoinDesk data, get the latest price from entries
-      const entries = [...data.data.entries];
-      if (entries.length > 0) {
-        // Sort entries by date (newest first)
-        entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        currentPrice = entries[0].value;
+    } else if (source === 'coindesk') {
+      // Check which CoinDesk format we're dealing with
+      if (data.data && data.data.entries) {
+        // Original format with entries array
+        const entries = [...data.data.entries];
+        if (entries.length > 0) {
+          // Sort entries by date (newest first)
+          entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          currentPrice = entries[0].value;
+        }
+      } else if (data.data && data.data.Data && Array.isArray(data.data.Data)) {
+        // New format with Data array
+        const dataEntries = [...data.data.Data];
+        if (dataEntries.length > 0) {
+          // Sort entries by timestamp (newest first)
+          dataEntries.sort((a, b) => b.TIMESTAMP - a.TIMESTAMP);
+          currentPrice = dataEntries[0].CLOSE;
+        }
       }
       
       // Format CoinDesk data to be compatible with analysis functions

@@ -202,9 +202,29 @@ export function extractHistoricalPrices(data: any): number[] {
     return [];
   }
   
-  // Check if this is CoinDesk data format (original format)
+  // Check if this is CoinDesk data format with Data array (new format)
+  if (data.data && data.data.Data && Array.isArray(data.data.Data)) {
+    console.log('Detected CoinDesk Data array format, extracting prices...');
+    const prices: number[] = [];
+    
+    // Sort entries by timestamp (newest first)
+    const sortedEntries = [...data.data.Data].sort(
+      (a, b) => b.TIMESTAMP - a.TIMESTAMP
+    );
+    
+    // Extract closing prices
+    sortedEntries.forEach(entry => {
+      if (entry.CLOSE && !isNaN(entry.CLOSE)) {
+        prices.push(entry.CLOSE);
+      }
+    });
+    
+    return prices;
+  }
+  
+  // Check if this is CoinDesk data format with entries array (original format)
   if (data.data && data.data.entries && Array.isArray(data.data.entries)) {
-    console.log('Detected CoinDesk original data format, extracting prices...');
+    console.log('Detected CoinDesk entries array format, extracting prices...');
     const prices: number[] = [];
     
     // Sort entries by date (newest first)

@@ -31,21 +31,35 @@ export async function fetchCoinDeskHistoricalData(
   try {
     // Format the symbol for CoinDesk API (e.g., BTC-USD)
     const formattedSymbol = `${symbol}-USD`;
-    const market = 'cadli'; // CoinDesk requires 'cadli' as the market parameter
     
-    // Construct the API URL with parameters
-    const url = `https://data-api.coindesk.com/index/cc/v1/historical/days?market=${market}&instrument=${formattedSymbol}&limit=${days}&aggregate=1&fill=true&apply_mapping=true&response_format=JSON`;
+    // Base URL for the CoinDesk API
+    const baseUrl = 'https://data-api.coindesk.com/index/cc/v1/historical/days';
+    
+    // Construct parameters according to the documentation
+    const params: Record<string, string> = {
+      "market": "cadli",
+      "instrument": formattedSymbol,
+      "api_key": apiKey, // API key as query parameter instead of header
+      "limit": days.toString(),
+      "aggregate": "1",
+      "fill": "true",
+      "apply_mapping": "true",
+      "response_format": "JSON"
+    };
+    
+    // Create URL with parameters using URLSearchParams as shown in the documentation
+    const url = new URL(baseUrl);
+    url.search = new URLSearchParams(params).toString();
     
     console.log(`Fetching CoinDesk historical data for ${symbol}...`);
     
     const startTime = Date.now();
     
-    // Make the API request with the API key in the header
-    const response = await fetch(url, {
+    // Make the API request with the correct headers as per documentation
+    const response = await fetch(url.toString(), {
       method: 'GET',
       headers: {
-        'X-API-KEY': apiKey,
-        'Content-Type': 'application/json'
+        "Content-type": "application/json; charset=UTF-8"
       }
     });
     
@@ -59,9 +73,9 @@ export async function fetchCoinDeskHistoricalData(
       // Log the error if a logging function is provided
       if (logFunction) {
         logFunction(
-          url,
+          url.toString(),
           'GET',
-          { instrument: formattedSymbol, market },
+          params,
           null,
           response.status,
           errorMessage,
@@ -78,9 +92,9 @@ export async function fetchCoinDeskHistoricalData(
     // Log the successful response if a logging function is provided
     if (logFunction) {
       logFunction(
-        url,
+        url.toString(),
         'GET',
-        { instrument: formattedSymbol, market },
+        params,
         data,
         response.status,
         undefined,
@@ -92,12 +106,20 @@ export async function fetchCoinDeskHistoricalData(
   } catch (error) {
     console.error('Error fetching CoinDesk historical data:', error);
     
+    // Create a URL for logging purposes
+    const baseUrl = 'https://data-api.coindesk.com/index/cc/v1/historical/days';
+    const params = {
+      "market": "cadli",
+      "instrument": `${symbol}-USD`,
+      "limit": days.toString()
+    };
+    
     // Log the error if a logging function is provided
     if (logFunction) {
       logFunction(
-        `https://data-api.coindesk.com/index/cc/v1/historical/days?market=cadli&instrument=${symbol}-USD`,
+        `${baseUrl}?${new URLSearchParams(params).toString()}`,
         'GET',
-        { instrument: `${symbol}-USD`, market: 'cadli' },
+        { ...params, api_key: "***" }, // Hide the actual API key in logs
         null,
         undefined,
         error instanceof Error ? error.message : 'Unknown error'

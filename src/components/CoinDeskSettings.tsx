@@ -57,7 +57,8 @@ const CoinDeskSettings: React.FC<CoinDeskSettingsProps> = ({
             <p className="text-muted-foreground">
               The CoinDesk API provides historical cryptocurrency data and is used as a fallback
               when the primary data source doesn't have data for a specific cryptocurrency.
-              Example API URL: https://data-api.coindesk.com/index/cc/v1/historical/days
+              The API key should be included as a query parameter in the URL.
+              Example API URL: https://data-api.coindesk.com/index/cc/v1/historical/days?market=cadli&instrument=BTC-USD&api_key=your_api_key
             </p>
           </div>
         </div>

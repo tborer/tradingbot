@@ -1,7 +1,7 @@
 import { WebSocketLog } from '@/contexts/WebSocketLogContext';
 
 // Constants for WebSocket connection management
-const PING_INTERVAL = 30000; // 30 seconds as requested
+const PING_INTERVAL = 30000; // 30 seconds as specified in requirements
 const DEFAULT_RECONNECT_BASE_DELAY = 1000; // 1 second default
 const MAX_RECONNECT_ATTEMPTS = 5;
 const CONNECTION_TIMEOUT = 10000; // 10 seconds
@@ -213,6 +213,7 @@ export class KrakenWebSocket {
       
       try {
         this.socket.send(JSON.stringify(unsubscribeMessage));
+        this.log('info', 'Sent unsubscribe message', { symbols: this.symbols });
       } catch (err) {
         this.log('error', 'Error sending unsubscribe message', {
           error: err instanceof Error ? err.message : String(err)
@@ -220,7 +221,7 @@ export class KrakenWebSocket {
       }
     }
     
-    // Subscribe to new symbols
+    // Subscribe to new symbols using the exact format specified in requirements
     if (symbols.length > 0) {
       const subscribeMessage = {
         method: 'subscribe',
@@ -232,6 +233,7 @@ export class KrakenWebSocket {
       
       try {
         this.socket.send(JSON.stringify(subscribeMessage));
+        this.log('info', 'Sent subscribe message', { symbols });
       } catch (err) {
         this.log('error', 'Error sending subscribe message', {
           error: err instanceof Error ? err.message : String(err)
@@ -263,7 +265,7 @@ export class KrakenWebSocket {
     
     this.reconnectAttempts = 0;
     
-    // Subscribe to ticker data
+    // Subscribe to ticker data using the exact format specified in requirements
     if (this.symbols.length > 0) {
       const subscribeMessage = {
         method: 'subscribe',
@@ -275,7 +277,10 @@ export class KrakenWebSocket {
       
       try {
         this.socket?.send(JSON.stringify(subscribeMessage));
-        this.log('info', 'Sent subscription message', { symbols: this.symbols });
+        this.log('info', 'Sent subscription message', { 
+          message: JSON.stringify(subscribeMessage),
+          symbols: this.symbols 
+        });
       } catch (err) {
         this.log('error', 'Error sending subscription message', {
           error: err instanceof Error ? err.message : String(err)
@@ -310,6 +315,23 @@ export class KrakenWebSocket {
       if (data.method === 'heartbeat') {
         this.log('info', 'Received heartbeat', { timestamp: Date.now() });
         return;
+      }
+      
+      // Handle status updates (connection confirmation)
+      if (data.channel === 'status' && data.type === 'update' && Array.isArray(data.data)) {
+        this.log('success', 'Received status update from Kraken', { 
+          status: data.data[0],
+          connection_id: data.data[0]?.connection_id
+        });
+        return;
+      }
+      
+      // Handle ticker data (snapshot or update)
+      if (data.channel === 'ticker' && (data.type === 'snapshot' || data.type === 'update') && Array.isArray(data.data)) {
+        this.log('info', `Received ticker ${data.type}`, { 
+          symbols: data.data.map((item: any) => item.symbol).join(', '),
+          timestamp: Date.now()
+        });
       }
       
       // Handle subscription status messages
@@ -424,7 +446,7 @@ export class KrakenWebSocket {
     this.pingInterval = setInterval(() => {
       if (this.socket && this.socket.readyState === WebSocket.OPEN) {
         try {
-          // Send ping in the format specified in the requirements
+          // Send ping in the exact format specified in the requirements
           const pingMessage = {
             method: 'ping',
             req_id: this.pingCounter++
@@ -441,6 +463,22 @@ export class KrakenWebSocket {
             req_id: pingMessage.req_id,
             timestamp: now.toISOString()
           });
+          
+          // Set a timeout to check if we received a pong response
+          const pongTimeoutId = setTimeout(() => {
+            // If the last pong time is older than the last ping time, we didn't receive a pong
+            if (!this.status.lastPongTime || 
+                (this.status.lastPingTime && this.status.lastPongTime < this.status.lastPingTime)) {
+              this.log('warning', 'No pong response received, reconnecting...', {
+                lastPingTime: this.status.lastPingTime?.toISOString(),
+                lastPongTime: this.status.lastPongTime?.toISOString()
+              });
+              this.reconnect();
+            }
+          }, 5000); // Wait 5 seconds for pong response
+          
+          // Store the timeout ID so it can be cleared when we receive a pong
+          (this.socket as any)._pongTimeoutId = pongTimeoutId;
         } catch (err) {
           this.log('error', 'Error sending ping', {
             error: err instanceof Error ? err.message : String(err)
@@ -468,6 +506,12 @@ export class KrakenWebSocket {
     this.updateStatus({
       lastPongTime: now
     });
+    
+    // Clear the pong timeout if it exists
+    if (this.socket && (this.socket as any)._pongTimeoutId) {
+      clearTimeout((this.socket as any)._pongTimeoutId);
+      (this.socket as any)._pongTimeoutId = null;
+    }
   }
 
   private reconnect(): void {

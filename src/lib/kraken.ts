@@ -68,10 +68,15 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
       return [];
     }
     
-    // Handle the new v2 format with channel and data array
-    // This matches the format provided by the user in the documentation
+    // Handle status updates (connection confirmation)
+    if (parsed.channel === 'status' && parsed.type === 'update' && Array.isArray(parsed.data)) {
+      console.log('Received status update from Kraken:', JSON.stringify(parsed).substring(0, 200));
+      return [];
+    }
+    
+    // Handle the v2 format with channel and data array (exactly as specified in requirements)
     if (parsed.channel === 'ticker' && (parsed.type === 'snapshot' || parsed.type === 'update') && Array.isArray(parsed.data)) {
-      console.log('Found ticker data in new v2 format with channel and data array');
+      console.log('Found ticker data in v2 format with channel and data array');
       
       // Extract prices from each ticker item in the data array
       const prices: KrakenPrice[] = [];
@@ -82,7 +87,7 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
           const rawSymbol = item.symbol.split('/')[0];
           const symbol = rawSymbol === 'XBT' ? 'BTC' : rawSymbol;
           
-          // According to Kraken docs, 'last' field contains the last traded price
+          // According to the specified format, we have direct access to these fields
           let price: number | null = null;
           
           if (item.last !== undefined) {
@@ -316,13 +321,12 @@ export const formatToKrakenSymbol = (symbol: string): string => {
 export const createKrakenSubscription = (symbols: string[]): any => {
   const krakenSymbols = symbols.map(formatToKrakenSymbol);
   
-  // Following the exact format from Kraken documentation
+  // Following the exact format specified in the requirements
   return {
     method: "subscribe",
     params: {
       channel: "ticker",
       symbol: krakenSymbols
-      // snapshot defaults to true, event_trigger defaults to trades
     }
   };
 };

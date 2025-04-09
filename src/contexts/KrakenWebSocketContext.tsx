@@ -164,8 +164,8 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
 
   // Update symbols function
   const updateSymbols = useCallback((newSymbols: string[]) => {
-    console.log('Updating Kraken WebSocket symbols:', newSymbols);
-    addLog('info', 'Updating Kraken WebSocket symbols', { symbols: newSymbols });
+    console.log('Checking for Kraken WebSocket symbol updates:', newSymbols);
+    addLog('info', 'Checking for Kraken WebSocket symbol updates', { symbols: newSymbols });
     
     // Ensure we have valid symbols to work with
     if (!newSymbols || newSymbols.length === 0) {
@@ -173,6 +173,38 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
       addLog('warning', 'No symbols provided for Kraken WebSocket update', {});
       return;
     }
+    
+    // Check if symbols have actually changed before updating
+    const currentSymbolsSet = new Set(symbols);
+    const newSymbolsSet = new Set(newSymbols);
+    
+    // Quick check for different array lengths
+    let symbolsChanged = currentSymbolsSet.size !== newSymbolsSet.size;
+    
+    // If sizes are the same, check if all symbols in the new set are already in the current set
+    if (!symbolsChanged) {
+      for (const symbol of newSymbolsSet) {
+        if (!currentSymbolsSet.has(symbol)) {
+          symbolsChanged = true;
+          break;
+        }
+      }
+    }
+    
+    if (!symbolsChanged) {
+      console.log('Kraken WebSocket symbols unchanged, skipping update');
+      addLog('info', 'Kraken WebSocket symbols unchanged, skipping update', {
+        currentSymbols: Array.from(currentSymbolsSet),
+        newSymbols: Array.from(newSymbolsSet)
+      });
+      return;
+    }
+    
+    console.log('Kraken WebSocket symbols changed, updating');
+    addLog('info', 'Kraken WebSocket symbols changed, updating', {
+      currentSymbols: Array.from(currentSymbolsSet),
+      newSymbols: Array.from(newSymbolsSet)
+    });
     
     setSymbols(newSymbols);
     if (krakenSocket) {
@@ -183,7 +215,7 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
       
       krakenSocket.updateSymbols(formattedSymbols);
     }
-  }, [krakenSocket, addLog]);
+  }, [krakenSocket, addLog, symbols]);
 
   // These state variables are already declared above, so we don't need to declare them again
   

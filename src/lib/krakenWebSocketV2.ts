@@ -200,16 +200,10 @@ export class KrakenWebSocket {
 
   public updateSymbols(symbols: string[]): void {
     // Log the incoming symbols
-    this.log('info', 'Updating symbols', { 
+    this.log('info', 'Checking for symbol updates', { 
       newSymbols: symbols,
       currentSymbols: this.symbols
     });
-    
-    // If symbols haven't changed, do nothing
-    if (JSON.stringify(this.symbols) === JSON.stringify(symbols)) {
-      this.log('info', 'Symbols unchanged, skipping update', {});
-      return;
-    }
     
     // Ensure we have a valid array of symbols
     if (!Array.isArray(symbols)) {
@@ -227,6 +221,35 @@ export class KrakenWebSocket {
       this.log('info', 'Added default symbol XBT/USD', {});
     }
     
+    // Check if symbols have actually changed before proceeding
+    const currentSymbolsSet = new Set(this.symbols);
+    const newSymbolsSet = new Set(validSymbols);
+    
+    // Quick check for different array lengths
+    if (currentSymbolsSet.size !== newSymbolsSet.size) {
+      this.log('info', 'Symbol count changed, updating subscriptions', {
+        oldCount: currentSymbolsSet.size,
+        newCount: newSymbolsSet.size
+      });
+    } else {
+      // Check if all symbols in the new set are already in the current set
+      let symbolsChanged = false;
+      for (const symbol of newSymbolsSet) {
+        if (!currentSymbolsSet.has(symbol)) {
+          symbolsChanged = true;
+          break;
+        }
+      }
+      
+      if (!symbolsChanged) {
+        this.log('info', 'Symbols unchanged, skipping update', {});
+        return;
+      }
+      
+      this.log('info', 'Symbols changed, updating subscriptions', {});
+    }
+    
+    // Update the stored symbols
     this.symbols = validSymbols;
     this.log('info', 'Updated symbols array', { symbols: this.symbols });
     
@@ -239,12 +262,12 @@ export class KrakenWebSocket {
     }
     
     // Unsubscribe from current symbols
-    if (this.symbols.length > 0) {
+    if (currentSymbolsSet.size > 0) {
       const unsubscribeMessage = {
         method: 'unsubscribe',
         params: {
           channel: 'ticker',
-          symbol: this.symbols
+          symbol: Array.from(currentSymbolsSet)
         }
       };
       
@@ -252,7 +275,7 @@ export class KrakenWebSocket {
         this.socket.send(JSON.stringify(unsubscribeMessage));
         this.log('info', 'Sent unsubscribe message', { 
           message: JSON.stringify(unsubscribeMessage),
-          symbols: this.symbols 
+          symbols: Array.from(currentSymbolsSet) 
         });
       } catch (err) {
         this.log('error', 'Error sending unsubscribe message', {
@@ -339,12 +362,12 @@ export class KrakenWebSocket {
         
         try {
           this.socket?.send(JSON.stringify(subscribeMessage));
-          this.log('info', 'Sent subscription message', { 
+          this.log('info', 'Sent initial subscription message', { 
             message: JSON.stringify(subscribeMessage),
             symbols: this.symbols 
           });
         } catch (err) {
-          this.log('error', 'Error sending subscription message', {
+          this.log('error', 'Error sending initial subscription message', {
             error: err instanceof Error ? err.message : String(err)
           });
         }

@@ -470,12 +470,14 @@ export default function Dashboard() {
   
   // Update crypto symbols in the shared context when they change
   useEffect(() => {
-    // Always send the crypto symbols to the WebSocket context, even if the array is empty
+    // Extract symbols from cryptos array
     const symbols = cryptos.map(crypto => crypto.symbol);
-    console.log('Updating Kraken WebSocket symbols from dashboard:', symbols);
+    console.log('Checking Kraken WebSocket symbols from dashboard:', symbols);
     
     // Ensure we're sending a valid array
     if (Array.isArray(symbols)) {
+      // The updateKrakenSymbols function will now check if symbols have changed
+      // before attempting to update the WebSocket subscriptions
       updateKrakenSymbols(symbols);
     } else {
       console.error('Invalid symbols array in dashboard:', symbols);
@@ -886,34 +888,12 @@ export default function Dashboard() {
       
       if (response.ok) {
         const newCryptoData = await response.json();
+        
+        // Update the cryptos state which will trigger the useEffect that updates the WebSocket symbols
         setCryptos(prev => [...prev, newCryptoData]);
         setNewCrypto({ symbol: "", purchasePrice: "", shares: "" });
         
-        // Subscribe to the new crypto in the Kraken WebSocket
-        if (krakenWsRef.current?.readyState === WebSocket.OPEN) {
-          try {
-            const symbol = newCryptoData.symbol;
-            const formattedSymbol = `${symbol}/USD`;
-            
-            console.log(`Subscribing to new crypto: ${symbol} (${formattedSymbol})`);
-            
-            const subscribeMessage = {
-              method: "subscribe",
-              params: {
-                channel: "ticker",
-                symbol: [formattedSymbol]
-              }
-            };
-            
-            console.log("Sending Kraken subscription for new crypto:", JSON.stringify(subscribeMessage));
-            krakenWsRef.current.send(JSON.stringify(subscribeMessage));
-            console.log(`Sent subscription for ${symbol}`);
-          } catch (subError) {
-            console.error("Error subscribing to new crypto:", subError);
-          }
-        } else {
-          console.log("Kraken WebSocket not connected, will subscribe on next connection");
-        }
+        console.log(`Added new crypto: ${newCryptoData.symbol} - the useEffect will handle WebSocket subscription`);
         
         toast({
           title: "Success",
@@ -941,7 +921,10 @@ export default function Dashboard() {
       });
       
       if (response.ok) {
+        // Update the cryptos state which will trigger the useEffect that updates the WebSocket symbols
         setCryptos(prev => prev.filter(crypto => crypto.id !== id));
+        
+        console.log(`Removed crypto: ${symbol} - the useEffect will handle WebSocket unsubscription`);
         
         toast({
           title: "Success",

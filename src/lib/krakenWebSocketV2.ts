@@ -689,16 +689,14 @@ export class KrakenWebSocket {
   }
 
   private log(level: 'info' | 'warning' | 'error' | 'success', message: string, details?: Record<string, any>, errorCode?: string): void {
-    // Log to console
-    const consoleMethod = 
-      level === 'error' ? console.error :
-      level === 'warning' ? console.warn :
-      level === 'success' ? console.info :
-      console.log;
+    // Log to console only for errors or warnings to reduce console noise
+    if (level === 'error' || level === 'warning') {
+      const consoleMethod = level === 'error' ? console.error : console.warn;
+      consoleMethod(`[Kraken WebSocket] ${message}`, details || '');
+    }
     
-    consoleMethod(`[Kraken WebSocket] ${message}`, details || '');
-    
-    // Call addLog callback if provided
+    // Call addLog callback if provided - the WebSocketLogContext will handle
+    // whether to actually log based on the isLoggingEnabled setting
     if (this.options.addLog) {
       this.options.addLog(level, message, details, errorCode);
     }

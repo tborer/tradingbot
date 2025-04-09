@@ -37,19 +37,50 @@ const Research: React.FC = () => {
         const response = await fetch('/api/settings');
         if (response.ok) {
           const data = await response.json();
+          
+          // Log the API keys for debugging (without showing the actual keys)
+          console.log('API keys fetched:', {
+            hasAlphaVantageApiKey: !!data.alphaVantageApiKey,
+            hasCoinDeskApiKey: !!data.coinDeskApiKey
+          });
+          
           setAlphaVantageApiKey(data.alphaVantageApiKey || null);
           setCoinDeskApiKey(data.coinDeskApiKey || null);
           setApiKey(data.alphaVantageApiKey || null); // For backward compatibility
+          
+          // Add a log entry for debugging
+          addLog({
+            url: '/api/settings',
+            method: 'GET',
+            response: {
+              hasAlphaVantageApiKey: !!data.alphaVantageApiKey,
+              hasCoinDeskApiKey: !!data.coinDeskApiKey
+            },
+            status: 200
+          });
+        } else {
+          console.error('Failed to fetch API keys, status:', response.status);
+          addLog({
+            url: '/api/settings',
+            method: 'GET',
+            error: `Failed to fetch API keys, status: ${response.status}`,
+            status: response.status
+          });
         }
       } catch (error) {
         console.error('Failed to fetch API keys:', error);
+        addLog({
+          url: '/api/settings',
+          method: 'GET',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
       }
     };
 
     if (user) {
       fetchApiKeys();
     }
-  }, [user]);
+  }, [user, addLog]);
 
   // Function to process and add data to the analysis dashboard
   const processAndAddToAnalysis = (data: any, source: string, symbolName: string) => {

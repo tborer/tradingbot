@@ -199,15 +199,42 @@ export class KrakenWebSocket {
   }
 
   public updateSymbols(symbols: string[]): void {
+    // Log the incoming symbols
+    this.log('info', 'Updating symbols', { 
+      newSymbols: symbols,
+      currentSymbols: this.symbols
+    });
+    
     // If symbols haven't changed, do nothing
     if (JSON.stringify(this.symbols) === JSON.stringify(symbols)) {
+      this.log('info', 'Symbols unchanged, skipping update', {});
       return;
     }
     
-    this.symbols = symbols;
+    // Ensure we have a valid array of symbols
+    if (!Array.isArray(symbols)) {
+      this.log('error', 'Invalid symbols array provided', { symbols });
+      return;
+    }
+    
+    // Filter out any empty strings or invalid symbols
+    const validSymbols = symbols.filter(symbol => symbol && typeof symbol === 'string' && symbol.trim() !== '');
+    
+    if (validSymbols.length === 0) {
+      this.log('warning', 'No valid symbols provided for update', { originalSymbols: symbols });
+      // Add a default symbol if none are provided
+      validSymbols.push('XBT/USD');
+      this.log('info', 'Added default symbol XBT/USD', {});
+    }
+    
+    this.symbols = validSymbols;
+    this.log('info', 'Updated symbols array', { symbols: this.symbols });
     
     // If not connected, just update the symbols
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      this.log('info', 'WebSocket not open, symbols updated but not subscribed', {
+        readyState: this.socket ? this.socket.readyState : 'null'
+      });
       return;
     }
     
@@ -223,7 +250,10 @@ export class KrakenWebSocket {
       
       try {
         this.socket.send(JSON.stringify(unsubscribeMessage));
-        this.log('info', 'Sent unsubscribe message', { symbols: this.symbols });
+        this.log('info', 'Sent unsubscribe message', { 
+          message: JSON.stringify(unsubscribeMessage),
+          symbols: this.symbols 
+        });
       } catch (err) {
         this.log('error', 'Error sending unsubscribe message', {
           error: err instanceof Error ? err.message : String(err)
@@ -232,18 +262,21 @@ export class KrakenWebSocket {
     }
     
     // Subscribe to new symbols using the exact format specified in requirements
-    if (symbols.length > 0) {
+    if (validSymbols.length > 0) {
       const subscribeMessage = {
         method: 'subscribe',
         params: {
           channel: 'ticker',
-          symbol: symbols
+          symbol: validSymbols
         }
       };
       
       try {
         this.socket.send(JSON.stringify(subscribeMessage));
-        this.log('info', 'Sent subscribe message', { symbols });
+        this.log('info', 'Sent subscribe message', { 
+          message: JSON.stringify(subscribeMessage),
+          symbols: validSymbols 
+        });
       } catch (err) {
         this.log('error', 'Error sending subscribe message', {
           error: err instanceof Error ? err.message : String(err)
@@ -274,6 +307,23 @@ export class KrakenWebSocket {
     });
     
     this.reconnectAttempts = 0;
+    
+    // Validate symbols array before subscription
+    if (!Array.isArray(this.symbols)) {
+      this.log('error', 'Invalid symbols array before subscription', { symbols: this.symbols });
+      this.symbols = [];
+    }
+    
+    // Filter out any empty strings or invalid symbols
+    const validSymbols = this.symbols.filter(symbol => symbol && typeof symbol === 'string' && symbol.trim() !== '');
+    
+    if (validSymbols.length === 0) {
+      this.log('warning', 'No valid symbols available for subscription', { originalSymbols: this.symbols });
+      // Add a default symbol if none are provided
+      validSymbols.push('XBT/USD');
+      this.symbols = validSymbols;
+      this.log('info', 'Added default symbol XBT/USD for subscription', {});
+    }
     
     // Delay subscription slightly to ensure connection is fully established
     setTimeout(() => {

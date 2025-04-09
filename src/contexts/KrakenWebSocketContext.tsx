@@ -164,13 +164,26 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
 
   // Update symbols function
   const updateSymbols = useCallback((newSymbols: string[]) => {
+    console.log('Updating Kraken WebSocket symbols:', newSymbols);
+    addLog('info', 'Updating Kraken WebSocket symbols', { symbols: newSymbols });
+    
+    // Ensure we have valid symbols to work with
+    if (!newSymbols || newSymbols.length === 0) {
+      console.warn('No symbols provided for Kraken WebSocket update');
+      addLog('warning', 'No symbols provided for Kraken WebSocket update', {});
+      return;
+    }
+    
     setSymbols(newSymbols);
     if (krakenSocket) {
       // Format symbols to Kraken format (e.g., BTC -> XBT/USD)
       const formattedSymbols = newSymbols.map(formatToKrakenSymbol);
+      console.log('Formatted symbols for Kraken WebSocket:', formattedSymbols);
+      addLog('info', 'Formatted symbols for Kraken WebSocket', { formattedSymbols });
+      
       krakenSocket.updateSymbols(formattedSymbols);
     }
-  }, [krakenSocket]);
+  }, [krakenSocket, addLog]);
 
   // These state variables are already declared above, so we don't need to declare them again
   

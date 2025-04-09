@@ -470,9 +470,16 @@ export default function Dashboard() {
   
   // Update crypto symbols in the shared context when they change
   useEffect(() => {
-    if (cryptos.length > 0) {
-      const symbols = cryptos.map(crypto => crypto.symbol);
+    // Always send the crypto symbols to the WebSocket context, even if the array is empty
+    const symbols = cryptos.map(crypto => crypto.symbol);
+    console.log('Updating Kraken WebSocket symbols from dashboard:', symbols);
+    
+    // Ensure we're sending a valid array
+    if (Array.isArray(symbols)) {
       updateKrakenSymbols(symbols);
+    } else {
+      console.error('Invalid symbols array in dashboard:', symbols);
+      updateKrakenSymbols([]);
     }
   }, [cryptos, updateKrakenSymbols]);
   

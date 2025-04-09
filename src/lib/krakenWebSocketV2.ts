@@ -41,6 +41,8 @@ export class KrakenWebSocket {
   private options: KrakenWebSocketOptions;
   private symbols: string[];
   private reconnectBaseDelay: number;
+  private isConnecting: boolean = false; // Flag to track connection in progress
+  private connectionTimeoutId: NodeJS.Timeout | null = null;
 
   constructor(options: KrakenWebSocketOptions) {
     this.options = options;
@@ -54,10 +56,36 @@ export class KrakenWebSocket {
   }
 
   public connect(): void {
+    // Check if already connected or connecting
+    if (this.isConnecting) {
+      this.log('info', 'Connection attempt already in progress, ignoring duplicate connect request', {});
+      return;
+    }
+    
+    if (this.socket) {
+      // Check if already connected
+      if (this.socket.readyState === WebSocket.OPEN) {
+        this.log('info', 'WebSocket already connected, ignoring connect request', {
+          readyState: this.socket.readyState
+        });
+        return;
+      }
+      
+      // Check if connection is in progress
+      if (this.socket.readyState === WebSocket.CONNECTING) {
+        this.log('info', 'WebSocket connection already in progress, ignoring duplicate connect request', {
+          readyState: this.socket.readyState
+        });
+        return;
+      }
+    }
+    
     // Clear any existing connection
     this.disconnect();
     
     try {
+      this.isConnecting = true;
+      
       // Add timestamp to prevent caching
       const timestamp = Date.now();
       const wsUrl = `${KRAKEN_WEBSOCKET_URL}?t=${timestamp}`;
@@ -72,7 +100,11 @@ export class KrakenWebSocket {
       this.socket.onclose = this.handleClose.bind(this);
       
       // Set a connection timeout
-      setTimeout(() => {
+      if (this.connectionTimeoutId) {
+        clearTimeout(this.connectionTimeoutId);
+      }
+      
+      this.connectionTimeoutId = setTimeout(() => {
         if (this.socket && this.socket.readyState !== WebSocket.OPEN) {
           this.log('error', 'WebSocket connection timeout', { url: KRAKEN_WEBSOCKET_URL });
           
@@ -84,6 +116,8 @@ export class KrakenWebSocket {
               error: err instanceof Error ? err.message : String(err) 
             });
           }
+          
+          this.isConnecting = false;
         }
       }, CONNECTION_TIMEOUT);
     } catch (err) {
@@ -95,10 +129,18 @@ export class KrakenWebSocket {
         isConnected: false,
         error: err instanceof Error ? err : new Error('Unknown connection error')
       });
+      
+      this.isConnecting = false;
     }
   }
 
   public disconnect(): void {
+    // Clear connection timeout if it exists
+    if (this.connectionTimeoutId) {
+      clearTimeout(this.connectionTimeoutId);
+      this.connectionTimeoutId = null;
+    }
+    
     // Clear intervals and timeouts
     if (this.pingInterval) {
       clearInterval(this.pingInterval);
@@ -135,6 +177,9 @@ export class KrakenWebSocket {
       
       this.socket = null;
     }
+    
+    // Reset connection state
+    this.isConnecting = false;
     
     // Update status
     this.updateStatus({
@@ -200,7 +245,16 @@ export class KrakenWebSocket {
   }
 
   private handleOpen(event: Event): void {
+    // Clear connection timeout if it exists
+    if (this.connectionTimeoutId) {
+      clearTimeout(this.connectionTimeoutId);
+      this.connectionTimeoutId = null;
+    }
+    
     this.log('success', 'WebSocket connected successfully', { url: KRAKEN_WEBSOCKET_URL });
+    
+    // Reset connection state
+    this.isConnecting = false;
     
     this.updateStatus({
       isConnected: true,
@@ -281,6 +335,9 @@ export class KrakenWebSocket {
     
     const error = new Error('WebSocket connection error');
     
+    // Reset connection state
+    this.isConnecting = false;
+    
     this.updateStatus({
       isConnected: false,
       error
@@ -293,11 +350,20 @@ export class KrakenWebSocket {
   }
 
   private handleClose(event: CloseEvent): void {
+    // Clear connection timeout if it exists
+    if (this.connectionTimeoutId) {
+      clearTimeout(this.connectionTimeoutId);
+      this.connectionTimeoutId = null;
+    }
+    
     this.log('warning', 'WebSocket closed', {
       code: event.code,
       reason: event.reason || 'No reason provided',
       wasClean: event.wasClean
     });
+    
+    // Reset connection state
+    this.isConnecting = false;
     
     this.updateStatus({
       isConnected: false,
@@ -315,7 +381,8 @@ export class KrakenWebSocket {
       this.options.onClose(event);
     }
     
-    // Attempt to reconnect with exponential backoff
+    // Only attempt to reconnect if the connection was previously established
+    // and we haven't exceeded the maximum number of reconnect attempts
     if (this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
       const delay = this.reconnectBaseDelay * Math.pow(2, this.reconnectAttempts);
       
@@ -325,6 +392,11 @@ export class KrakenWebSocket {
         delay,
         baseDelay: this.reconnectBaseDelay
       });
+      
+      // Clear any existing reconnect timeout
+      if (this.reconnectTimeout) {
+        clearTimeout(this.reconnectTimeout);
+      }
       
       this.reconnectTimeout = setTimeout(() => {
         this.reconnectAttempts++;
@@ -399,6 +471,20 @@ export class KrakenWebSocket {
   }
 
   private reconnect(): void {
+    // Check if already connecting
+    if (this.isConnecting) {
+      this.log('info', 'Connection attempt already in progress, ignoring reconnect request', {});
+      return;
+    }
+    
+    // Check if already connected
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      this.log('info', 'WebSocket already connected, ignoring reconnect request', {
+        readyState: this.socket.readyState
+      });
+      return;
+    }
+    
     this.log('info', 'Manual reconnect initiated', { timestamp: Date.now() });
     
     // Reset reconnect attempts

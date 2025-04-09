@@ -87,6 +87,24 @@ export function useKrakenWebSocket({
       return;
     }
 
+    // Check if already connected
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      console.log('WebSocket already connected, ignoring connect request');
+      addLog('info', 'WebSocket already connected, ignoring connect request', { 
+        readyState: socketRef.current.readyState 
+      });
+      return;
+    }
+    
+    // Check if connection is in progress
+    if (socketRef.current && socketRef.current.readyState === WebSocket.CONNECTING) {
+      console.log('WebSocket connection already in progress, ignoring duplicate connect request');
+      addLog('info', 'WebSocket connection already in progress, ignoring duplicate connect request', { 
+        readyState: socketRef.current.readyState 
+      });
+      return;
+    }
+
     // Close any existing connection
     if (socketRef.current) {
       try {
@@ -494,7 +512,42 @@ export function useKrakenWebSocket({
   // Connect when component mounts or when dependencies change
   useEffect(() => {
     if (enabled && symbols.length > 0) {
-      connect();
+      // Only connect if not already connected or connecting
+      if (!socketRef.current || 
+          (socketRef.current.readyState !== WebSocket.OPEN && 
+           socketRef.current.readyState !== WebSocket.CONNECTING)) {
+        console.log('Connecting to Kraken WebSocket on mount/dependency change');
+        connect();
+      } else if (socketRef.current.readyState === WebSocket.OPEN) {
+        // If already connected, just update the subscription
+        try {
+          // Unsubscribe from current symbols
+          const krakenSymbols = symbols.map(formatToKrakenSymbol);
+          const unsubscribeMessage = {
+            method: 'unsubscribe',
+            params: {
+              channel: 'ticker',
+              symbol: krakenSymbols
+            }
+          };
+          
+          socketRef.current.send(JSON.stringify(unsubscribeMessage));
+          
+          // Subscribe to new symbols
+          const subscribeMessage = {
+            method: 'subscribe',
+            params: {
+              channel: 'ticker',
+              symbol: krakenSymbols
+            }
+          };
+          
+          socketRef.current.send(JSON.stringify(subscribeMessage));
+          console.log('Updated Kraken WebSocket subscription with new symbols');
+        } catch (err) {
+          console.error('Error updating Kraken WebSocket subscription:', err);
+        }
+      }
     }
     
     // Cleanup function
@@ -534,6 +587,24 @@ export function useKrakenWebSocket({
 
   // Manual reconnect function
   const reconnect = useCallback(() => {
+    // Check if already connected
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      console.log('WebSocket already connected, ignoring reconnect request');
+      addLog('info', 'WebSocket already connected, ignoring reconnect request', { 
+        readyState: socketRef.current.readyState 
+      });
+      return;
+    }
+    
+    // Check if connection is in progress
+    if (socketRef.current && socketRef.current.readyState === WebSocket.CONNECTING) {
+      console.log('WebSocket connection already in progress, ignoring reconnect request');
+      addLog('info', 'WebSocket connection already in progress, ignoring reconnect request', { 
+        readyState: socketRef.current.readyState 
+      });
+      return;
+    }
+    
     console.log('Manual reconnect initiated');
     addLog('info', 'Manual reconnect initiated', { url });
     

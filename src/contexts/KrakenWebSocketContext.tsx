@@ -100,31 +100,38 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
 
   // Initialize the WebSocket connection
   useEffect(() => {
-    // Format symbols to Kraken format (e.g., BTC -> XBT/USD)
-    const formattedSymbols = symbols.map(formatToKrakenSymbol);
-    
-    console.log('Initializing Kraken WebSocket with symbols:', formattedSymbols);
-    addLog('info', 'Initializing Kraken WebSocket', { symbols: formattedSymbols });
-    
-    // Create a new KrakenWebSocket instance
-    const socket = new KrakenWebSocket({
-      symbols: formattedSymbols,
-      onMessage: handleMessage,
-      onStatusChange: handleStatusChange,
-      autoConnect,
-      reconnectDelay,
-      addLog
-    });
-    
-    setKrakenSocket(socket);
+    // Only create a new socket if we don't have one or if critical parameters have changed
+    if (!krakenSocket || krakenSocket.getStatus().error) {
+      // Format symbols to Kraken format (e.g., BTC -> XBT/USD)
+      const formattedSymbols = symbols.map(formatToKrakenSymbol);
+      
+      console.log('Initializing Kraken WebSocket with symbols:', formattedSymbols);
+      addLog('info', 'Initializing Kraken WebSocket', { symbols: formattedSymbols });
+      
+      // Create a new KrakenWebSocket instance
+      const socket = new KrakenWebSocket({
+        symbols: formattedSymbols,
+        onMessage: handleMessage,
+        onStatusChange: handleStatusChange,
+        autoConnect: false, // Don't auto-connect here, we'll handle it separately
+        reconnectDelay,
+        addLog
+      });
+      
+      setKrakenSocket(socket);
+    } else if (krakenSocket) {
+      // Just update the symbols on the existing socket
+      const formattedSymbols = symbols.map(formatToKrakenSymbol);
+      krakenSocket.updateSymbols(formattedSymbols);
+    }
     
     // Cleanup function
     return () => {
-      if (socket) {
-        socket.disconnect();
+      if (krakenSocket) {
+        krakenSocket.disconnect();
       }
     };
-  }, [symbols, handleMessage, handleStatusChange, autoConnect, reconnectDelay, addLog]);
+  }, [symbols, handleMessage, handleStatusChange, reconnectDelay, addLog]);
 
   // Connect function
   const connect = useCallback(() => {
@@ -168,11 +175,16 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
   
   // Auto-connect when autoConnect is true and WebSocket is enabled
   useEffect(() => {
-    if (autoConnect && krakenSocket && !status.isConnected && enableKrakenWebSocket) {
-      krakenSocket.connect();
-    } else if (!enableKrakenWebSocket && krakenSocket && status.isConnected) {
-      // Disconnect if WebSocket is disabled but connected
-      krakenSocket.disconnect();
+    if (krakenSocket) {
+      if (autoConnect && !status.isConnected && enableKrakenWebSocket) {
+        // Only connect if not already connected and enabled
+        console.log('Auto-connecting Kraken WebSocket');
+        krakenSocket.connect();
+      } else if (!enableKrakenWebSocket && status.isConnected) {
+        // Disconnect if WebSocket is disabled but connected
+        console.log('Disconnecting Kraken WebSocket because it is disabled');
+        krakenSocket.disconnect();
+      }
     }
   }, [autoConnect, krakenSocket, status.isConnected, enableKrakenWebSocket]);
 

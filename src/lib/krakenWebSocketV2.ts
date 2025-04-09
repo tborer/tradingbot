@@ -46,7 +46,17 @@ export class KrakenWebSocket {
 
   constructor(options: KrakenWebSocketOptions) {
     this.options = options;
-    this.symbols = options.symbols || [];
+    
+    // Ensure symbols is always an array and log it
+    this.symbols = Array.isArray(options.symbols) ? options.symbols : [];
+    
+    // Log the symbols we're initializing with
+    if (this.symbols.length > 0) {
+      this.log('info', 'Initializing with symbols', { symbols: this.symbols });
+    } else {
+      this.log('warning', 'Initializing with empty symbols array', {});
+    }
+    
     this.reconnectBaseDelay = options.reconnectDelay || DEFAULT_RECONNECT_BASE_DELAY;
     
     // Auto-connect if enabled
@@ -265,28 +275,48 @@ export class KrakenWebSocket {
     
     this.reconnectAttempts = 0;
     
-    // Subscribe to ticker data using the exact format specified in requirements
-    if (this.symbols.length > 0) {
-      const subscribeMessage = {
-        method: 'subscribe',
-        params: {
-          channel: 'ticker',
-          symbol: this.symbols
+    // Delay subscription slightly to ensure connection is fully established
+    setTimeout(() => {
+      // Subscribe to ticker data using the exact format specified in requirements
+      if (this.symbols.length > 0) {
+        const subscribeMessage = {
+          method: 'subscribe',
+          params: {
+            channel: 'ticker',
+            symbol: this.symbols
+          }
+        };
+        
+        try {
+          this.socket?.send(JSON.stringify(subscribeMessage));
+          this.log('info', 'Sent subscription message', { 
+            message: JSON.stringify(subscribeMessage),
+            symbols: this.symbols 
+          });
+        } catch (err) {
+          this.log('error', 'Error sending subscription message', {
+            error: err instanceof Error ? err.message : String(err)
+          });
         }
-      };
-      
-      try {
-        this.socket?.send(JSON.stringify(subscribeMessage));
-        this.log('info', 'Sent subscription message', { 
-          message: JSON.stringify(subscribeMessage),
-          symbols: this.symbols 
-        });
-      } catch (err) {
-        this.log('error', 'Error sending subscription message', {
-          error: err instanceof Error ? err.message : String(err)
-        });
+      } else {
+        // If no symbols are provided, send a ping to establish the connection
+        const pingMessage = {
+          method: 'ping',
+          req_id: this.pingCounter++
+        };
+        
+        try {
+          this.socket?.send(JSON.stringify(pingMessage));
+          this.log('info', 'No symbols provided, sent ping to establish connection', { 
+            req_id: pingMessage.req_id
+          });
+        } catch (err) {
+          this.log('error', 'Error sending ping', {
+            error: err instanceof Error ? err.message : String(err)
+          });
+        }
       }
-    }
+    }, 500);
     
     // Start ping interval
     this.startPingInterval();
@@ -303,6 +333,12 @@ export class KrakenWebSocket {
     }
     
     try {
+      // Log the raw message for debugging (truncated for readability)
+      const truncatedMessage = event.data.length > 200 
+        ? event.data.substring(0, 200) + "..." 
+        : event.data;
+      this.log('info', 'Received raw message', { message: truncatedMessage });
+      
       const data = JSON.parse(event.data);
       
       // Handle pong responses
@@ -321,8 +357,19 @@ export class KrakenWebSocket {
       if (data.channel === 'status' && data.type === 'update' && Array.isArray(data.data)) {
         this.log('success', 'Received status update from Kraken', { 
           status: data.data[0],
-          connection_id: data.data[0]?.connection_id
+          connection_id: data.data[0]?.connection_id,
+          api_version: data.data[0]?.api_version,
+          system: data.data[0]?.system
         });
+        
+        // If we receive a status message with system: online, the connection is fully established
+        if (data.data[0]?.system === 'online') {
+          this.log('success', 'Kraken WebSocket connection fully established', {
+            connection_id: data.data[0]?.connection_id,
+            api_version: data.data[0]?.api_version
+          });
+        }
+        
         return;
       }
       
@@ -337,6 +384,23 @@ export class KrakenWebSocket {
       // Handle subscription status messages
       if (data.method === 'subscribe' || data.method === 'unsubscribe') {
         this.log('info', `${data.method} status`, { result: data.result });
+        
+        // If subscription was successful, log it
+        if (data.method === 'subscribe' && data.result === 'success') {
+          this.log('success', 'Successfully subscribed to Kraken channels', {
+            params: data.params
+          });
+        }
+        
+        return;
+      }
+      
+      // Handle error messages
+      if (data.error) {
+        this.log('error', 'Received error from Kraken WebSocket', {
+          error: data.error,
+          message: data.message || 'No message provided'
+        });
         return;
       }
       

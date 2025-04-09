@@ -105,6 +105,13 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
       // Format symbols to Kraken format (e.g., BTC -> XBT/USD)
       const formattedSymbols = symbols.map(formatToKrakenSymbol);
       
+      // Check if we have any symbols to subscribe to
+      if (formattedSymbols.length === 0) {
+        console.warn('No symbols provided for Kraken WebSocket. Adding default symbol XBT/USD');
+        addLog('warning', 'No symbols provided for Kraken WebSocket. Adding default symbol XBT/USD', {});
+        formattedSymbols.push('XBT/USD'); // Add a default symbol to ensure we have something to subscribe to
+      }
+      
       console.log('Initializing Kraken WebSocket with symbols:', formattedSymbols);
       addLog('info', 'Initializing Kraken WebSocket', { symbols: formattedSymbols });
       
@@ -121,7 +128,15 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
       setKrakenSocket(socket);
     } else if (krakenSocket) {
       // Just update the symbols on the existing socket
-      const formattedSymbols = symbols.map(formatToKrakenSymbol);
+      let formattedSymbols = symbols.map(formatToKrakenSymbol);
+      
+      // Check if we have any symbols to subscribe to
+      if (formattedSymbols.length === 0) {
+        console.warn('No symbols provided for Kraken WebSocket update. Adding default symbol XBT/USD');
+        addLog('warning', 'No symbols provided for Kraken WebSocket update. Adding default symbol XBT/USD', {});
+        formattedSymbols.push('XBT/USD'); // Add a default symbol to ensure we have something to subscribe to
+      }
+      
       krakenSocket.updateSymbols(formattedSymbols);
     }
     

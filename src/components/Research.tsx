@@ -84,6 +84,16 @@ const Research: React.FC = () => {
 
   // Function to process and add data to the analysis dashboard
   const processAndAddToAnalysis = (data: any, source: string, symbolName: string) => {
+    console.log(`Processing ${source} data for analysis:`, { 
+      dataType: typeof data,
+      hasData: !!data,
+      hasMetaData: data && !!data['Meta Data'],
+      hasTimeSeriesDaily: data && !!data['Time Series (Digital Currency Daily)'],
+      dataFormat: source === 'coindesk' ? 
+        (data?.data?.entries ? 'old format with entries' : 
+         data?.data?.Data ? 'new format with Data array' : 'unknown format') : 'alphavantage'
+    });
+    
     let symbolCode = symbol;
     let currentPrice = 0;
     let isCrypto = true; // Default to crypto for CoinDesk data
@@ -201,10 +211,38 @@ const Research: React.FC = () => {
         }
       );
       
-      if (coinDeskData && coinDeskData.data && coinDeskData.data.entries && coinDeskData.data.entries.length > 0) {
-        // Process CoinDesk data (logging is handled in the fetchCoinDeskHistoricalData function)
-        processAndAddToAnalysis(coinDeskData, 'coindesk', symbol);
+      // Check for both possible data formats from CoinDesk API
+      const hasOldFormat = coinDeskData && coinDeskData.data && coinDeskData.data.entries && coinDeskData.data.entries.length > 0;
+      const hasNewFormat = coinDeskData && coinDeskData.data && coinDeskData.data.Data && Array.isArray(coinDeskData.data.Data) && coinDeskData.data.Data.length > 0;
+      
+      if (hasOldFormat || hasNewFormat) {
+        // Log the successful data format detection
+        console.log(`CoinDesk data format detected: ${hasOldFormat ? 'old format with entries' : 'new format with Data array'}`);
+        
+        // Format the CoinDesk data for analysis
+        const formattedData = formatCoinDeskDataForAnalysis(coinDeskData);
+        
+        if (formattedData) {
+          console.log('Successfully formatted CoinDesk data for analysis');
+          // Process the formatted CoinDesk data
+          processAndAddToAnalysis(formattedData, 'coindesk', symbol);
+        } else {
+          console.warn('Failed to format CoinDesk data, attempting to use raw data');
+          // Try to use the raw data as a fallback
+          processAndAddToAnalysis(coinDeskData, 'coindesk', symbol);
+        }
       } else {
+        console.error('CoinDesk API returned data but in an unexpected format:', coinDeskData);
+        
+        // Log the unexpected format
+        addLog({
+          url: "CoinDesk Format Error",
+          method: "ERROR",
+          requestBody: { instrument: `${symbol}-USD`, market: 'cadli' },
+          response: coinDeskData,
+          error: "Unexpected data format from CoinDesk API"
+        });
+        
         // Both APIs failed (logging is handled in the fetchCoinDeskHistoricalData function)
         setResult({
           success: false,

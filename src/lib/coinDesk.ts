@@ -206,6 +206,16 @@ export function formatCoinDeskDataForAnalysis(data: CoinDeskHistoricalResponse):
       (a, b) => b.TIMESTAMP - a.TIMESTAMP
     );
     
+    // Add metadata to match AlphaVantage format
+    formattedData['Meta Data'] = {
+      '1. Information': 'CoinDesk Historical Data',
+      '2. Digital Currency Code': data.data.Data[0]?.INSTRUMENT?.split('-')[0] || 'Unknown',
+      '3. Digital Currency Name': data.data.Data[0]?.INSTRUMENT?.split('-')[0] || 'Unknown',
+      '4. Market Code': data.data.Data[0]?.INSTRUMENT?.split('-')[1] || 'USD',
+      '5. Last Refreshed': new Date().toISOString(),
+      '6. Time Zone': 'UTC'
+    };
+    
     // Format each entry to match the expected structure
     sortedData.forEach(entry => {
       // Convert timestamp to date string (YYYY-MM-DD format)
@@ -220,6 +230,7 @@ export function formatCoinDeskDataForAnalysis(data: CoinDeskHistoricalResponse):
       };
     });
     
+    console.log('Formatted CoinDesk data with metadata:', formattedData['Meta Data']);
     return formattedData;
   }
   

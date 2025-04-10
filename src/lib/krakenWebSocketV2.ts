@@ -695,9 +695,19 @@ export class KrakenWebSocket {
       consoleMethod(`[Kraken WebSocket] ${message}`, details || '');
     }
     
-    // Call addLog callback if provided - the WebSocketLogContext will handle
-    // whether to actually log based on the isLoggingEnabled setting
+    // Call addLog callback if provided
+    // We don't need to check isLoggingEnabled here as the WebSocketLogContext's addLog function
+    // already handles that check internally
     if (this.options.addLog) {
+      // Only pass heartbeat messages if they're in the details and it's a string
+      // This helps reduce the volume of messages being processed
+      if (details?.data && 
+          typeof details.data === 'string' && 
+          details.data.includes('"channel":"heartbeat"')) {
+        // Skip heartbeat messages to reduce log volume
+        return;
+      }
+      
       this.options.addLog(level, message, details, errorCode);
     }
   }

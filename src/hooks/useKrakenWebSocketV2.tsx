@@ -22,7 +22,18 @@ export function useKrakenWebSocket({
   onPriceUpdate,
   enabled = true
 }: UseKrakenWebSocketOptions) {
-  const { addLog } = useWebSocketLogs();
+  const { addLog: originalAddLog, isLoggingEnabled } = useWebSocketLogs();
+  
+  // Create a wrapper for addLog that respects the isLoggingEnabled flag
+  const addLog = useCallback(
+    (level: 'info' | 'warning' | 'error' | 'success', message: string, details?: Record<string, any>, errorCode?: string) => {
+      // Only call the original addLog if logging is enabled
+      if (isLoggingEnabled) {
+        originalAddLog(level, message, details, errorCode);
+      }
+    },
+    [originalAddLog, isLoggingEnabled]
+  );
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -33,6 +44,7 @@ export function useKrakenWebSocket({
   
   // Helper function to log errors with consistent format
   const logError = useCallback((message: string, error: any, code: string, context: Record<string, any> = {}) => {
+    // Always log critical errors to console regardless of logging settings
     console.error(`[${code}] ${message}:`, error);
     
     // Create structured error log
@@ -49,7 +61,8 @@ export function useKrakenWebSocket({
       }
     );
     
-    // Add to WebSocket logs context
+    // Add to WebSocket logs context using our wrapper function
+    // which already checks isLoggingEnabled
     addLog('error', message, { 
       error: error instanceof Error ? error.message : String(error),
       ...context
@@ -66,6 +79,8 @@ export function useKrakenWebSocket({
       
       if (prices.length > 0) {
         console.log('Successfully parsed Kraken prices:', prices);
+        
+        // Use our wrapper function which already checks isLoggingEnabled
         addLog('success', 'Successfully parsed Kraken prices', { prices }, 'WS-SUCCESS-0001');
         
         if (onPriceUpdate) {
@@ -86,10 +101,14 @@ export function useKrakenWebSocket({
     if (!enabled || symbols.length === 0) {
       return;
     }
+    
+
 
     // Check if already connected
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       console.log('WebSocket already connected, ignoring connect request');
+      
+      // Use our wrapper function which already checks isLoggingEnabled
       addLog('info', 'WebSocket already connected, ignoring connect request', { 
         readyState: socketRef.current.readyState 
       });

@@ -87,11 +87,12 @@ const Research: React.FC = () => {
     console.log(`Processing ${source} data for analysis:`, { 
       dataType: typeof data,
       hasData: !!data,
+      hasNestedData: data && !!data.data,
       hasMetaData: data && !!data['Meta Data'],
       hasTimeSeriesDaily: data && !!data['Time Series (Digital Currency Daily)'],
-      dataFormat: source === 'coindesk' ? 
-        (data?.data?.entries ? 'old format with entries' : 
-         data?.data?.Data ? 'new format with Data array' : 'unknown format') : 'alphavantage'
+      hasTopLevelData: data && !!data.Data,
+      hasNestedDataData: data && data.data && !!data.data.Data,
+      hasEntries: data && data.data && !!data.data.entries
     });
     
     let symbolCode = symbol;
@@ -120,21 +121,40 @@ const Research: React.FC = () => {
       }
     } else if (source === 'coindesk') {
       // Check which CoinDesk format we're dealing with
-      if (data.data && data.data.entries) {
-        // Original format with entries array
+      if (data.data && data.data.entries && data.data.entries.length > 0) {
+        // Original format with entries array in data.entries
+        console.log('Extracting current price from CoinDesk original format with entries array');
         const entries = [...data.data.entries];
-        if (entries.length > 0) {
-          // Sort entries by date (newest first)
-          entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-          currentPrice = entries[0].value;
-        }
-      } else if (data.data && data.data.Data && Array.isArray(data.data.Data)) {
-        // New format with Data array
+        // Sort entries by date (newest first)
+        entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        currentPrice = entries[0].value;
+        console.log(`Current price from entries array: ${currentPrice}`);
+      } 
+      else if (data.data && data.data.Data && Array.isArray(data.data.Data) && data.data.Data.length > 0) {
+        // Format with Data array nested in data property
+        console.log('Extracting current price from CoinDesk format with nested data.Data array');
         const dataEntries = [...data.data.Data];
-        if (dataEntries.length > 0) {
-          // Sort entries by timestamp (newest first)
-          dataEntries.sort((a, b) => b.TIMESTAMP - a.TIMESTAMP);
-          currentPrice = dataEntries[0].CLOSE;
+        // Sort entries by timestamp (newest first)
+        dataEntries.sort((a, b) => b.TIMESTAMP - a.TIMESTAMP);
+        currentPrice = dataEntries[0].CLOSE;
+        console.log(`Current price from nested data.Data array: ${currentPrice}`);
+      }
+      else if (data.Data && Array.isArray(data.Data) && data.Data.length > 0) {
+        // New format with Data array at the top level
+        console.log('Extracting current price from CoinDesk format with top-level Data array');
+        const dataEntries = [...data.Data];
+        // Sort entries by timestamp (newest first)
+        dataEntries.sort((a, b) => b.TIMESTAMP - a.TIMESTAMP);
+        currentPrice = dataEntries[0].CLOSE;
+        console.log(`Current price from top-level Data array: ${currentPrice}`);
+        
+        // Extract symbol from the INSTRUMENT field if available
+        if (dataEntries[0].INSTRUMENT) {
+          const instrumentParts = dataEntries[0].INSTRUMENT.split('-');
+          if (instrumentParts.length > 0) {
+            symbolCode = instrumentParts[0];
+            console.log(`Extracted symbol from INSTRUMENT: ${symbolCode}`);
+          }
         }
       }
       
@@ -142,7 +162,11 @@ const Research: React.FC = () => {
       processedData = formatCoinDeskDataForAnalysis(data);
       
       // Log the formatted data for debugging
-      console.log('Formatted CoinDesk data for analysis:', processedData);
+      console.log('Formatted CoinDesk data for analysis:', {
+        hasFormattedData: !!processedData,
+        hasMetaData: processedData && !!processedData['Meta Data'],
+        hasTimeSeries: processedData && !!processedData['Time Series (Digital Currency Daily)']
+      });
       
       // If formatting failed, use the original data
       if (!processedData) {
@@ -211,13 +235,23 @@ const Research: React.FC = () => {
         }
       );
       
-      // Check for both possible data formats from CoinDesk API
-      const hasOldFormat = coinDeskData && coinDeskData.data && coinDeskData.data.entries && coinDeskData.data.entries.length > 0;
-      const hasNewFormat = coinDeskData && coinDeskData.data && coinDeskData.data.Data && Array.isArray(coinDeskData.data.Data) && coinDeskData.data.Data.length > 0;
+      // Log the structure of the received data to help with debugging
+      console.log('CoinDesk API response structure:', {
+        hasData: !!coinDeskData,
+        hasNestedData: coinDeskData && !!coinDeskData.data,
+        hasEntries: coinDeskData && coinDeskData.data && !!coinDeskData.data.entries,
+        hasNestedDataArray: coinDeskData && coinDeskData.data && !!coinDeskData.data.Data,
+        hasTopLevelDataArray: coinDeskData && !!coinDeskData.Data
+      });
       
-      if (hasOldFormat || hasNewFormat) {
+      // Check for all possible data formats from CoinDesk API
+      const hasOldFormat = coinDeskData && coinDeskData.data && coinDeskData.data.entries && coinDeskData.data.entries.length > 0;
+      const hasNestedDataFormat = coinDeskData && coinDeskData.data && coinDeskData.data.Data && Array.isArray(coinDeskData.data.Data) && coinDeskData.data.Data.length > 0;
+      const hasTopLevelDataFormat = coinDeskData && coinDeskData.Data && Array.isArray(coinDeskData.Data) && coinDeskData.Data.length > 0;
+      
+      if (hasOldFormat || hasNestedDataFormat || hasTopLevelDataFormat) {
         // Log the successful data format detection
-        console.log(`CoinDesk data format detected: ${hasOldFormat ? 'old format with entries' : 'new format with Data array'}`);
+        console.log(`CoinDesk data format detected: ${hasOldFormat ? 'old format with entries' : hasNestedDataFormat ? 'nested data.Data array' : 'top-level Data array'}`);
         
         // Format the CoinDesk data for analysis
         const formattedData = formatCoinDeskDataForAnalysis(coinDeskData);

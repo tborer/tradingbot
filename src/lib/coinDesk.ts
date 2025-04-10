@@ -1,46 +1,48 @@
 // CoinDesk API utility functions
 
 /**
- * Interface for CoinDesk API response (original format)
+ * Interface for CoinDesk API response
  */
 export interface CoinDeskHistoricalResponse {
-  data: {
+  // Original format with nested data.entries
+  data?: {
     entries?: Array<{
       date: string;
       value: number;
     }>;
     market?: string;
     instrument?: string;
-  } | {
-    Data?: Array<{
-      UNIT: string;
-      TIMESTAMP: number;
-      TYPE: string;
-      MARKET: string;
-      INSTRUMENT: string;
-      OPEN: number;
-      HIGH: number;
-      LOW: number;
-      CLOSE: number;
-      FIRST_MESSAGE_TIMESTAMP: number;
-      LAST_MESSAGE_TIMESTAMP: number;
-      FIRST_MESSAGE_VALUE: number;
-      HIGH_MESSAGE_VALUE: number;
-      HIGH_MESSAGE_TIMESTAMP: number;
-      LOW_MESSAGE_VALUE: number;
-      LOW_MESSAGE_TIMESTAMP: number;
-      LAST_MESSAGE_VALUE: number;
-      TOTAL_INDEX_UPDATES: number;
-      VOLUME: number;
-      QUOTE_VOLUME: number;
-      VOLUME_TOP_TIER: number;
-      QUOTE_VOLUME_TOP_TIER: number;
-      VOLUME_DIRECT: number;
-      QUOTE_VOLUME_DIRECT: number;
-      VOLUME_TOP_TIER_DIRECT: number;
-      QUOTE_VOLUME_TOP_TIER_DIRECT: number;
-    }>;
   };
+  
+  // New format with Data array at the top level
+  Data?: Array<{
+    UNIT: string;
+    TIMESTAMP: number;
+    TYPE: string;
+    MARKET: string;
+    INSTRUMENT: string;
+    OPEN: number;
+    HIGH: number;
+    LOW: number;
+    CLOSE: number;
+    FIRST_MESSAGE_TIMESTAMP: number;
+    LAST_MESSAGE_TIMESTAMP: number;
+    FIRST_MESSAGE_VALUE: number;
+    HIGH_MESSAGE_VALUE: number;
+    HIGH_MESSAGE_TIMESTAMP: number;
+    LOW_MESSAGE_VALUE: number;
+    LOW_MESSAGE_TIMESTAMP: number;
+    LAST_MESSAGE_VALUE: number;
+    TOTAL_INDEX_UPDATES: number;
+    VOLUME: number;
+    QUOTE_VOLUME: number;
+    VOLUME_TOP_TIER: number;
+    QUOTE_VOLUME_TOP_TIER: number;
+    VOLUME_DIRECT: number;
+    QUOTE_VOLUME_DIRECT: number;
+    VOLUME_TOP_TIER_DIRECT: number;
+    QUOTE_VOLUME_TOP_TIER_DIRECT: number;
+  }>;
 }
 
 /**
@@ -165,7 +167,8 @@ export async function fetchCoinDeskHistoricalData(
  * @returns Formatted data compatible with existing analysis utilities
  */
 export function formatCoinDeskDataForAnalysis(data: CoinDeskHistoricalResponse): any {
-  if (!data || !data.data) {
+  if (!data) {
+    console.warn('No data provided to formatCoinDeskDataForAnalysis');
     return null;
   }
   
@@ -175,14 +178,24 @@ export function formatCoinDeskDataForAnalysis(data: CoinDeskHistoricalResponse):
   };
   
   // Check which format we're dealing with
-  if ('entries' in data.data && data.data.entries && data.data.entries.length > 0) {
-    // Original format with entries array
-    console.log('Processing original CoinDesk format with entries array');
+  if (data.data && data.data.entries && data.data.entries.length > 0) {
+    // Original format with entries array in data.entries
+    console.log('Processing original CoinDesk format with data.entries array');
     
     // Sort entries by date (newest first)
     const sortedEntries = [...data.data.entries].sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     );
+    
+    // Add metadata to match AlphaVantage format
+    formattedData['Meta Data'] = {
+      '1. Information': 'CoinDesk Historical Data',
+      '2. Digital Currency Code': data.data.instrument?.split('-')[0] || 'Unknown',
+      '3. Digital Currency Name': data.data.instrument?.split('-')[0] || 'Unknown',
+      '4. Market Code': data.data.instrument?.split('-')[1] || 'USD',
+      '5. Last Refreshed': new Date().toISOString(),
+      '6. Time Zone': 'UTC'
+    };
     
     // Format each entry to match the expected structure
     sortedEntries.forEach(entry => {
@@ -195,23 +208,24 @@ export function formatCoinDeskDataForAnalysis(data: CoinDeskHistoricalResponse):
       };
     });
     
+    console.log('Formatted CoinDesk data with metadata (original format):', formattedData['Meta Data']);
     return formattedData;
   } 
-  else if ('Data' in data.data && Array.isArray(data.data.Data) && data.data.Data.length > 0) {
-    // New format with Data array
-    console.log('Processing new CoinDesk format with Data array');
+  else if (data.Data && Array.isArray(data.Data) && data.Data.length > 0) {
+    // New format with Data array at the top level
+    console.log('Processing new CoinDesk format with top-level Data array');
     
     // Sort data by timestamp (newest first)
-    const sortedData = [...data.data.Data].sort(
+    const sortedData = [...data.Data].sort(
       (a, b) => b.TIMESTAMP - a.TIMESTAMP
     );
     
     // Add metadata to match AlphaVantage format
     formattedData['Meta Data'] = {
       '1. Information': 'CoinDesk Historical Data',
-      '2. Digital Currency Code': data.data.Data[0]?.INSTRUMENT?.split('-')[0] || 'Unknown',
-      '3. Digital Currency Name': data.data.Data[0]?.INSTRUMENT?.split('-')[0] || 'Unknown',
-      '4. Market Code': data.data.Data[0]?.INSTRUMENT?.split('-')[1] || 'USD',
+      '2. Digital Currency Code': sortedData[0]?.INSTRUMENT?.split('-')[0] || 'Unknown',
+      '3. Digital Currency Name': sortedData[0]?.INSTRUMENT?.split('-')[0] || 'Unknown',
+      '4. Market Code': sortedData[0]?.INSTRUMENT?.split('-')[1] || 'USD',
       '5. Last Refreshed': new Date().toISOString(),
       '6. Time Zone': 'UTC'
     };
@@ -230,11 +244,47 @@ export function formatCoinDeskDataForAnalysis(data: CoinDeskHistoricalResponse):
       };
     });
     
-    console.log('Formatted CoinDesk data with metadata:', formattedData['Meta Data']);
+    console.log('Formatted CoinDesk data with metadata (new format):', formattedData['Meta Data']);
+    return formattedData;
+  }
+  else if (data.data && data.data.Data && Array.isArray(data.data.Data) && data.data.Data.length > 0) {
+    // Alternative format with Data array nested in data property
+    console.log('Processing alternative CoinDesk format with nested data.Data array');
+    
+    // Sort data by timestamp (newest first)
+    const sortedData = [...data.data.Data].sort(
+      (a, b) => b.TIMESTAMP - a.TIMESTAMP
+    );
+    
+    // Add metadata to match AlphaVantage format
+    formattedData['Meta Data'] = {
+      '1. Information': 'CoinDesk Historical Data',
+      '2. Digital Currency Code': sortedData[0]?.INSTRUMENT?.split('-')[0] || 'Unknown',
+      '3. Digital Currency Name': sortedData[0]?.INSTRUMENT?.split('-')[0] || 'Unknown',
+      '4. Market Code': sortedData[0]?.INSTRUMENT?.split('-')[1] || 'USD',
+      '5. Last Refreshed': new Date().toISOString(),
+      '6. Time Zone': 'UTC'
+    };
+    
+    // Format each entry to match the expected structure
+    sortedData.forEach(entry => {
+      // Convert timestamp to date string (YYYY-MM-DD format)
+      const date = new Date(entry.TIMESTAMP * 1000).toISOString().split('T')[0];
+      
+      formattedData['Time Series (Digital Currency Daily)'][date] = {
+        '1. open': entry.OPEN.toString(),
+        '2. high': entry.HIGH.toString(),
+        '3. low': entry.LOW.toString(),
+        '4. close': entry.CLOSE.toString(),
+        '5. volume': entry.VOLUME.toString(),
+      };
+    });
+    
+    console.log('Formatted CoinDesk data with metadata (alternative format):', formattedData['Meta Data']);
     return formattedData;
   }
   
-  // If we couldn't process either format
-  console.warn('Unknown CoinDesk data format:', data);
+  // If we couldn't process any of the known formats, log the data structure
+  console.warn('Unknown CoinDesk data format:', JSON.stringify(data, null, 2));
   return null;
 }

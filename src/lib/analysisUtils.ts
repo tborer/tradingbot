@@ -199,12 +199,44 @@ export function getTrendLinesMessage(currentPrice: number, support: number | nul
  */
 export function extractHistoricalPrices(data: any): number[] {
   if (!data) {
+    console.warn('No data provided to extractHistoricalPrices');
     return [];
   }
   
-  // Check if this is CoinDesk data format with Data array (new format)
+  // Log the data structure to help with debugging
+  console.log('Extracting historical prices from data with structure:', {
+    hasData: !!data.data,
+    hasDataEntries: data.data && !!data.data.entries,
+    hasDataData: data.data && !!data.data.Data,
+    hasTopLevelData: !!data.Data,
+    hasTimeSeries: !!data['Time Series (Digital Currency Daily)'],
+    hasMetaData: !!data['Meta Data']
+  });
+  
+  // Check if this is CoinDesk data format with top-level Data array (new format)
+  if (data.Data && Array.isArray(data.Data)) {
+    console.log('Detected CoinDesk top-level Data array format, extracting prices...');
+    const prices: number[] = [];
+    
+    // Sort entries by timestamp (newest first)
+    const sortedEntries = [...data.Data].sort(
+      (a, b) => b.TIMESTAMP - a.TIMESTAMP
+    );
+    
+    // Extract closing prices
+    sortedEntries.forEach(entry => {
+      if (entry.CLOSE && !isNaN(entry.CLOSE)) {
+        prices.push(entry.CLOSE);
+      }
+    });
+    
+    console.log(`Extracted ${prices.length} prices from CoinDesk top-level Data array`);
+    return prices;
+  }
+  
+  // Check if this is CoinDesk data format with nested data.Data array
   if (data.data && data.data.Data && Array.isArray(data.data.Data)) {
-    console.log('Detected CoinDesk Data array format, extracting prices...');
+    console.log('Detected CoinDesk nested data.Data array format, extracting prices...');
     const prices: number[] = [];
     
     // Sort entries by timestamp (newest first)
@@ -219,6 +251,7 @@ export function extractHistoricalPrices(data: any): number[] {
       }
     });
     
+    console.log(`Extracted ${prices.length} prices from CoinDesk nested data.Data array`);
     return prices;
   }
   
@@ -239,12 +272,13 @@ export function extractHistoricalPrices(data: any): number[] {
       }
     });
     
+    console.log(`Extracted ${prices.length} prices from CoinDesk entries array`);
     return prices;
   }
   
   // Check if this is formatted CoinDesk data (converted to AlphaVantage-like format)
-  if (data['Time Series (Digital Currency Daily)'] && !data['Meta Data']) {
-    console.log('Detected formatted CoinDesk data, extracting prices...');
+  if (data['Time Series (Digital Currency Daily)']) {
+    console.log('Detected formatted data with Time Series, extracting prices...');
     const timeSeries = data['Time Series (Digital Currency Daily)'];
     const prices: number[] = [];
     
@@ -259,34 +293,13 @@ export function extractHistoricalPrices(data: any): number[] {
       }
     });
     
+    console.log(`Extracted ${prices.length} prices from Time Series format`);
     return prices;
   }
   
-  // Otherwise, assume AlphaVantage format
-  // Check for daily data first, then fall back to monthly if needed
-  const timeSeriesKey = data['Time Series (Digital Currency Daily)'] 
-    ? 'Time Series (Digital Currency Daily)' 
-    : 'Time Series (Digital Currency Monthly)';
-    
-  if (!data[timeSeriesKey]) {
-    return [];
-  }
-
-  const timeSeries = data[timeSeriesKey];
-  const prices: number[] = [];
-
-  // Sort dates in descending order (newest first)
-  const sortedDates = Object.keys(timeSeries).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-
-  // Extract closing prices
-  sortedDates.forEach(date => {
-    const closePrice = parseFloat(timeSeries[date]['4. close']);
-    if (!isNaN(closePrice)) {
-      prices.push(closePrice);
-    }
-  });
-
-  return prices;
+  // If we reach here, we couldn't identify the data format
+  console.warn('Unknown data format in extractHistoricalPrices:', data);
+  return [];
 }
 
 /**

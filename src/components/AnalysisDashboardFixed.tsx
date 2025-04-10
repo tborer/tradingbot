@@ -59,6 +59,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ items }) => {
                     purchasePrice={item.purchasePrice}
                     historicalData={item.historicalData}
                     type={item.type}
+                    dataSource={item.dataSource}
                   />
                 ))}
               </div>
@@ -80,6 +81,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ items }) => {
                     purchasePrice={item.purchasePrice}
                     historicalData={item.historicalData}
                     type={item.type}
+                    dataSource={item.dataSource}
                   />
                 ))}
               </div>
@@ -101,6 +103,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ items }) => {
                     purchasePrice={item.purchasePrice}
                     historicalData={item.historicalData}
                     type={item.type}
+                    dataSource={item.dataSource}
                   />
                 ))}
               </div>

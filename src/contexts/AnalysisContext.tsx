@@ -7,6 +7,7 @@ interface AnalysisItem {
   purchasePrice: number;
   type: 'stock' | 'crypto';
   historicalData: any;
+  dataSource?: string; // Add dataSource field to track which API was used
 }
 
 interface AnalysisContextType {

@@ -187,7 +187,7 @@ export function formatCoinDeskDataForAnalysis(data: CoinDeskHistoricalResponse):
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     );
     
-    // Add metadata to match AlphaVantage format
+    // Add metadata to match AlphaVantage format but clearly mark as CoinDesk data
     formattedData['Meta Data'] = {
       '1. Information': 'CoinDesk Historical Data',
       '2. Digital Currency Code': data.data.instrument?.split('-')[0] || 'Unknown',

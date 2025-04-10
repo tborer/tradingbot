@@ -32,7 +32,7 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
   purchasePrice, 
   historicalData,
   type,
-  dataSource
+  dataSource: propDataSource // Rename to avoid conflict
 }) => {
   const { user } = useAuth();
   const [prices, setPrices] = useState<number[]>([]);
@@ -50,7 +50,7 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
     lower: null
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [dataSourceState, setDataSourceState] = useState<string>('');
+  const [dataSource, setDataSource] = useState<string>('');
   
   // Fetch historical data if not provided
   useEffect(() => {
@@ -71,7 +71,7 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
               } else if (data.data['Meta Data']) {
                 source = 'alphavantage';
               }
-              setDataSourceState(source);
+              setDataSource(source);
               
               // Process the historical data
               const extractedPrices = extractHistoricalPrices(data.data);
@@ -126,8 +126,11 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
   }, [symbol, type, user, historicalData, currentPrice, purchasePrice]);
 
   useEffect(() => {
-    if (historicalData) {
-      // Determine the data source
+    // Use the dataSource prop if provided, otherwise determine from the data structure
+    if (propDataSource) {
+      setDataSource(propDataSource);
+    } else if (historicalData) {
+      // Determine the data source from the structure
       if (historicalData.data && historicalData.data.entries) {
         setDataSource('coindesk');
       } else if (historicalData.data && historicalData.data.Data) {
@@ -190,7 +193,7 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
       );
       setRecommendation(recommendationText);
     }
-  }, [historicalData, currentPrice, purchasePrice, dataSource]);
+  }, [historicalData, currentPrice, purchasePrice, propDataSource]);
 
   const price = currentPrice || (prices.length > 0 ? prices[0] : purchasePrice);
   const percentChange = purchasePrice > 0 

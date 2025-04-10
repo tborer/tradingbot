@@ -12,7 +12,7 @@ import { fetchCoinDeskHistoricalData, formatCoinDeskDataForAnalysis } from '@/li
 import { useAuth } from '@/contexts/AuthContext';
 import { useResearchApiLogs } from '@/contexts/ResearchApiLogContext';
 import { useAnalysis } from '@/contexts/AnalysisContext';
-import AnalysisDashboard from './AnalysisDashboard';
+import AnalysisDashboard from './AnalysisDashboardFixed';
 
 const Research: React.FC = () => {
   const [symbol, setSymbol] = useState('');
@@ -175,13 +175,14 @@ const Research: React.FC = () => {
       }
     }
     
-    // Add to analysis dashboard
+    // Add to analysis dashboard with explicit data source
     addItem({
       symbol: symbolCode,
       currentPrice: currentPrice || undefined,
       purchasePrice: currentPrice || 0,
       type: isCrypto ? 'crypto' : 'stock',
-      historicalData: processedData
+      historicalData: processedData,
+      dataSource: source // Add explicit data source
     });
     
     setResult({

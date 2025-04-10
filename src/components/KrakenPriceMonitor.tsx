@@ -27,10 +27,66 @@ export default function KrakenPriceMonitor({
   const [autoTradeEnabled, setAutoTradeEnabled] = useState<boolean>(false);
   const [lastAutoTradeCheck, setLastAutoTradeCheck] = useState<Date | null>(null);
   const [autoTradeResults, setAutoTradeResults] = useState<any[]>([]);
+  const [systemDegraded, setSystemDegraded] = useState<boolean>(false);
+  const [degradedReason, setDegradedReason] = useState<string>('');
   
   // Fetch settings to check if auto trading is enabled and WebSocket is enabled
   const [enableKrakenWebSocket, setEnableKrakenWebSocket] = useState<boolean>(true);
   
+  // Check for system degraded mode periodically
+  useEffect(() => {
+    // Function to check system status
+    const checkSystemStatus = async () => {
+      try {
+        // Check if we're in client-side circuit breaker mode
+        const now = Date.now();
+        const clientCircuitBreakerKey = 'price-update-circuit-breaker-until';
+        const circuitBreakerUntil = parseInt(localStorage.getItem(clientCircuitBreakerKey) || '0', 10);
+        
+        if (now < circuitBreakerUntil) {
+          setSystemDegraded(true);
+          setDegradedReason('Client-side circuit breaker active due to repeated connection failures');
+          return;
+        }
+        
+        // Make a lightweight request to check system status
+        const response = await fetch('/api/cryptos/batch-update-prices', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ updates: [] }), // Empty updates just to check status
+        });
+        
+        if (response.status === 503) {
+          const data = await response.json();
+          setSystemDegraded(true);
+          setDegradedReason(data.details || 'Database service unavailable');
+        } else {
+          setSystemDegraded(false);
+          setDegradedReason('');
+        }
+      } catch (error) {
+        console.error('Error checking system status:', error);
+        // Don't set degraded mode here as it might be a temporary network issue
+      }
+    };
+    
+    // Check immediately on component mount
+    if (user) {
+      checkSystemStatus();
+    }
+    
+    // Then check periodically
+    const intervalId = setInterval(() => {
+      if (user) {
+        checkSystemStatus();
+      }
+    }, 60000); // Check every minute
+    
+    return () => clearInterval(intervalId);
+  }, [user]);
+
   useEffect(() => {
     const fetchSettings = async () => {
       try {
@@ -156,6 +212,27 @@ export default function KrakenPriceMonitor({
           return;
         }
         
+        // Track consecutive errors for client-side circuit breaking
+        const consecutiveErrorsKey = 'price-update-consecutive-errors';
+        const consecutiveErrors = parseInt(localStorage.getItem(consecutiveErrorsKey) || '0', 10);
+        
+        // If we've had too many consecutive errors, implement client-side circuit breaking
+        const MAX_CLIENT_CONSECUTIVE_ERRORS = 5;
+        if (consecutiveErrors >= MAX_CLIENT_CONSECUTIVE_ERRORS) {
+          const clientCircuitBreakerKey = 'price-update-circuit-breaker-until';
+          const circuitBreakerUntil = parseInt(localStorage.getItem(clientCircuitBreakerKey) || '0', 10);
+          
+          if (now < circuitBreakerUntil) {
+            console.log(`Client-side circuit breaker active, ${Math.ceil((circuitBreakerUntil - now) / 1000)}s remaining`);
+            return;
+          } else {
+            // Reset circuit breaker after timeout
+            localStorage.setItem(consecutiveErrorsKey, '0');
+            localStorage.removeItem(clientCircuitBreakerKey);
+            console.log('Client-side circuit breaker reset');
+          }
+        }
+        
         try {
           // Prepare the updates array for the batch update
           const updates = newPrices.map(priceUpdate => ({
@@ -172,11 +249,14 @@ export default function KrakenPriceMonitor({
             body: JSON.stringify({ updates }),
           });
           
-          // Store the update time on success
+          // Store the update time
           localStorage.setItem(lastUpdateKey, now.toString());
           
           if (!response.ok) {
             const errorData = await response.json();
+            
+            // Increment consecutive errors
+            localStorage.setItem(consecutiveErrorsKey, (consecutiveErrors + 1).toString());
             
             // Handle specific error codes
             if (response.status === 429 || response.status === 503) {
@@ -194,6 +274,13 @@ export default function KrakenPriceMonitor({
               console.log(`Setting backoff timer for ${backoffTime}ms due to ${errorData.code}`);
               localStorage.setItem(backoffKey, (now + backoffTime).toString());
               
+              // If we've reached the max consecutive errors, activate client-side circuit breaker
+              if (consecutiveErrors + 1 >= MAX_CLIENT_CONSECUTIVE_ERRORS) {
+                const CIRCUIT_BREAKER_TIMEOUT = 60000; // 1 minute
+                localStorage.setItem(clientCircuitBreakerKey, (now + CIRCUIT_BREAKER_TIMEOUT).toString());
+                console.log(`Activating client-side circuit breaker for ${CIRCUIT_BREAKER_TIMEOUT / 1000}s`);
+              }
+              
               // Show a toast only for the first error to avoid spamming
               const lastErrorKey = 'last-price-update-error-time';
               const lastErrorTime = parseInt(localStorage.getItem(lastErrorKey) || '0', 10);
@@ -202,9 +289,18 @@ export default function KrakenPriceMonitor({
               if (now - lastErrorTime > ERROR_NOTIFICATION_INTERVAL) {
                 localStorage.setItem(lastErrorKey, now.toString());
                 
+                // Show different messages based on error type
+                let toastTitle = 'Price Update Temporarily Unavailable';
+                let toastDescription = errorData.details || 'The system is experiencing high load. Price updates will resume automatically.';
+                
+                if (errorData.degraded) {
+                  toastTitle = 'System Operating in Degraded Mode';
+                  toastDescription = 'Database connectivity issues detected. Some features may be limited until service is restored.';
+                }
+                
                 toast({
-                  title: 'Price Update Temporarily Unavailable',
-                  description: errorData.details || 'The system is experiencing high load. Price updates will resume automatically.',
+                  title: toastTitle,
+                  description: toastDescription,
                   variant: 'destructive',
                 });
               }
@@ -213,11 +309,33 @@ export default function KrakenPriceMonitor({
             throw new Error(`Failed to update prices: ${errorData.error || response.statusText}`);
           }
           
-          // Clear any backoff on success
+          // Clear backoff and reset consecutive errors on success
           localStorage.removeItem(backoffKey);
+          localStorage.setItem(consecutiveErrorsKey, '0');
           
           const result = await response.json();
-          console.log(`Batch updated lastPrice for ${result.processedCount} cryptos`);
+          
+          // Handle degraded mode response
+          if (result.degraded) {
+            console.log(`Batch processed in degraded mode for ${result.processedCount} cryptos`);
+            
+            // Show degraded mode toast (but not too frequently)
+            const lastDegradedToastKey = 'last-degraded-mode-toast-time';
+            const lastDegradedToastTime = parseInt(localStorage.getItem(lastDegradedToastKey) || '0', 10);
+            const DEGRADED_TOAST_INTERVAL = 300000; // 5 minutes
+            
+            if (now - lastDegradedToastTime > DEGRADED_TOAST_INTERVAL) {
+              localStorage.setItem(lastDegradedToastKey, now.toString());
+              
+              toast({
+                title: 'System Operating in Degraded Mode',
+                description: 'Price updates are being processed but database updates may be delayed.',
+                variant: 'warning',
+              });
+            }
+          } else {
+            console.log(`Batch updated lastPrice for ${result.processedCount} cryptos`);
+          }
         } catch (error) {
           console.error('Error batch updating lastPrices:', error);
           
@@ -347,6 +465,18 @@ export default function KrakenPriceMonitor({
           <CardTitle>Kraken Price Monitor</CardTitle>
         </CardHeader>
         <CardContent>
+          {systemDegraded && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTitle>System Operating in Degraded Mode</AlertTitle>
+              <AlertDescription>
+                {degradedReason || 'Database connectivity issues detected. Some features may be limited until service is restored.'}
+                <div className="text-xs mt-1">
+                  Price updates will continue to be displayed but may not be saved to the database until service is restored.
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+          
           {autoTradeEnabled && (
             <Alert variant="default" className="mb-4 bg-blue-50 dark:bg-blue-900/20 border-blue-500">
               <AlertTitle className="text-blue-700 dark:text-blue-300">Auto Trading Enabled</AlertTitle>
@@ -354,6 +484,11 @@ export default function KrakenPriceMonitor({
                 Automatic trading is enabled for cryptocurrencies.
                 {lastAutoTradeCheck && (
                   <div className="text-xs mt-1">Last check: {lastAutoTradeCheck.toLocaleTimeString()}</div>
+                )}
+                {systemDegraded && (
+                  <div className="text-xs mt-1 text-amber-600 dark:text-amber-400">
+                    Note: Auto-trading may be delayed or limited while in degraded mode.
+                  </div>
                 )}
               </AlertDescription>
             </Alert>

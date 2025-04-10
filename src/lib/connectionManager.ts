@@ -1,6 +1,7 @@
 /**
  * Connection Manager for handling database connections and rate limiting
  */
+import { createAndLogError, ErrorCategory, ErrorSeverity, DatabaseErrorCodes } from '@/lib/errorLogger';
 
 // Track the last time we had a database error
 let lastDbErrorTime: number | null = null;
@@ -16,11 +17,26 @@ const CIRCUIT_BREAKER_TIMEOUT_MS = 30000; // 30 seconds
 let circuitBreakerOpen = false;
 // When the circuit breaker was opened
 let circuitBreakerOpenedAt: number | null = null;
+// Track partial degradation mode
+let partialDegradationMode = false;
+// When partial degradation mode was activated
+let partialDegradationActivatedAt: number | null = null;
+// Partial degradation timeout (in milliseconds)
+const PARTIAL_DEGRADATION_TIMEOUT_MS = 120000; // 2 minutes
 
 // Rate limiting
 const REQUEST_LIMIT = 10; // Maximum requests per time window
 const TIME_WINDOW_MS = 1000; // Time window in milliseconds (1 second)
 const requestTimestamps: number[] = [];
+
+// Cache for recent successful responses
+interface CachedResponse {
+  data: any;
+  timestamp: number;
+  key: string;
+}
+const responseCache: Map<string, CachedResponse> = new Map();
+const CACHE_TTL_MS = 300000; // 5 minutes cache TTL
 
 /**
  * Check if we should allow a new database request based on rate limiting
@@ -63,9 +79,10 @@ export function recordRequest(): void {
 
 /**
  * Record a database error and check if circuit breaker should be opened
+ * @param errorDetails Optional error details for logging
  * @returns boolean indicating if circuit breaker is now open
  */
-export function recordError(): boolean {
+export function recordError(errorDetails?: { message: string; code?: string }): boolean {
   const now = Date.now();
   
   // If this is the first error or it's been a while since the last error
@@ -76,6 +93,25 @@ export function recordError(): boolean {
   }
   
   lastDbErrorTime = now;
+  
+  // Log the error with details
+  createAndLogError(
+    ErrorCategory.DATABASE,
+    consecutiveErrors >= 3 ? ErrorSeverity.ERROR : ErrorSeverity.WARNING,
+    3010,
+    `Database error occurred (${consecutiveErrors} consecutive errors)`,
+    { 
+      timestamp: now, 
+      consecutiveErrors,
+      errorMessage: errorDetails?.message,
+      errorCode: errorDetails?.code
+    }
+  );
+  
+  // Enter partial degradation mode after 3 consecutive errors
+  if (consecutiveErrors >= 3 && !partialDegradationMode) {
+    enterPartialDegradationMode();
+  }
   
   // Check if we should open the circuit breaker
   if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
@@ -122,6 +158,9 @@ export function getConnectionStatus(): {
   consecutiveErrors: number;
   requestsInWindow: number;
   circuitBreakerRemainingMs: number | null;
+  partialDegradationMode: boolean;
+  partialDegradationRemainingMs: number | null;
+  cacheSize: number;
 } {
   const now = Date.now();
   
@@ -139,6 +178,113 @@ export function getConnectionStatus(): {
     requestsInWindow: requestTimestamps.length,
     circuitBreakerRemainingMs: circuitBreakerOpenedAt 
       ? Math.max(0, CIRCUIT_BREAKER_TIMEOUT_MS - (now - circuitBreakerOpenedAt))
-      : null
+      : null,
+    partialDegradationMode,
+    partialDegradationRemainingMs: partialDegradationActivatedAt
+      ? Math.max(0, PARTIAL_DEGRADATION_TIMEOUT_MS - (now - partialDegradationActivatedAt))
+      : null,
+    cacheSize: responseCache.size
   };
+}
+
+/**
+ * Enter partial degradation mode when database is experiencing issues
+ * but we don't want to completely stop all requests
+ */
+export function enterPartialDegradationMode(): void {
+  const now = Date.now();
+  partialDegradationMode = true;
+  partialDegradationActivatedAt = now;
+  
+  createAndLogError(
+    ErrorCategory.DATABASE,
+    ErrorSeverity.WARNING,
+    3005,
+    'Entering partial degradation mode due to database connectivity issues',
+    { timestamp: now, consecutiveErrors }
+  );
+  
+  console.warn(`Entering partial degradation mode at ${new Date(now).toISOString()}`);
+}
+
+/**
+ * Check if we're in partial degradation mode
+ * @returns boolean indicating if we're in partial degradation mode
+ */
+export function isInPartialDegradationMode(): boolean {
+  const now = Date.now();
+  
+  // If we're in partial degradation mode, check if it's time to exit
+  if (partialDegradationMode && partialDegradationActivatedAt) {
+    if (now - partialDegradationActivatedAt >= PARTIAL_DEGRADATION_TIMEOUT_MS) {
+      // Exit partial degradation mode
+      partialDegradationMode = false;
+      partialDegradationActivatedAt = null;
+      console.log('Exiting partial degradation mode, normal operation resumed');
+      return false;
+    }
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Cache a successful response for potential fallback use
+ * @param key Unique key for the cached response
+ * @param data The data to cache
+ */
+export function cacheResponse(key: string, data: any): void {
+  const now = Date.now();
+  
+  // Clean up expired cache entries
+  for (const [cacheKey, entry] of responseCache.entries()) {
+    if (now - entry.timestamp > CACHE_TTL_MS) {
+      responseCache.delete(cacheKey);
+    }
+  }
+  
+  // Add new cache entry
+  responseCache.set(key, {
+    data,
+    timestamp: now,
+    key
+  });
+}
+
+/**
+ * Get a cached response if available
+ * @param key The cache key to look up
+ * @returns The cached data or null if not found or expired
+ */
+export function getCachedResponse(key: string): any | null {
+  const now = Date.now();
+  const cachedEntry = responseCache.get(key);
+  
+  if (cachedEntry && now - cachedEntry.timestamp <= CACHE_TTL_MS) {
+    return cachedEntry.data;
+  }
+  
+  return null;
+}
+
+/**
+ * Clear all cached responses
+ */
+export function clearCache(): void {
+  responseCache.clear();
+}
+
+/**
+ * Determine if a request should use cached data based on current system state
+ * @param key The cache key to check
+ * @returns boolean indicating if cached data should be used
+ */
+export function shouldUseCachedResponse(key: string): boolean {
+  // If circuit breaker is open or in partial degradation mode, try to use cache
+  if (circuitBreakerOpen || partialDegradationMode) {
+    return getCachedResponse(key) !== null;
+  }
+  
+  return false;
 }

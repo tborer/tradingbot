@@ -1,24 +1,38 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@/util/supabase/api';
-import prisma, { checkPrismaConnection } from '@/lib/prisma';
+import prisma, { checkPrismaConnection, executeWithFallback } from '@/lib/prisma';
 import { PrismaClientInitializationError, PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import * as connectionManager from '@/lib/connectionManager';
+import { createAndLogError, ErrorCategory, ErrorSeverity, DatabaseErrorCodes } from '@/lib/errorLogger';
 
 // Add connection retry logic
 const MAX_RETRIES = 3;
-const RETRY_DELAY_BASE = 1000; // 1 second base delay
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Check if circuit breaker is open
   if (connectionManager.isCircuitBreakerOpen()) {
     const status = connectionManager.getConnectionStatus();
     console.log('Circuit breaker is open, rejecting request', status);
+    
+    // Return a 503 with detailed information
     return res.status(503).json({
       error: 'Database service temporarily unavailable',
       details: 'Too many database errors occurred recently. Please try again later.',
       code: 'CIRCUIT_BREAKER_OPEN',
-      retryAfterMs: status.circuitBreakerRemainingMs
+      retryAfterMs: status.circuitBreakerRemainingMs,
+      degradationStatus: {
+        circuitBreakerOpen: status.circuitBreakerOpen,
+        partialDegradation: status.partialDegradationMode,
+        estimatedRecovery: status.circuitBreakerRemainingMs
+      }
     });
+  }
+
+  // Check if we're in partial degradation mode
+  const inPartialDegradation = connectionManager.isInPartialDegradationMode();
+  if (inPartialDegradation) {
+    const status = connectionManager.getConnectionStatus();
+    console.log('In partial degradation mode, proceeding with caution', status);
   }
 
   // Check if we should allow this request based on rate limiting
@@ -43,9 +57,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Check database connection health before proceeding
     const isConnected = await checkPrismaConnection();
-    if (!isConnected) {
+    if (!isConnected && !inPartialDegradation) {
       console.error('Database connection check failed');
-      connectionManager.recordError();
+      connectionManager.recordError({
+        message: 'Database connection check failed',
+        code: 'CONNECTION_CHECK_FAILED'
+      });
       return res.status(503).json({
         error: 'Database service unavailable',
         details: 'Unable to connect to the database. Please try again later.',
@@ -102,48 +119,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Get all symbols from the updates
     const symbols = updates.map(update => update.symbol);
     
-    // Find all cryptos by symbols for this user with retry logic
-    let cryptos = [];
-    let retries = 0;
+    // Create a cache key based on user ID and symbols
+    const cacheKey = `user-cryptos-${user.id}-${symbols.sort().join('-')}`;
     
-    while (retries < MAX_RETRIES) {
-      try {
-        cryptos = await prisma.crypto.findMany({
+    // Find all cryptos by symbols for this user with enhanced fallback logic
+    const cryptos = await executeWithFallback(
+      async () => {
+        return await prisma.crypto.findMany({
           where: {
             symbol: { in: symbols },
             userId: user.id,
           },
         });
-        
-        // If successful, break out of the retry loop
-        connectionManager.recordSuccess();
-        break;
-      } catch (error) {
-        retries++;
-        console.error(`Database error in batch-update-prices (attempt ${retries}/${MAX_RETRIES}):`, error);
-        
-        // Record the error for circuit breaker
-        const isCircuitBreakerOpen = connectionManager.recordError();
-        if (isCircuitBreakerOpen) {
-          console.error('Circuit breaker opened due to consecutive errors');
-          return res.status(503).json({
-            error: 'Database service temporarily unavailable',
-            details: 'Too many database errors occurred recently. Please try again later.',
-            code: 'CIRCUIT_BREAKER_OPEN'
-          });
-        }
-        
-        // If we've reached max retries, throw the error to be caught by the outer try/catch
-        if (retries >= MAX_RETRIES) {
-          throw error;
-        }
-        
-        // Use exponential backoff for retries
-        const backoffDelay = connectionManager.getBackoffDelay();
-        console.log(`Retrying after ${backoffDelay}ms (attempt ${retries}/${MAX_RETRIES})`);
-        await new Promise(resolve => setTimeout(resolve, backoffDelay));
-      }
-    }
+      },
+      [], // Fallback to empty array if all else fails
+      cacheKey,
+      MAX_RETRIES
+    );
+    
+    // Log the result
+    createAndLogError(
+      ErrorCategory.DATABASE,
+      ErrorSeverity.INFO,
+      3030,
+      `Successfully retrieved ${cryptos.length} cryptos for user ${user.id}`,
+      { timestamp: Date.now(), symbols }
+    );
     
     if (cryptos.length === 0) {
       // If no cryptos found for this user, we'll just ignore the update
@@ -176,15 +177,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Prepare batch update data
     const updateData = validUpdates.map(update => ({
       id: cryptoMap.get(update.symbol),
-      lastPrice: Number(update.lastPrice)
+      lastPrice: Number(update.lastPrice),
+      symbol: update.symbol
     }));
     
-    // Update the lastPrice for all cryptos in a single transaction with retry logic
-    retries = 0;
+    // Create a transaction cache key
+    const transactionCacheKey = `price-updates-${user.id}-${Date.now()}`;
+    
+    // Update the lastPrice for all cryptos in a single transaction with enhanced error handling
     let updatedCount = 0;
     
-    while (retries < MAX_RETRIES) {
-      try {
+    // If we're in partial degradation mode, we'll skip the database update
+    // but still return a success response with the data we would have updated
+    if (inPartialDegradation) {
+      console.log('Skipping database update due to partial degradation mode');
+      
+      // Cache the update data for when the system recovers
+      connectionManager.cacheResponse(transactionCacheKey, updateData);
+      
+      return res.status(200).json({ 
+        message: `Processed price updates in degraded mode (database updates queued)`,
+        processedCount: validUpdates.length,
+        totalRequested: updates.length,
+        status: 'partial_success',
+        degraded: true
+      });
+    }
+    
+    // Use our enhanced executeWithFallback for the transaction
+    await executeWithFallback(
+      async () => {
         // Use a transaction to ensure all updates succeed or fail together
         await prisma.$transaction(async (prismaClient) => {
           for (const data of updateData) {
@@ -196,37 +218,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         });
         
-        // Record successful operation
-        connectionManager.recordSuccess();
+        // Cache the successful result
+        connectionManager.cacheResponse(transactionCacheKey, {
+          updatedCount,
+          updateData
+        });
         
-        // If successful, break out of the retry loop
-        break;
-      } catch (error) {
-        retries++;
-        console.error(`Database error in batch update (attempt ${retries}/${MAX_RETRIES}):`, error);
-        
-        // Record the error for circuit breaker
-        const isCircuitBreakerOpen = connectionManager.recordError();
-        if (isCircuitBreakerOpen) {
-          console.error('Circuit breaker opened due to consecutive errors');
-          return res.status(503).json({
-            error: 'Database service temporarily unavailable',
-            details: 'Too many database errors occurred recently. Please try again later.',
-            code: 'CIRCUIT_BREAKER_OPEN'
-          });
-        }
-        
-        // If we've reached max retries, throw the error to be caught by the outer try/catch
-        if (retries >= MAX_RETRIES) {
-          throw error;
-        }
-        
-        // Use exponential backoff for retries
-        const backoffDelay = connectionManager.getBackoffDelay();
-        console.log(`Retrying after ${backoffDelay}ms (attempt ${retries}/${MAX_RETRIES})`);
-        await new Promise(resolve => setTimeout(resolve, backoffDelay));
-      }
-    }
+        return { updatedCount };
+      },
+      { updatedCount: 0 }, // Fallback data if all else fails
+      transactionCacheKey,
+      MAX_RETRIES
+    );
     
     console.log(`Successfully updated lastPrice for ${updatedCount} cryptos`);
     
@@ -240,16 +243,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.error('API error in batch-update-prices:', error);
     
     // Record the error for circuit breaker
-    connectionManager.recordError();
+    connectionManager.recordError({
+      message: error instanceof Error ? error.message : 'Unknown error',
+      code: 'API_ERROR'
+    });
     
     // Handle specific Prisma errors
     if (error instanceof PrismaClientInitializationError) {
       console.error('Prisma initialization error:', error.message);
+      
+      // Enter partial degradation mode
+      connectionManager.enterPartialDegradationMode();
+      
       return res.status(503).json({ 
         error: 'Database service unavailable', 
         details: 'Unable to connect to the database. Please try again later.',
         code: 'DB_CONNECTION_ERROR',
-        status: 'error'
+        status: 'error',
+        degraded: true
       });
     }
     
@@ -257,19 +268,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Handle "Max client connections reached" error
       if (error.message.includes('Max client connections reached')) {
         console.error('Max database connections reached:', error.message);
+        
+        // Enter partial degradation mode
+        connectionManager.enterPartialDegradationMode();
+        
         return res.status(503).json({ 
           error: 'Database connection limit reached', 
           details: 'The system is experiencing high load. Please try again later.',
           code: 'DB_CONNECTION_LIMIT',
-          status: 'error'
+          status: 'error',
+          degraded: true
         });
       }
     }
     
     return res.status(500).json({ 
       error: 'Internal server error', 
-      details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      details: error instanceof Error ? error.message : 'Unknown error',
+      code: 'INTERNAL_SERVER_ERROR',
       status: 'error'
     });
   }

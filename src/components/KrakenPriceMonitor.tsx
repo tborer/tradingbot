@@ -132,8 +132,30 @@ export default function KrakenPriceMonitor({
     
     // Update lastPrice in the database for all cryptos in a single batch request if WebSocket is enabled
     if (user && newPrices.length > 0 && enableKrakenWebSocket) {
+      // Track last successful update time to prevent too frequent updates
+      const lastUpdateKey = 'last-price-update-time';
+      const now = Date.now();
+      const lastUpdateTime = parseInt(localStorage.getItem(lastUpdateKey) || '0', 10);
+      const MIN_UPDATE_INTERVAL = 2000; // 2 seconds minimum between updates
+      
+      // Skip update if it's too soon after the last one
+      if (now - lastUpdateTime < MIN_UPDATE_INTERVAL) {
+        console.log(`Skipping price update, last update was ${now - lastUpdateTime}ms ago`);
+        return;
+      }
+      
       // Create a function to batch update the lastPrice for all cryptos
       const updateLastPrices = async () => {
+        // Track if we're currently in a backoff period
+        const backoffKey = 'price-update-backoff-until';
+        const backoffUntil = parseInt(localStorage.getItem(backoffKey) || '0', 10);
+        
+        // If we're in a backoff period, skip this update
+        if (now < backoffUntil) {
+          console.log(`Skipping price update due to backoff, ${Math.ceil((backoffUntil - now) / 1000)}s remaining`);
+          return;
+        }
+        
         try {
           // Prepare the updates array for the batch update
           const updates = newPrices.map(priceUpdate => ({
@@ -150,15 +172,64 @@ export default function KrakenPriceMonitor({
             body: JSON.stringify({ updates }),
           });
           
+          // Store the update time on success
+          localStorage.setItem(lastUpdateKey, now.toString());
+          
           if (!response.ok) {
             const errorData = await response.json();
+            
+            // Handle specific error codes
+            if (response.status === 429 || response.status === 503) {
+              // Calculate backoff time based on the error
+              let backoffTime = 5000; // Default 5 seconds
+              
+              if (errorData.retryAfterMs) {
+                // Use server-provided retry time if available
+                backoffTime = errorData.retryAfterMs;
+              } else if (errorData.code === 'CIRCUIT_BREAKER_OPEN') {
+                // Longer backoff for circuit breaker
+                backoffTime = 30000; // 30 seconds
+              }
+              
+              console.log(`Setting backoff timer for ${backoffTime}ms due to ${errorData.code}`);
+              localStorage.setItem(backoffKey, (now + backoffTime).toString());
+              
+              // Show a toast only for the first error to avoid spamming
+              const lastErrorKey = 'last-price-update-error-time';
+              const lastErrorTime = parseInt(localStorage.getItem(lastErrorKey) || '0', 10);
+              const ERROR_NOTIFICATION_INTERVAL = 60000; // Only show error toast once per minute
+              
+              if (now - lastErrorTime > ERROR_NOTIFICATION_INTERVAL) {
+                localStorage.setItem(lastErrorKey, now.toString());
+                
+                toast({
+                  title: 'Price Update Temporarily Unavailable',
+                  description: errorData.details || 'The system is experiencing high load. Price updates will resume automatically.',
+                  variant: 'destructive',
+                });
+              }
+            }
+            
             throw new Error(`Failed to update prices: ${errorData.error || response.statusText}`);
           }
+          
+          // Clear any backoff on success
+          localStorage.removeItem(backoffKey);
           
           const result = await response.json();
           console.log(`Batch updated lastPrice for ${result.processedCount} cryptos`);
         } catch (error) {
           console.error('Error batch updating lastPrices:', error);
+          
+          // Don't spam the console with the same error
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          const lastErrorMsgKey = 'last-price-update-error-msg';
+          const lastErrorMsg = localStorage.getItem(lastErrorMsgKey);
+          
+          if (lastErrorMsg !== errorMessage) {
+            localStorage.setItem(lastErrorMsgKey, errorMessage);
+            console.error('New error updating prices:', errorMessage);
+          }
         }
       };
       

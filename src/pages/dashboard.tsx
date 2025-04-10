@@ -13,6 +13,7 @@ import { parseFinnhubMessage, shouldSellStock, shouldBuyStock, StockPrice } from
 import { parseKrakenMessage, createKrakenSubscription, shouldSellCrypto, shouldBuyCrypto, KrakenPrice } from "@/lib/kraken";
 import KrakenPriceMonitor from "@/components/KrakenPriceMonitor";
 import KrakenBalance from "@/components/KrakenBalance";
+import USDBalance from "@/components/USDBalance";
 import SortableStockList from "@/components/SortableStockList";
 import SortableCryptoList from "@/components/SortableCryptoList";
 import TransactionHistory from "@/components/TransactionHistory";
@@ -1340,6 +1341,9 @@ export default function Dashboard() {
             
             {/* Kraken Balance */}
             <KrakenBalance />
+            
+            {/* USD Balance */}
+            <USDBalance className="mt-4" />
             
             {/* Add New Crypto Form */}
             <Card>

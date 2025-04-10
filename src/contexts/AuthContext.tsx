@@ -70,6 +70,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           .insert({
             id: user.id,
             email: user.email,
+            usdBalance: 0,
           });
         if (insertError) {
           throw insertError;

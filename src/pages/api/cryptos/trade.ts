@@ -149,10 +149,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
       
-      await prisma.crypto.update({
-        where: { id: crypto.id },
-        data: { shares: newShares },
+      // Get current user's USD balance
+      const userData = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { usdBalance: true }
       });
+      
+      // Calculate new USD balance based on the trade
+      let newUsdBalance = userData?.usdBalance || 0;
+      if (action === 'buy') {
+        // Subtract the total amount when buying
+        newUsdBalance -= totalAmount;
+      } else {
+        // Add the total amount when selling
+        newUsdBalance += totalAmount;
+      }
+      
+      // Ensure balance doesn't go below zero
+      newUsdBalance = Math.max(0, newUsdBalance);
+      
+      // Update both the crypto shares and user's USD balance
+      await prisma.$transaction([
+        prisma.crypto.update({
+          where: { id: crypto.id },
+          data: { shares: newShares },
+        }),
+        prisma.user.update({
+          where: { id: user.id },
+          data: { usdBalance: newUsdBalance },
+        })
+      ]);
       
       return res.status(200).json({
         transaction,

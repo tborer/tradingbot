@@ -12,6 +12,7 @@ model User {
   id         String   @id @db.Uuid
   email      String   @unique
   createdAt  DateTime @default(now())
+  usdBalance Float    @default(0)
   stocks     Stock[]
   cryptos    Crypto[]
   settings   Settings?

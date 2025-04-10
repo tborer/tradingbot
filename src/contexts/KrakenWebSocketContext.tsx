@@ -20,6 +20,7 @@ interface KrakenWebSocketContextType {
   setEnableKrakenWebSocket: (enabled: boolean) => void;
   reconnectDelay: number;
   setReconnectDelay: (delay: number) => void;
+  manuallyDisconnected: boolean;
 }
 
 const KrakenWebSocketContext = createContext<KrakenWebSocketContextType | null>(null);
@@ -50,6 +51,8 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
   const [enableKrakenWebSocket, setEnableKrakenWebSocket] = useState<boolean>(true);
   // Reconnection delay in milliseconds (default: 1000ms = 1 second)
   const [reconnectDelay, setReconnectDelay] = useState<number>(1000);
+  // Flag to track if the user manually disconnected
+  const [manuallyDisconnected, setManuallyDisconnected] = useState<boolean>(false);
 
   // Load auto-connect setting from localStorage
   useEffect(() => {
@@ -151,16 +154,26 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
   // Connect function
   const connect = useCallback(() => {
     if (krakenSocket) {
+      // Reset the manually disconnected flag when user explicitly connects
+      setManuallyDisconnected(false);
+      addLog('info', 'Manual connect requested, resetting manuallyDisconnected flag', {
+        manuallyDisconnected: false
+      });
       krakenSocket.connect();
     }
-  }, [krakenSocket]);
+  }, [krakenSocket, addLog]);
 
   // Disconnect function
   const disconnect = useCallback(() => {
     if (krakenSocket) {
+      // Set the manually disconnected flag when user explicitly disconnects
+      setManuallyDisconnected(true);
+      addLog('info', 'Manual disconnect requested, setting manuallyDisconnected flag', {
+        manuallyDisconnected: true
+      });
       krakenSocket.disconnect();
     }
-  }, [krakenSocket]);
+  }, [krakenSocket, addLog]);
 
   // Update symbols function
   const updateSymbols = useCallback((newSymbols: string[]) => {
@@ -236,17 +249,33 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
   // Auto-connect when autoConnect is true and WebSocket is enabled
   useEffect(() => {
     if (krakenSocket) {
-      if (autoConnect && !status.isConnected && enableKrakenWebSocket) {
-        // Only connect if not already connected and enabled
+      if (autoConnect && !status.isConnected && enableKrakenWebSocket && !manuallyDisconnected) {
+        // Only connect if not already connected, enabled, and not manually disconnected
         console.log('Auto-connecting Kraken WebSocket');
+        addLog('info', 'Auto-connecting Kraken WebSocket', {
+          autoConnect,
+          isConnected: status.isConnected,
+          enableKrakenWebSocket,
+          manuallyDisconnected
+        });
         krakenSocket.connect();
       } else if (!enableKrakenWebSocket && status.isConnected) {
         // Disconnect if WebSocket is disabled but connected
         console.log('Disconnecting Kraken WebSocket because it is disabled');
+        addLog('info', 'Disconnecting Kraken WebSocket because it is disabled', {});
         krakenSocket.disconnect();
+      } else if (!status.isConnected && manuallyDisconnected) {
+        // Log that we're not auto-connecting due to manual disconnect
+        console.log('Not auto-connecting because WebSocket was manually disconnected');
+        addLog('info', 'Not auto-connecting because WebSocket was manually disconnected', {
+          autoConnect,
+          isConnected: status.isConnected,
+          enableKrakenWebSocket,
+          manuallyDisconnected
+        });
       }
     }
-  }, [autoConnect, krakenSocket, status.isConnected, enableKrakenWebSocket]);
+  }, [autoConnect, krakenSocket, status.isConnected, enableKrakenWebSocket, manuallyDisconnected, addLog]);
 
   // Save enableKrakenWebSocket setting to localStorage when it changes
   const handleEnableKrakenWebSocketChange = useCallback((value: boolean) => {
@@ -276,7 +305,8 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
     enableKrakenWebSocket,
     setEnableKrakenWebSocket: handleEnableKrakenWebSocketChange,
     reconnectDelay,
-    setReconnectDelay: handleReconnectDelayChange
+    setReconnectDelay: handleReconnectDelayChange,
+    manuallyDisconnected
   };
 
   return (

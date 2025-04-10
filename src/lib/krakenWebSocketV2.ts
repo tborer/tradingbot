@@ -43,6 +43,7 @@ export class KrakenWebSocket {
   private reconnectBaseDelay: number;
   private isConnecting: boolean = false; // Flag to track connection in progress
   private connectionTimeoutId: NodeJS.Timeout | null = null;
+  private manualDisconnect: boolean = false; // Flag to track if disconnect was called manually
 
   constructor(options: KrakenWebSocketOptions) {
     this.options = options;
@@ -66,6 +67,10 @@ export class KrakenWebSocket {
   }
 
   public connect(): void {
+    // Reset the manual disconnect flag when connect is called explicitly
+    this.manualDisconnect = false;
+    this.log('info', 'Connect requested, resetting manualDisconnect flag', { manualDisconnect: false });
+    
     // Check if already connected or connecting
     if (this.isConnecting) {
       this.log('info', 'Connection attempt already in progress, ignoring duplicate connect request', {});
@@ -90,8 +95,9 @@ export class KrakenWebSocket {
       }
     }
     
-    // Clear any existing connection
-    this.disconnect();
+    // Clear any existing connection without setting manualDisconnect flag
+    // We'll call our internal _disconnect method instead of disconnect()
+    this._disconnect();
     
     try {
       this.isConnecting = true;
@@ -144,7 +150,8 @@ export class KrakenWebSocket {
     }
   }
 
-  public disconnect(): void {
+  // Internal method to disconnect without setting the manual disconnect flag
+  private _disconnect(): void {
     // Clear connection timeout if it exists
     if (this.connectionTimeoutId) {
       clearTimeout(this.connectionTimeoutId);
@@ -196,6 +203,15 @@ export class KrakenWebSocket {
       isConnected: false,
       error: null
     });
+  }
+
+  public disconnect(): void {
+    // Set the manual disconnect flag to prevent auto-reconnect
+    this.manualDisconnect = true;
+    this.log('info', 'Manual disconnect requested', { manualDisconnect: true });
+    
+    // Use the internal disconnect method
+    this._disconnect();
   }
 
   public updateSymbols(symbols: string[]): void {
@@ -518,7 +534,8 @@ export class KrakenWebSocket {
     this.log('warning', 'WebSocket closed', {
       code: event.code,
       reason: event.reason || 'No reason provided',
-      wasClean: event.wasClean
+      wasClean: event.wasClean,
+      manualDisconnect: this.manualDisconnect
     });
     
     // Reset connection state
@@ -540,16 +557,18 @@ export class KrakenWebSocket {
       this.options.onClose(event);
     }
     
-    // Only attempt to reconnect if the connection was previously established
-    // and we haven't exceeded the maximum number of reconnect attempts
-    if (this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+    // Only attempt to reconnect if:
+    // 1. The connection was not manually disconnected
+    // 2. We haven't exceeded the maximum number of reconnect attempts
+    if (!this.manualDisconnect && this.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
       const delay = this.reconnectBaseDelay * Math.pow(2, this.reconnectAttempts);
       
       this.log('info', 'Attempting to reconnect', {
         attempt: this.reconnectAttempts + 1,
         maxAttempts: MAX_RECONNECT_ATTEMPTS,
         delay,
-        baseDelay: this.reconnectBaseDelay
+        baseDelay: this.reconnectBaseDelay,
+        manualDisconnect: this.manualDisconnect
       });
       
       // Clear any existing reconnect timeout
@@ -561,6 +580,10 @@ export class KrakenWebSocket {
         this.reconnectAttempts++;
         this.connect();
       }, delay);
+    } else if (this.manualDisconnect) {
+      this.log('info', 'Not attempting to reconnect because WebSocket was manually disconnected', {
+        manualDisconnect: this.manualDisconnect
+      });
     } else {
       this.log('error', 'Max reconnection attempts reached', {
         attempts: this.reconnectAttempts
@@ -666,13 +689,21 @@ export class KrakenWebSocket {
       return;
     }
     
+    // Don't reconnect if manually disconnected
+    if (this.manualDisconnect) {
+      this.log('info', 'Not reconnecting because WebSocket was manually disconnected', {
+        manualDisconnect: this.manualDisconnect
+      });
+      return;
+    }
+    
     this.log('info', 'Manual reconnect initiated', { timestamp: Date.now() });
     
     // Reset reconnect attempts
     this.reconnectAttempts = 0;
     
-    // Disconnect and connect again
-    this.disconnect();
+    // Disconnect without setting manualDisconnect flag and connect again
+    this._disconnect();
     this.connect();
   }
 

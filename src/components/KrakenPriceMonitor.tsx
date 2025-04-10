@@ -52,7 +52,12 @@ export default function KrakenPriceMonitor({
   
   // Process auto trades when prices update
   const processAutoTrades = useCallback(async (prices: KrakenPrice[]) => {
-    if (!user || !autoTradeEnabled || prices.length === 0) return;
+    if (!user || !autoTradeEnabled || prices.length === 0 || !enableKrakenWebSocket) {
+      if (!enableKrakenWebSocket && autoTradeEnabled) {
+        console.log('Skipping auto trades because Kraken WebSocket is disabled');
+      }
+      return;
+    }
     
     try {
       // Call the server-side API endpoint instead of using the client-side function
@@ -92,7 +97,7 @@ export default function KrakenPriceMonitor({
     } catch (error) {
       console.error('Error processing auto trades:', error);
     }
-  }, [user, autoTradeEnabled, toast]);
+  }, [user, autoTradeEnabled, toast, enableKrakenWebSocket]);
   
   const handlePriceUpdate = useCallback((newPrices: KrakenPrice[]) => {
     if (newPrices.length === 0) {
@@ -125,8 +130,8 @@ export default function KrakenPriceMonitor({
     
     setLastUpdated(new Date());
     
-    // Update lastPrice in the database for each crypto
-    if (user && newPrices.length > 0) {
+    // Update lastPrice in the database for each crypto only if WebSocket is enabled
+    if (user && newPrices.length > 0 && enableKrakenWebSocket) {
       // Create a function to update the lastPrice for each crypto
       const updateLastPrices = async () => {
         try {
@@ -151,6 +156,8 @@ export default function KrakenPriceMonitor({
       
       // Execute the update function
       updateLastPrices();
+    } else if (!enableKrakenWebSocket && newPrices.length > 0) {
+      console.log('Skipping price updates because Kraken WebSocket is disabled');
     }
     
     if (onPriceUpdate) {
@@ -158,9 +165,11 @@ export default function KrakenPriceMonitor({
       onPriceUpdate(newPrices);
     }
     
-    // Process auto trades with the new prices
-    processAutoTrades(newPrices);
-  }, [onPriceUpdate, processAutoTrades, user]);
+    // Process auto trades with the new prices only if WebSocket is enabled
+    if (enableKrakenWebSocket) {
+      processAutoTrades(newPrices);
+    }
+  }, [onPriceUpdate, processAutoTrades, user, enableKrakenWebSocket]);
   
   // Get settings for auto-connect
   const [autoConnect, setAutoConnect] = useState<boolean>(false);
@@ -200,11 +209,13 @@ export default function KrakenPriceMonitor({
   
   // Process price updates from the shared context
   useEffect(() => {
-    if (lastPrices.length > 0) {
+    if (lastPrices.length > 0 && enableKrakenWebSocket) {
       console.log('Processing price updates from shared context:', lastPrices);
       handlePriceUpdate(lastPrices);
+    } else if (lastPrices.length > 0 && !enableKrakenWebSocket) {
+      console.log('Ignoring price updates because Kraken WebSocket is disabled');
     }
-  }, [lastPrices, handlePriceUpdate]);
+  }, [lastPrices, handlePriceUpdate, enableKrakenWebSocket]);
   
   // Clear prices when symbols change
   useEffect(() => {

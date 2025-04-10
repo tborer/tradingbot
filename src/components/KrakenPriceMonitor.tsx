@@ -130,31 +130,39 @@ export default function KrakenPriceMonitor({
     
     setLastUpdated(new Date());
     
-    // Update lastPrice in the database for each crypto only if WebSocket is enabled
+    // Update lastPrice in the database for all cryptos in a single batch request if WebSocket is enabled
     if (user && newPrices.length > 0 && enableKrakenWebSocket) {
-      // Create a function to update the lastPrice for each crypto
+      // Create a function to batch update the lastPrice for all cryptos
       const updateLastPrices = async () => {
         try {
-          // For each price update, update the corresponding crypto's lastPrice
-          for (const priceUpdate of newPrices) {
-            await fetch('/api/cryptos/update-last-price', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                symbol: priceUpdate.symbol,
-                lastPrice: priceUpdate.price
-              }),
-            });
-            console.log(`Updated lastPrice for ${priceUpdate.symbol} to ${priceUpdate.price}`);
+          // Prepare the updates array for the batch update
+          const updates = newPrices.map(priceUpdate => ({
+            symbol: priceUpdate.symbol,
+            lastPrice: priceUpdate.price
+          }));
+          
+          // Send a single batch update request instead of multiple individual requests
+          const response = await fetch('/api/cryptos/batch-update-prices', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ updates }),
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`Failed to update prices: ${errorData.error || response.statusText}`);
           }
+          
+          const result = await response.json();
+          console.log(`Batch updated lastPrice for ${result.processedCount} cryptos`);
         } catch (error) {
-          console.error('Error updating lastPrice:', error);
+          console.error('Error batch updating lastPrices:', error);
         }
       };
       
-      // Execute the update function
+      // Execute the batch update function
       updateLastPrices();
     } else if (!enableKrakenWebSocket && newPrices.length > 0) {
       console.log('Skipping price updates because Kraken WebSocket is disabled');

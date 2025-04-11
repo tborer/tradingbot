@@ -50,12 +50,17 @@ export default function KrakenPriceMonitor({
         }
         
         // Make a lightweight request to check system status
+        // Use a dedicated status check endpoint or a minimal valid payload
+        // to avoid triggering validation errors
         const response = await fetch('/api/cryptos/batch-update-prices', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ updates: [] }), // Empty updates just to check status
+          body: JSON.stringify({ 
+            updates: [{ symbol: 'STATUS_CHECK', lastPrice: 1.0 }],
+            statusCheckOnly: true
+          }),
         });
         
         if (response.status === 503) {
@@ -235,10 +240,32 @@ export default function KrakenPriceMonitor({
         
         try {
           // Prepare the updates array for the batch update
-          const updates = newPrices.map(priceUpdate => ({
-            symbol: priceUpdate.symbol,
-            lastPrice: priceUpdate.price
-          }));
+          const updates = newPrices
+            .filter(priceUpdate => {
+              // Validate each price update before including it
+              if (!priceUpdate.symbol || typeof priceUpdate.symbol !== 'string' || priceUpdate.symbol.trim() === '') {
+                console.warn('Skipping price update with invalid symbol:', priceUpdate);
+                return false;
+              }
+              
+              if (priceUpdate.price === undefined || priceUpdate.price === null || 
+                  isNaN(Number(priceUpdate.price)) || Number(priceUpdate.price) <= 0) {
+                console.warn('Skipping price update with invalid price:', priceUpdate);
+                return false;
+              }
+              
+              return true;
+            })
+            .map(priceUpdate => ({
+              symbol: priceUpdate.symbol.trim(),
+              lastPrice: Number(priceUpdate.price)
+            }));
+          
+          // Don't make the API call if there are no valid updates
+          if (updates.length === 0) {
+            console.log('No valid price updates to send to the API');
+            return;
+          }
           
           // Send a single batch update request instead of multiple individual requests
           const response = await fetch('/api/cryptos/batch-update-prices', {

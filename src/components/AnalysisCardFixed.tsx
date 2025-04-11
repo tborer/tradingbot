@@ -163,25 +163,36 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
         if (extractedPrices.length === 0) {
           console.warn(`No prices extracted for ${symbol}, attempting to format data`);
           
-          // Try to format the data using CoinDesk formatter (works for both sources)
-          const { formatCoinDeskDataForAnalysis } = await import('@/lib/coinDesk');
-          const formattedData = formatCoinDeskDataForAnalysis(historicalData);
-          
-          if (formattedData) {
-            console.log(`Successfully formatted data for ${symbol}, extracting prices again`);
-            const newExtractedPrices = extractHistoricalPrices(formattedData);
+          try {
+            // Import the formatCoinDeskDataForAnalysis function
+            // Use dynamic import with error handling
+            const coinDeskModule = await import('@/lib/coinDesk');
             
-            if (newExtractedPrices.length > 0) {
-              console.log(`Extracted ${newExtractedPrices.length} prices after formatting`);
-              setPrices(newExtractedPrices);
+            // Check if the module and function exist
+            if (coinDeskModule && typeof coinDeskModule.formatCoinDeskDataForAnalysis === 'function') {
+              const formattedData = coinDeskModule.formatCoinDeskDataForAnalysis(historicalData);
               
-              // Calculate analysis metrics with the new prices
-              calculateAnalysisMetrics(newExtractedPrices);
+              if (formattedData) {
+                console.log(`Successfully formatted data for ${symbol}, extracting prices again`);
+                const newExtractedPrices = extractHistoricalPrices(formattedData);
+                
+                if (newExtractedPrices.length > 0) {
+                  console.log(`Extracted ${newExtractedPrices.length} prices after formatting`);
+                  setPrices(newExtractedPrices);
+                  
+                  // Calculate analysis metrics with the new prices
+                  calculateAnalysisMetrics(newExtractedPrices);
+                } else {
+                  console.error(`Still couldn't extract prices after formatting for ${symbol}`);
+                }
+              } else {
+                console.error(`Failed to format data for ${symbol}`);
+              }
             } else {
-              console.error(`Still couldn't extract prices after formatting for ${symbol}`);
+              console.error('formatCoinDeskDataForAnalysis function not found in the imported module');
             }
-          } else {
-            console.error(`Failed to format data for ${symbol}`);
+          } catch (importError) {
+            console.error(`Error importing coinDesk module:`, importError);
           }
         } else {
           console.log(`Extracted ${extractedPrices.length} prices for ${symbol}`);

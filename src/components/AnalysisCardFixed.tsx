@@ -17,6 +17,9 @@ import {
 } from '@/lib/analysisUtils';
 import { useAuth } from '@/contexts/AuthContext';
 
+// Define constants at the module level to avoid temporal dead zone issues
+const MAX_DATABASE_RETRIES = 3;
+
 interface AnalysisCardProps {
   symbol: string;
   currentPrice?: number;
@@ -58,64 +61,90 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
       if (!historicalData && type === 'crypto' && user) {
         setIsLoading(true);
         try {
-          const response = await fetch(`/api/cryptos/historical?symbol=${symbol}`);
-          if (response.ok) {
-            const data = await response.json();
-            if (data && data.data) {
-              // Determine the data source
-              let source = 'unknown';
-              if (data.source) {
-                source = data.source;
-              } else if (data.data.data && data.data.data.entries) {
-                source = 'coindesk';
-              } else if (data.data['Meta Data']) {
-                source = 'alphavantage';
+          // Use the constant MAX_DATABASE_RETRIES instead of contextMaxDatabaseRetries
+          let retries = 0;
+          let success = false;
+          
+          while (retries < MAX_DATABASE_RETRIES && !success) {
+            try {
+              const response = await fetch(`/api/cryptos/historical?symbol=${symbol}`);
+              if (response.ok) {
+                const data = await response.json();
+                if (data && data.data) {
+                  // Determine the data source
+                  let source = 'unknown';
+                  if (data.source) {
+                    source = data.source;
+                  } else if (data.data.data && data.data.data.entries) {
+                    source = 'coindesk';
+                  } else if (data.data['Meta Data']) {
+                    source = 'alphavantage';
+                  }
+                  setDataSource(source);
+                  
+                  // Process the historical data
+                  const extractedPrices = extractHistoricalPrices(data.data);
+                  setPrices(extractedPrices);
+                  
+                  // Calculate SMA values
+                  const sma20Value = calculateSMA(extractedPrices, 20);
+                  const sma50Value = calculateSMA(extractedPrices, 50);
+                  setSma20(sma20Value);
+                  setSma50(sma50Value);
+                  
+                  // Identify trend lines
+                  const trendLinesValues = identifyTrendLines(extractedPrices);
+                  setTrendLines(trendLinesValues);
+                  
+                  // Calculate Fibonacci retracement levels
+                  if (extractedPrices.length >= 2) {
+                    const sortedPrices = [...extractedPrices].sort((a, b) => a - b);
+                    const lowestPrice = sortedPrices[0];
+                    const highestPrice = sortedPrices[sortedPrices.length - 1];
+                    const fibLevels = calculateFibonacciRetracements(highestPrice, lowestPrice);
+                    setFibonacciLevels(fibLevels);
+                  }
+                  
+                  // Calculate Bollinger Bands
+                  const bands = calculateBollingerBands(extractedPrices, 20, 2);
+                  setBollingerBands(bands);
+                  
+                  // Generate recommendation
+                  const price = currentPrice || (extractedPrices.length > 0 ? extractedPrices[0] : purchasePrice);
+                  const recommendationText = generateRecommendation(
+                    price,
+                    sma20Value,
+                    trendLinesValues.support,
+                    trendLinesValues.resistance,
+                    bands
+                  );
+                  setRecommendation(recommendationText);
+                  
+                  success = true;
+                }
+              } else {
+                console.error('Failed to fetch historical data:', await response.text());
+                retries++;
+                if (retries < MAX_DATABASE_RETRIES) {
+                  // Wait before retrying
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                }
               }
-              setDataSource(source);
-              
-              // Process the historical data
-              const extractedPrices = extractHistoricalPrices(data.data);
-              setPrices(extractedPrices);
-              
-              // Calculate SMA values
-              const sma20Value = calculateSMA(extractedPrices, 20);
-              const sma50Value = calculateSMA(extractedPrices, 50);
-              setSma20(sma20Value);
-              setSma50(sma50Value);
-              
-              // Identify trend lines
-              const trendLinesValues = identifyTrendLines(extractedPrices);
-              setTrendLines(trendLinesValues);
-              
-              // Calculate Fibonacci retracement levels
-              if (extractedPrices.length >= 2) {
-                const sortedPrices = [...extractedPrices].sort((a, b) => a - b);
-                const lowestPrice = sortedPrices[0];
-                const highestPrice = sortedPrices[sortedPrices.length - 1];
-                const fibLevels = calculateFibonacciRetracements(highestPrice, lowestPrice);
-                setFibonacciLevels(fibLevels);
+            } catch (fetchError) {
+              console.error(`Fetch attempt ${retries + 1} failed:`, fetchError);
+              retries++;
+              if (retries < MAX_DATABASE_RETRIES) {
+                // Wait before retrying
+                await new Promise(resolve => setTimeout(resolve, 1000));
               }
-              
-              // Calculate Bollinger Bands
-              const bands = calculateBollingerBands(extractedPrices, 20, 2);
-              setBollingerBands(bands);
-              
-              // Generate recommendation
-              const price = currentPrice || (extractedPrices.length > 0 ? extractedPrices[0] : purchasePrice);
-              const recommendationText = generateRecommendation(
-                price,
-                sma20Value,
-                trendLinesValues.support,
-                trendLinesValues.resistance,
-                bands
-              );
-              setRecommendation(recommendationText);
             }
-          } else {
-            console.error('Failed to fetch historical data:', await response.text());
+          }
+          
+          if (!success) {
+            console.error(`Failed to fetch historical data after ${MAX_DATABASE_RETRIES} attempts`);
           }
         } catch (error) {
-          console.error('Error fetching historical data:', error);
+          console.error('Error in fetchHistoricalData:', error);
         } finally {
           setIsLoading(false);
         }
@@ -163,36 +192,61 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
         if (extractedPrices.length === 0) {
           console.warn(`No prices extracted for ${symbol}, attempting to format data`);
           
-          try {
-            // Import the formatCoinDeskDataForAnalysis function
-            // Use dynamic import with error handling
-            const coinDeskModule = await import('@/lib/coinDesk');
-            
-            // Check if the module and function exist
-            if (coinDeskModule && typeof coinDeskModule.formatCoinDeskDataForAnalysis === 'function') {
-              const formattedData = coinDeskModule.formatCoinDeskDataForAnalysis(historicalData);
+          // Use a retry mechanism with the constant MAX_DATABASE_RETRIES
+          let retries = 0;
+          let success = false;
+          
+          while (retries < MAX_DATABASE_RETRIES && !success) {
+            try {
+              // Import the formatCoinDeskDataForAnalysis function
+              // Use dynamic import with error handling
+              const coinDeskModule = await import('@/lib/coinDesk');
               
-              if (formattedData) {
-                console.log(`Successfully formatted data for ${symbol}, extracting prices again`);
-                const newExtractedPrices = extractHistoricalPrices(formattedData);
+              // Check if the module and function exist
+              if (coinDeskModule && typeof coinDeskModule.formatCoinDeskDataForAnalysis === 'function') {
+                const formattedData = coinDeskModule.formatCoinDeskDataForAnalysis(historicalData);
                 
-                if (newExtractedPrices.length > 0) {
-                  console.log(`Extracted ${newExtractedPrices.length} prices after formatting`);
-                  setPrices(newExtractedPrices);
+                if (formattedData) {
+                  console.log(`Successfully formatted data for ${symbol}, extracting prices again`);
+                  const newExtractedPrices = extractHistoricalPrices(formattedData);
                   
-                  // Calculate analysis metrics with the new prices
-                  calculateAnalysisMetrics(newExtractedPrices);
+                  if (newExtractedPrices.length > 0) {
+                    console.log(`Extracted ${newExtractedPrices.length} prices after formatting`);
+                    setPrices(newExtractedPrices);
+                    
+                    // Calculate analysis metrics with the new prices
+                    calculateAnalysisMetrics(newExtractedPrices);
+                    success = true;
+                  } else {
+                    console.error(`Still couldn't extract prices after formatting for ${symbol}`);
+                    retries++;
+                  }
                 } else {
-                  console.error(`Still couldn't extract prices after formatting for ${symbol}`);
+                  console.error(`Failed to format data for ${symbol}`);
+                  retries++;
                 }
               } else {
-                console.error(`Failed to format data for ${symbol}`);
+                console.error('formatCoinDeskDataForAnalysis function not found in the imported module');
+                retries++;
               }
-            } else {
-              console.error('formatCoinDeskDataForAnalysis function not found in the imported module');
+              
+              if (!success && retries < MAX_DATABASE_RETRIES) {
+                // Wait before retrying
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            } catch (importError) {
+              console.error(`Error importing coinDesk module (attempt ${retries + 1}):`, importError);
+              retries++;
+              
+              if (retries < MAX_DATABASE_RETRIES) {
+                // Wait before retrying
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
             }
-          } catch (importError) {
-            console.error(`Error importing coinDesk module:`, importError);
+          }
+          
+          if (!success) {
+            console.error(`Failed to format data after ${MAX_DATABASE_RETRIES} attempts`);
           }
         } else {
           console.log(`Extracted ${extractedPrices.length} prices for ${symbol}`);

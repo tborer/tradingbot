@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { KrakenPrice } from '@/lib/kraken';
 import { useWebSocketLogs } from '@/contexts/WebSocketLogContext';
 import { Button } from '@/components/ui/button';
@@ -13,12 +13,14 @@ interface KrakenPriceMonitorProps {
   symbols: string[];
   websocketUrl?: string;
   onPriceUpdate?: (prices: KrakenPrice[]) => void;
+  maxDatabaseRetries?: number;
 }
 
 export default function KrakenPriceMonitor({ 
   symbols, 
   websocketUrl = 'wss://ws.kraken.com/v2',
-  onPriceUpdate 
+  onPriceUpdate,
+  maxDatabaseRetries: propMaxDatabaseRetries
 }: KrakenPriceMonitorProps) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -30,8 +32,25 @@ export default function KrakenPriceMonitor({
   const [systemDegraded, setSystemDegraded] = useState<boolean>(false);
   const [degradedReason, setDegradedReason] = useState<string>('');
   
+  // Database connection retry state
+  const [dbConnectionAttempts, setDbConnectionAttempts] = useState<number>(0);
+  const [dbConnectionPaused, setDbConnectionPaused] = useState<boolean>(false);
+  const [dbConnectionLastError, setDbConnectionLastError] = useState<string>('');
+  const [dbConnectionRetryTime, setDbConnectionRetryTime] = useState<number | null>(null);
+  const dbRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   // Fetch settings to check if auto trading is enabled and WebSocket is enabled
   const [enableKrakenWebSocket, setEnableKrakenWebSocket] = useState<boolean>(true);
+  
+  // Use context maxDatabaseRetries if available, otherwise use prop or default
+  const effectiveMaxDatabaseRetries = contextMaxDatabaseRetries || propMaxDatabaseRetries || 5;
+  
+  // Update maxDatabaseRetries when context value changes
+  useEffect(() => {
+    if (contextMaxDatabaseRetries && contextMaxDatabaseRetries !== effectiveMaxDatabaseRetries) {
+      console.log(`Updating maxDatabaseRetries from context: ${contextMaxDatabaseRetries}`);
+    }
+  }, [contextMaxDatabaseRetries]);
   
   // Check for system degraded mode periodically
   useEffect(() => {
@@ -46,6 +65,12 @@ export default function KrakenPriceMonitor({
         if (now < circuitBreakerUntil) {
           setSystemDegraded(true);
           setDegradedReason('Client-side circuit breaker active due to repeated connection failures');
+          return;
+        }
+        
+        // If database connection is paused due to too many failures, don't check
+        if (dbConnectionPaused) {
+          console.log('Skipping system status check because database connection is paused');
           return;
         }
         
@@ -67,9 +92,57 @@ export default function KrakenPriceMonitor({
           const data = await response.json();
           setSystemDegraded(true);
           setDegradedReason(data.details || 'Database service unavailable');
+          
+          // Increment connection attempts
+          const newAttempts = dbConnectionAttempts + 1;
+          setDbConnectionAttempts(newAttempts);
+          setDbConnectionLastError(data.details || 'Database service unavailable');
+          
+          // If we've reached the maximum number of retries, pause connection attempts
+          if (newAttempts >= effectiveMaxDatabaseRetries) {
+            console.log(`Maximum database connection attempts (${effectiveMaxDatabaseRetries}) reached, pausing reconnection`);
+            setDbConnectionPaused(true);
+            
+            // Set a retry time in the future (30 minutes)
+            const retryTime = now + 30 * 60 * 1000;
+            setDbConnectionRetryTime(retryTime);
+            
+            // Show a toast notification
+            toast({
+              title: 'Database Connection Paused',
+              description: `Connection attempts paused after ${effectiveMaxDatabaseRetries} failures. You can manually reconnect when the database is available.`,
+              variant: 'destructive',
+            });
+          }
         } else {
+          // Reset connection attempts on success
+          if (dbConnectionAttempts > 0) {
+            setDbConnectionAttempts(0);
+          }
+          
+          // If we were in degraded mode, show a toast that we're back online
+          if (systemDegraded) {
+            toast({
+              title: 'Database Connection Restored',
+              description: 'The system is now operating normally.',
+              variant: 'default',
+            });
+          }
+          
           setSystemDegraded(false);
           setDegradedReason('');
+          
+          // If connection was paused, unpause it
+          if (dbConnectionPaused) {
+            setDbConnectionPaused(false);
+            setDbConnectionRetryTime(null);
+            
+            // Clear any scheduled retry
+            if (dbRetryTimeoutRef.current) {
+              clearTimeout(dbRetryTimeoutRef.current);
+              dbRetryTimeoutRef.current = null;
+            }
+          }
         }
       } catch (error) {
         console.error('Error checking system status:', error);
@@ -89,8 +162,105 @@ export default function KrakenPriceMonitor({
       }
     }, 60000); // Check every minute
     
-    return () => clearInterval(intervalId);
-  }, [user]);
+    // Set up automatic retry after the pause period
+    if (dbConnectionPaused && dbConnectionRetryTime) {
+      const now = Date.now();
+      const timeUntilRetry = dbConnectionRetryTime - now;
+      
+      if (timeUntilRetry > 0) {
+        console.log(`Scheduling automatic database reconnection attempt in ${Math.ceil(timeUntilRetry / 60000)} minutes`);
+        
+        // Clear any existing timeout
+        if (dbRetryTimeoutRef.current) {
+          clearTimeout(dbRetryTimeoutRef.current);
+        }
+        
+        // Set a new timeout
+        dbRetryTimeoutRef.current = setTimeout(() => {
+          console.log('Automatic database reconnection attempt triggered');
+          setDbConnectionPaused(false);
+          setDbConnectionAttempts(0);
+          setDbConnectionRetryTime(null);
+          checkSystemStatus();
+        }, timeUntilRetry);
+      }
+    }
+    
+    return () => {
+      clearInterval(intervalId);
+      if (dbRetryTimeoutRef.current) {
+        clearTimeout(dbRetryTimeoutRef.current);
+      }
+    };
+  }, [user, dbConnectionPaused, dbConnectionRetryTime, dbConnectionAttempts, effectiveMaxDatabaseRetries, systemDegraded, toast]);
+  
+  // Function to manually attempt reconnection
+  const handleManualReconnect = useCallback(() => {
+    console.log('Manual database reconnection attempt triggered');
+    setDbConnectionPaused(false);
+    setDbConnectionAttempts(0);
+    setDbConnectionRetryTime(null);
+    
+    // Clear any scheduled retry
+    if (dbRetryTimeoutRef.current) {
+      clearTimeout(dbRetryTimeoutRef.current);
+      dbRetryTimeoutRef.current = null;
+    }
+    
+    // Show toast
+    toast({
+      title: 'Reconnection Attempt',
+      description: 'Attempting to reconnect to the database...',
+      variant: 'default',
+    });
+    
+    // Check system status immediately
+    const checkSystemStatus = async () => {
+      try {
+        const response = await fetch('/api/cryptos/batch-update-prices', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            updates: [{ symbol: 'STATUS_CHECK', lastPrice: 1.0 }],
+            statusCheckOnly: true
+          }),
+        });
+        
+        if (response.status === 503) {
+          const data = await response.json();
+          setSystemDegraded(true);
+          setDegradedReason(data.details || 'Database service unavailable');
+          
+          toast({
+            title: 'Reconnection Failed',
+            description: data.details || 'Database service still unavailable. You can try again later.',
+            variant: 'destructive',
+          });
+        } else {
+          setSystemDegraded(false);
+          setDegradedReason('');
+          
+          toast({
+            title: 'Reconnection Successful',
+            description: 'Database connection restored. The system is now operating normally.',
+            variant: 'default',
+          });
+        }
+      } catch (error) {
+        console.error('Error checking system status during manual reconnect:', error);
+        
+        toast({
+          title: 'Reconnection Error',
+          description: 'An error occurred while trying to reconnect. Please try again.',
+          variant: 'destructive',
+        });
+      }
+    };
+    
+    checkSystemStatus();
+  }, [toast]);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -207,6 +377,12 @@ export default function KrakenPriceMonitor({
       
       // Create a function to batch update the lastPrice for all cryptos
       const updateLastPrices = async () => {
+        // If database connection is paused, skip this update
+        if (dbConnectionPaused) {
+          console.log('Skipping price update because database connection is paused');
+          return;
+        }
+        
         // Track if we're currently in a backoff period
         const backoffKey = 'price-update-backoff-until';
         const backoffUntil = parseInt(localStorage.getItem(backoffKey) || '0', 10);
@@ -420,7 +596,9 @@ export default function KrakenPriceMonitor({
     setAutoConnect: setContextAutoConnect,
     updateSymbols,
     enableKrakenWebSocket: contextEnableKrakenWebSocket,
-    setEnableKrakenWebSocket: setContextEnableKrakenWebSocket
+    setEnableKrakenWebSocket: setContextEnableKrakenWebSocket,
+    maxDatabaseRetries: contextMaxDatabaseRetries,
+    setMaxDatabaseRetries: setContextMaxDatabaseRetries
   } = useKrakenWebSocket();
   
   // Update symbols in the shared context when they change
@@ -500,6 +678,29 @@ export default function KrakenPriceMonitor({
                 <div className="text-xs mt-1">
                   Price updates will continue to be displayed but may not be saved to the database until service is restored.
                 </div>
+                {dbConnectionPaused && (
+                  <div className="mt-3">
+                    <div className="text-xs mb-2">
+                      Database connection attempts paused after {effectiveMaxDatabaseRetries} failures.
+                      {dbConnectionRetryTime && (
+                        <span> Automatic retry in {Math.ceil((dbConnectionRetryTime - Date.now()) / 60000)} minutes.</span>
+                      )}
+                    </div>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      onClick={handleManualReconnect}
+                      className="bg-red-950 hover:bg-red-900 border-red-800"
+                    >
+                      Attempt Manual Reconnection
+                    </Button>
+                  </div>
+                )}
+                {!dbConnectionPaused && dbConnectionAttempts > 0 && (
+                  <div className="text-xs mt-2">
+                    Connection attempt {dbConnectionAttempts} of {effectiveMaxDatabaseRetries}.
+                  </div>
+                )}
               </AlertDescription>
             </Alert>
           )}

@@ -13,10 +13,12 @@ interface KrakenWebSocketSettingsProps {
   autoConnectWebSocket: boolean;
   enableKrakenWebSocket?: boolean;
   reconnectDelay?: number;
+  maxDatabaseRetries?: number;
   onEnableManualCryptoTradingChange: (enabled: boolean) => void;
   onAutoConnectWebSocketChange: (enabled: boolean) => void;
   onEnableKrakenWebSocketChange?: (enabled: boolean) => void;
   onReconnectDelayChange?: (delay: number) => void;
+  onMaxDatabaseRetriesChange?: (retries: number) => void;
 }
 
 const KrakenWebSocketSettings: React.FC<KrakenWebSocketSettingsProps> = ({
@@ -25,10 +27,12 @@ const KrakenWebSocketSettings: React.FC<KrakenWebSocketSettingsProps> = ({
   autoConnectWebSocket,
   enableKrakenWebSocket = true,
   reconnectDelay = 1000,
+  maxDatabaseRetries = 5,
   onEnableManualCryptoTradingChange,
   onAutoConnectWebSocketChange,
   onEnableKrakenWebSocketChange,
-  onReconnectDelayChange
+  onReconnectDelayChange,
+  onMaxDatabaseRetriesChange
 }) => {
   return (
     <div className="border-t pt-4 mt-4">
@@ -113,12 +117,37 @@ const KrakenWebSocketSettings: React.FC<KrakenWebSocketSettingsProps> = ({
           </p>
         </div>
         
+        <Separator />
+        
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="maxDatabaseRetries">Max Database Connection Attempts</Label>
+            <span className="text-sm font-medium">{maxDatabaseRetries}</span>
+          </div>
+          <Slider
+            id="maxDatabaseRetries"
+            min={1}
+            max={10}
+            step={1}
+            value={[maxDatabaseRetries]}
+            onValueChange={(value) => onMaxDatabaseRetriesChange?.(value[0])}
+          />
+          <p className="text-xs text-muted-foreground">
+            Maximum number of database connection attempts before pausing automatic reconnection. 
+            Lower values will reduce error log volume when the database is unavailable.
+          </p>
+        </div>
+        
         <div className="bg-muted p-3 rounded-md flex items-start gap-2 text-sm">
           <InfoCircledIcon className="h-5 w-5 text-muted-foreground mt-0.5" />
           <div>
             <p className="text-muted-foreground">
               The Kraken WebSocket connection sends a ping every 30 seconds to keep the connection alive. 
               The connection will close after 1 minute of inactivity.
+            </p>
+            <p className="text-muted-foreground mt-2">
+              When database connection issues occur, the system will attempt to reconnect up to the maximum number of attempts.
+              After that, automatic reconnection will be paused to reduce error logs, but you can manually reconnect at any time.
             </p>
           </div>
         </div>

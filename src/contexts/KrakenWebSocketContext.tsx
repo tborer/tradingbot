@@ -21,6 +21,8 @@ interface KrakenWebSocketContextType {
   reconnectDelay: number;
   setReconnectDelay: (delay: number) => void;
   manuallyDisconnected: boolean;
+  maxDatabaseRetries: number;
+  setMaxDatabaseRetries: (retries: number) => void;
 }
 
 const KrakenWebSocketContext = createContext<KrakenWebSocketContextType | null>(null);
@@ -53,6 +55,8 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
   const [reconnectDelay, setReconnectDelay] = useState<number>(1000);
   // Flag to track if the user manually disconnected
   const [manuallyDisconnected, setManuallyDisconnected] = useState<boolean>(false);
+  // Maximum number of database connection attempts before pausing
+  const [maxDatabaseRetries, setMaxDatabaseRetries] = useState<number>(5);
 
   // Load auto-connect setting from localStorage
   useEffect(() => {
@@ -244,6 +248,12 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
     if (savedReconnectDelay !== null) {
       setReconnectDelay(parseInt(savedReconnectDelay, 10));
     }
+    
+    // Load maxDatabaseRetries from localStorage
+    const savedMaxDatabaseRetries = localStorage.getItem('kraken-max-database-retries');
+    if (savedMaxDatabaseRetries !== null) {
+      setMaxDatabaseRetries(parseInt(savedMaxDatabaseRetries, 10));
+    }
   }, []);
   
   // Auto-connect when autoConnect is true and WebSocket is enabled
@@ -288,6 +298,12 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
     setReconnectDelay(value);
     localStorage.setItem('kraken-websocket-reconnect-delay', value.toString());
   }, []);
+  
+  // Save maxDatabaseRetries setting to localStorage when it changes
+  const handleMaxDatabaseRetriesChange = useCallback((value: number) => {
+    setMaxDatabaseRetries(value);
+    localStorage.setItem('kraken-max-database-retries', value.toString());
+  }, []);
 
   const value = {
     isConnected: status.isConnected,
@@ -306,7 +322,9 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
     setEnableKrakenWebSocket: handleEnableKrakenWebSocketChange,
     reconnectDelay,
     setReconnectDelay: handleReconnectDelayChange,
-    manuallyDisconnected
+    manuallyDisconnected,
+    maxDatabaseRetries,
+    setMaxDatabaseRetries: handleMaxDatabaseRetriesChange
   };
 
   return (

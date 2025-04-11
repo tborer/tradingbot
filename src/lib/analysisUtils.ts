@@ -276,9 +276,9 @@ export function extractHistoricalPrices(data: any): number[] {
     return prices;
   }
   
-  // Check if this is formatted CoinDesk data (converted to AlphaVantage-like format)
-  if (data['Time Series (Digital Currency Daily)']) {
-    console.log('Detected formatted data with Time Series, extracting prices...');
+  // Check if this is AlphaVantage data format
+  if (data['Meta Data'] && data['Time Series (Digital Currency Daily)']) {
+    console.log('Detected AlphaVantage data format with Meta Data and Time Series, extracting prices...');
     const timeSeries = data['Time Series (Digital Currency Daily)'];
     const prices: number[] = [];
     
@@ -293,12 +293,95 @@ export function extractHistoricalPrices(data: any): number[] {
       }
     });
     
-    console.log(`Extracted ${prices.length} prices from Time Series format`);
+    console.log(`Extracted ${prices.length} prices from AlphaVantage Time Series format`);
     return prices;
   }
   
+  // Check if this is formatted CoinDesk data (converted to AlphaVantage-like format)
+  if (data['Time Series (Digital Currency Daily)'] && !data['Meta Data']) {
+    console.log('Detected formatted CoinDesk data with Time Series but no Meta Data, extracting prices...');
+    const timeSeries = data['Time Series (Digital Currency Daily)'];
+    const prices: number[] = [];
+    
+    // Sort dates in descending order (newest first)
+    const sortedDates = Object.keys(timeSeries).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+    
+    // Extract closing prices
+    sortedDates.forEach(date => {
+      const closePrice = parseFloat(timeSeries[date]['4. close']);
+      if (!isNaN(closePrice)) {
+        prices.push(closePrice);
+      }
+    });
+    
+    console.log(`Extracted ${prices.length} prices from formatted CoinDesk Time Series format`);
+    return prices;
+  }
+  
+  // Check if this is a direct array of price objects (sometimes returned by internal APIs)
+  if (Array.isArray(data)) {
+    console.log('Detected direct array of price objects, extracting prices...');
+    const prices: number[] = [];
+    
+    // Try to extract prices from array elements
+    data.forEach(item => {
+      if (item.close && !isNaN(item.close)) {
+        prices.push(item.close);
+      } else if (item.CLOSE && !isNaN(item.CLOSE)) {
+        prices.push(item.CLOSE);
+      } else if (item.value && !isNaN(item.value)) {
+        prices.push(item.value);
+      } else if (item.price && !isNaN(item.price)) {
+        prices.push(item.price);
+      }
+    });
+    
+    if (prices.length > 0) {
+      console.log(`Extracted ${prices.length} prices from direct array format`);
+      return prices;
+    }
+  }
+  
   // If we reach here, we couldn't identify the data format
-  console.warn('Unknown data format in extractHistoricalPrices:', data);
+  // As a last resort, try to find any numeric properties that might contain price data
+  console.warn('Unknown data format in extractHistoricalPrices, attempting to extract any numeric values');
+  
+  const prices: number[] = [];
+  
+  // Function to recursively search for numeric values in the object
+  const findNumericValues = (obj: any, path: string = '') => {
+    if (!obj || typeof obj !== 'object') return;
+    
+    Object.entries(obj).forEach(([key, value]) => {
+      const currentPath = path ? `${path}.${key}` : key;
+      
+      // If the key suggests it might be a price (close, price, value)
+      const isPriceKey = /close|price|value/i.test(key);
+      
+      if (typeof value === 'number' && isPriceKey) {
+        console.log(`Found potential price value at ${currentPath}: ${value}`);
+        prices.push(value);
+      } else if (typeof value === 'string' && isPriceKey) {
+        const numValue = parseFloat(value);
+        if (!isNaN(numValue)) {
+          console.log(`Found potential price string at ${currentPath}: ${numValue}`);
+          prices.push(numValue);
+        }
+      } else if (typeof value === 'object' && value !== null) {
+        // Recursively search nested objects
+        findNumericValues(value, currentPath);
+      }
+    });
+  };
+  
+  findNumericValues(data);
+  
+  if (prices.length > 0) {
+    console.log(`Extracted ${prices.length} potential price values from unknown format`);
+    return prices;
+  }
+  
+  console.error('Failed to extract any prices from the data');
   return [];
 }
 

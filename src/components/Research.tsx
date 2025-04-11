@@ -83,7 +83,7 @@ const Research: React.FC = () => {
   }, [user, addLog]);
 
   // Function to process and add data to the analysis dashboard
-  const processAndAddToAnalysis = (data: any, source: string, symbolName: string) => {
+  const processAndAddToAnalysis = async (data: any, source: string, symbolName: string) => {
     console.log(`Processing ${source} data for analysis:`, { 
       dataType: typeof data,
       hasData: !!data,
@@ -100,6 +100,7 @@ const Research: React.FC = () => {
     let isCrypto = true; // Default to crypto for CoinDesk data
     let processedData = data; // Default to using the original data
     
+    // Extract current price based on the data format
     if (source === 'alphavantage' && data['Meta Data']) {
       symbolCode = data['Meta Data']['2. Digital Currency Code'] || symbol;
       symbolName = data['Meta Data']['3. Digital Currency Name'] || symbolName;
@@ -159,19 +160,42 @@ const Research: React.FC = () => {
       }
       
       // Format CoinDesk data to be compatible with analysis functions
-      processedData = formatCoinDeskDataForAnalysis(data);
-      
-      // Log the formatted data for debugging
-      console.log('Formatted CoinDesk data for analysis:', {
-        hasFormattedData: !!processedData,
-        hasMetaData: processedData && !!processedData['Meta Data'],
-        hasTimeSeries: processedData && !!processedData['Time Series (Digital Currency Daily)']
-      });
-      
-      // If formatting failed, use the original data
-      if (!processedData) {
-        processedData = data;
-        console.warn('Failed to format CoinDesk data, using original format');
+      try {
+        processedData = formatCoinDeskDataForAnalysis(data);
+        
+        // Log the formatted data for debugging
+        console.log('Formatted CoinDesk data for analysis:', {
+          hasFormattedData: !!processedData,
+          hasMetaData: processedData && !!processedData['Meta Data'],
+          hasTimeSeries: processedData && !!processedData['Time Series (Digital Currency Daily)']
+        });
+        
+        // If formatting failed, use the original data
+        if (!processedData) {
+          processedData = data;
+          console.warn('Failed to format CoinDesk data, using original format');
+        }
+      } catch (error) {
+        console.error('Error formatting CoinDesk data:', error);
+        processedData = data; // Use original data if formatting fails
+      }
+    }
+    
+    // If we still don't have a current price, try to extract it from the processed data
+    if (!currentPrice && processedData) {
+      try {
+        // Import the extractHistoricalPrices function
+        const { extractHistoricalPrices } = await import('@/lib/analysisUtils');
+        
+        // Extract prices from the processed data
+        const prices = extractHistoricalPrices(processedData);
+        
+        if (prices.length > 0) {
+          currentPrice = prices[0]; // Use the first (most recent) price
+          console.log(`Extracted current price from processed data: ${currentPrice}`);
+        }
+      } catch (error) {
+        console.error('Error extracting current price from processed data:', error);
       }
     }
     

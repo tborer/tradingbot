@@ -149,13 +149,54 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
       } else if (historicalData['Time Series (Digital Currency Daily)'] && !historicalData['Meta Data']) {
         setDataSource('coindesk');
       }
-      
-      // Extract prices from the historical data
-      const extractedPrices = extractHistoricalPrices(historicalData);
-      setPrices(extractedPrices);
-      
-      console.log(`Extracted ${extractedPrices.length} prices from ${dataSource} data`);
-
+    }
+    
+    // Process the historical data
+    const processData = async () => {
+      try {
+        console.log(`Processing historical data for ${symbol}...`);
+        
+        // Extract prices from the historical data
+        const extractedPrices = extractHistoricalPrices(historicalData);
+        
+        // Check if we have enough data
+        if (extractedPrices.length === 0) {
+          console.warn(`No prices extracted for ${symbol}, attempting to format data`);
+          
+          // Try to format the data using CoinDesk formatter (works for both sources)
+          const { formatCoinDeskDataForAnalysis } = await import('@/lib/coinDesk');
+          const formattedData = formatCoinDeskDataForAnalysis(historicalData);
+          
+          if (formattedData) {
+            console.log(`Successfully formatted data for ${symbol}, extracting prices again`);
+            const newExtractedPrices = extractHistoricalPrices(formattedData);
+            
+            if (newExtractedPrices.length > 0) {
+              console.log(`Extracted ${newExtractedPrices.length} prices after formatting`);
+              setPrices(newExtractedPrices);
+              
+              // Calculate analysis metrics with the new prices
+              calculateAnalysisMetrics(newExtractedPrices);
+            } else {
+              console.error(`Still couldn't extract prices after formatting for ${symbol}`);
+            }
+          } else {
+            console.error(`Failed to format data for ${symbol}`);
+          }
+        } else {
+          console.log(`Extracted ${extractedPrices.length} prices for ${symbol}`);
+          setPrices(extractedPrices);
+          
+          // Calculate analysis metrics with the extracted prices
+          calculateAnalysisMetrics(extractedPrices);
+        }
+      } catch (error) {
+        console.error(`Error processing data for ${symbol}:`, error);
+      }
+    };
+    
+    // Helper function to calculate all analysis metrics
+    const calculateAnalysisMetrics = (extractedPrices: number[]) => {
       // Calculate SMA values
       const sma20Value = calculateSMA(extractedPrices, 20);
       const sma50Value = calculateSMA(extractedPrices, 50);
@@ -192,8 +233,12 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
         bands
       );
       setRecommendation(recommendationText);
+    };
+    
+    if (historicalData) {
+      processData();
     }
-  }, [historicalData, currentPrice, purchasePrice, propDataSource]);
+  }, [historicalData, currentPrice, purchasePrice, propDataSource, symbol]);
 
   const price = currentPrice || (prices.length > 0 ? prices[0] : purchasePrice);
   const percentChange = purchasePrice > 0 

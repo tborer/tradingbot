@@ -19,6 +19,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 // Define constants at the module level to avoid temporal dead zone issues
 const MAX_DATABASE_RETRIES = 3;
+// Ensure no references to contextMaxDatabaseRetries which causes temporal dead zone issues
 
 interface AnalysisCardProps {
   symbol: string;

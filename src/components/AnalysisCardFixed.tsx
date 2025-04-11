@@ -61,7 +61,7 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
       if (!historicalData && type === 'crypto' && user) {
         setIsLoading(true);
         try {
-          // Use the constant MAX_DATABASE_RETRIES instead of contextMaxDatabaseRetries
+          // Use the constant MAX_DATABASE_RETRIES
           let retries = 0;
           let success = false;
           
@@ -192,7 +192,7 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
         if (extractedPrices.length === 0) {
           console.warn(`No prices extracted for ${symbol}, attempting to format data`);
           
-          // Use a retry mechanism with the constant MAX_DATABASE_RETRIES
+          // Use a retry mechanism with the MAX_DATABASE_RETRIES constant
           let retries = 0;
           let success = false;
           

@@ -193,7 +193,7 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
         if (extractedPrices.length === 0) {
           console.warn(`No prices extracted for ${symbol}, attempting to format data`);
           
-          // Use a retry mechanism with the MAX_DATABASE_RETRIES constant
+          // Use the module-level MAX_DATABASE_RETRIES constant for retries
           let retries = 0;
           let success = false;
           

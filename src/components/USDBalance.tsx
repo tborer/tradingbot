@@ -96,11 +96,14 @@ export default function USDBalance({ className }: USDBalanceProps) {
     }
   };
 
+  // Initial fetch only when component mounts and user is available
+  // We no longer automatically fetch the balance periodically
   useEffect(() => {
     if (user) {
+      // Only fetch balance once when the component mounts
       fetchBalance();
     }
-  }, [user]);
+  }, []);
 
   return (
     <Card className={className}>

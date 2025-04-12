@@ -84,6 +84,7 @@ export function recordRequest(): void {
  */
 export function recordError(errorDetails?: { message: string; code?: string }): boolean {
   const now = Date.now();
+  const previousConsecutiveErrors = consecutiveErrors;
   
   // If this is the first error or it's been a while since the last error
   if (!lastDbErrorTime || now - lastDbErrorTime > ERROR_WINDOW_MS) {
@@ -94,17 +95,34 @@ export function recordError(errorDetails?: { message: string; code?: string }): 
   
   lastDbErrorTime = now;
   
-  // Log the error with details
+  // Enhanced error logging with more context
+  const errorSeverity = 
+    consecutiveErrors >= 5 ? ErrorSeverity.CRITICAL :
+    consecutiveErrors >= 3 ? ErrorSeverity.ERROR : 
+    ErrorSeverity.WARNING;
+  
+  // Get current connection status for logging
+  const connectionStatus = getConnectionStatus();
+  
   createAndLogError(
     ErrorCategory.DATABASE,
-    consecutiveErrors >= 3 ? ErrorSeverity.ERROR : ErrorSeverity.WARNING,
+    errorSeverity,
     3010,
     `Database error occurred (${consecutiveErrors} consecutive errors)`,
     { 
       timestamp: now, 
+      previousConsecutiveErrors,
       consecutiveErrors,
       errorMessage: errorDetails?.message,
-      errorCode: errorDetails?.code
+      errorCode: errorDetails?.code,
+      errorWindowMs: ERROR_WINDOW_MS,
+      timeSinceLastError: lastDbErrorTime ? now - lastDbErrorTime : null,
+      circuitBreakerStatus: connectionStatus.circuitBreakerOpen ? 'OPEN' : 'CLOSED',
+      partialDegradationMode: connectionStatus.partialDegradationMode,
+      circuitBreakerRemainingMs: connectionStatus.circuitBreakerRemainingMs,
+      partialDegradationRemainingMs: connectionStatus.partialDegradationRemainingMs,
+      cacheSize: connectionStatus.cacheSize,
+      maxConsecutiveErrors: MAX_CONSECUTIVE_ERRORS
     }
   );
   
@@ -117,7 +135,25 @@ export function recordError(errorDetails?: { message: string; code?: string }): 
   if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
     circuitBreakerOpen = true;
     circuitBreakerOpenedAt = now;
-    console.error(`Circuit breaker opened after ${consecutiveErrors} consecutive errors`);
+    
+    // Log circuit breaker opening with detailed context
+    createAndLogError(
+      ErrorCategory.DATABASE,
+      ErrorSeverity.CRITICAL,
+      3011,
+      `Circuit breaker opened after ${consecutiveErrors} consecutive errors`,
+      { 
+        timestamp: now, 
+        consecutiveErrors,
+        maxConsecutiveErrors: MAX_CONSECUTIVE_ERRORS,
+        circuitBreakerTimeoutMs: CIRCUIT_BREAKER_TIMEOUT_MS,
+        lastErrorMessage: errorDetails?.message,
+        lastErrorCode: errorDetails?.code,
+        circuitBreakerOpenedAt,
+        connectionStatus: getConnectionStatus()
+      }
+    );
+    
     return true;
   }
   
@@ -196,15 +232,46 @@ export function enterPartialDegradationMode(): void {
   partialDegradationMode = true;
   partialDegradationActivatedAt = now;
   
+  // Get current connection status for logging
+  const connectionStatus = getConnectionStatus();
+  
   createAndLogError(
     ErrorCategory.DATABASE,
     ErrorSeverity.WARNING,
     3005,
     'Entering partial degradation mode due to database connectivity issues',
-    { timestamp: now, consecutiveErrors }
+    { 
+      timestamp: now, 
+      consecutiveErrors,
+      partialDegradationTimeoutMs: PARTIAL_DEGRADATION_TIMEOUT_MS,
+      partialDegradationActivatedAt,
+      lastDbErrorTime,
+      errorWindowMs: ERROR_WINDOW_MS,
+      circuitBreakerStatus: connectionStatus.circuitBreakerOpen ? 'OPEN' : 'CLOSED',
+      requestsInWindow: connectionStatus.requestsInWindow,
+      cacheSize: connectionStatus.cacheSize,
+      maxConsecutiveErrors: MAX_CONSECUTIVE_ERRORS
+    }
   );
   
   console.warn(`Entering partial degradation mode at ${new Date(now).toISOString()}`);
+  
+  // Log cache status
+  if (responseCache.size > 0) {
+    const cacheKeys = Array.from(responseCache.keys());
+    createAndLogError(
+      ErrorCategory.DATABASE,
+      ErrorSeverity.INFO,
+      3006,
+      'Cache status when entering partial degradation mode',
+      { 
+        timestamp: now,
+        cacheSize: responseCache.size,
+        cacheKeys,
+        cacheTtlMs: CACHE_TTL_MS
+      }
+    );
+  }
 }
 
 /**

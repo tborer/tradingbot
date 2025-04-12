@@ -720,10 +720,27 @@ export class KrakenWebSocket {
   }
 
   private log(level: 'info' | 'warning' | 'error' | 'success', message: string, details?: Record<string, any>, errorCode?: string): void {
+    // Enhanced logging with more context
+    const timestamp = new Date().toISOString();
+    const connectionState = this.socket ? 
+      ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][this.socket.readyState] : 
+      'NOT_INITIALIZED';
+    
+    // Add connection state and timestamp to all logs
+    const enhancedDetails = {
+      ...(details || {}),
+      connectionState,
+      timestamp,
+      reconnectAttempts: this.reconnectAttempts,
+      isConnecting: this.isConnecting,
+      manualDisconnect: this.manualDisconnect,
+      symbols: this.symbols
+    };
+    
     // Log to console only for errors or warnings to reduce console noise
     if (level === 'error' || level === 'warning') {
       const consoleMethod = level === 'error' ? console.error : console.warn;
-      consoleMethod(`[Kraken WebSocket] ${message}`, details || '');
+      consoleMethod(`[Kraken WebSocket] ${message} [${connectionState}]`, enhancedDetails);
     }
     
     // Call addLog callback if provided
@@ -739,7 +756,7 @@ export class KrakenWebSocket {
         return;
       }
       
-      this.options.addLog(level, message, details, errorCode);
+      this.options.addLog(level, message, enhancedDetails, errorCode);
     }
   }
 }

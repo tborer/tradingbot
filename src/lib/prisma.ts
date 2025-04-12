@@ -47,14 +47,46 @@ export const checkPrismaConnection = async (): Promise<boolean> => {
     lastSuccessfulConnectionTime = Date.now();
     connectionManager.recordSuccess();
     
+    // Log successful connection check
+    createAndLogError(
+      ErrorCategory.DATABASE,
+      ErrorSeverity.INFO,
+      3050,
+      'Database connection check successful',
+      { 
+        timestamp: Date.now(),
+        lastSuccessfulConnectionTime,
+        connectionStatus: connectionManager.getConnectionStatus()
+      }
+    );
+    
     return true
   } catch (error) {
-    console.error('Prisma connection check failed:', error)
+    // Enhanced error logging with more context
+    const errorMessage = error instanceof Error ? error.message : 'Unknown database error';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    const errorCode = error instanceof Error && 'code' in error ? (error as any).code : 'UNKNOWN';
+    
+    createAndLogError(
+      ErrorCategory.DATABASE,
+      ErrorSeverity.ERROR,
+      3051,
+      `Prisma connection check failed: ${errorMessage}`,
+      { 
+        timestamp: Date.now(),
+        errorCode,
+        lastSuccessfulConnectionTime,
+        connectionStatus: connectionManager.getConnectionStatus(),
+        databaseUrl: process.env.DATABASE_URL ? '(set)' : '(not set)',
+        directUrl: process.env.DIRECT_URL ? '(set)' : '(not set)'
+      },
+      error instanceof Error ? error : new Error(errorMessage)
+    );
     
     // Record the error for circuit breaker
     connectionManager.recordError({
-      message: error instanceof Error ? error.message : 'Unknown database error',
-      code: 'CONNECTION_CHECK_FAILED'
+      message: errorMessage,
+      code: `CONNECTION_CHECK_FAILED_${errorCode}`
     });
     
     return false
@@ -121,20 +153,73 @@ export const executeWithFallback = async <T>(
         connectionManager.cacheResponse(cacheKey, result);
       }
       
+      // Log successful operation after retries if it wasn't the first attempt
+      if (attempt > 1) {
+        createAndLogError(
+          ErrorCategory.DATABASE,
+          ErrorSeverity.INFO,
+          3060,
+          `Database operation succeeded after ${attempt} attempts`,
+          { 
+            timestamp: Date.now(),
+            attempt,
+            maxRetries,
+            cacheKey,
+            connectionStatus: connectionManager.getConnectionStatus()
+          }
+        );
+      }
+      
       return result;
     } catch (error) {
       lastError = error;
-      console.error(`Database operation failed (attempt ${attempt}/${maxRetries}):`, error);
+      
+      // Enhanced error logging with more context
+      const errorMessage = error instanceof Error ? error.message : 'Unknown database error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      const errorCode = error instanceof Error && 'code' in error ? (error as any).code : 'UNKNOWN';
+      
+      createAndLogError(
+        ErrorCategory.DATABASE,
+        ErrorSeverity.ERROR,
+        3061,
+        `Database operation failed (attempt ${attempt}/${maxRetries}): ${errorMessage}`,
+        { 
+          timestamp: Date.now(),
+          attempt,
+          maxRetries,
+          errorCode,
+          cacheKey,
+          connectionStatus: connectionManager.getConnectionStatus(),
+          hasCircuitBreakerOpened: connectionManager.isCircuitBreakerOpen(),
+          hasPartialDegradation: connectionManager.isInPartialDegradationMode(),
+          stack: errorStack
+        },
+        error instanceof Error ? error : new Error(errorMessage)
+      );
       
       // Record the error
       connectionManager.recordError({
-        message: error instanceof Error ? error.message : 'Unknown database error',
-        code: 'QUERY_EXECUTION_FAILED'
+        message: errorMessage,
+        code: `QUERY_EXECUTION_FAILED_${errorCode}`
       });
       
       // If this is not the last attempt, wait before retrying
       if (attempt < maxRetries) {
         const backoffDelay = connectionManager.getBackoffDelay();
+        createAndLogError(
+          ErrorCategory.DATABASE,
+          ErrorSeverity.INFO,
+          3062,
+          `Retrying database operation after backoff delay`,
+          { 
+            timestamp: Date.now(),
+            attempt,
+            maxRetries,
+            backoffDelay,
+            cacheKey
+          }
+        );
         await new Promise(resolve => setTimeout(resolve, backoffDelay));
       }
     }

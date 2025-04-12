@@ -42,6 +42,25 @@ export default function KrakenPriceMonitor({
   // Fetch settings to check if auto trading is enabled and WebSocket is enabled
   const [enableKrakenWebSocket, setEnableKrakenWebSocket] = useState<boolean>(true);
   
+  // Get maxDatabaseRetries from context
+  const { 
+    isConnected, 
+    error, 
+    connect, 
+    disconnect,
+    lastPingTime,
+    lastPongTime,
+    lastPrices,
+    lastUpdated: contextLastUpdated,
+    autoConnect: contextAutoConnect,
+    setAutoConnect: setContextAutoConnect,
+    updateSymbols,
+    enableKrakenWebSocket: contextEnableKrakenWebSocket,
+    setEnableKrakenWebSocket: setContextEnableKrakenWebSocket,
+    maxDatabaseRetries: contextMaxDatabaseRetries,
+    setMaxDatabaseRetries: setContextMaxDatabaseRetries
+  } = useKrakenWebSocket();
+  
   // Use context maxDatabaseRetries if available, otherwise use prop or default
   const effectiveMaxDatabaseRetries = contextMaxDatabaseRetries || propMaxDatabaseRetries || 5;
   
@@ -582,24 +601,7 @@ export default function KrakenPriceMonitor({
     }
   }, []);
   
-  // Use the shared WebSocket context
-  const { 
-    isConnected, 
-    error, 
-    connect, 
-    disconnect,
-    lastPingTime,
-    lastPongTime,
-    lastPrices,
-    lastUpdated: contextLastUpdated,
-    autoConnect: contextAutoConnect,
-    setAutoConnect: setContextAutoConnect,
-    updateSymbols,
-    enableKrakenWebSocket: contextEnableKrakenWebSocket,
-    setEnableKrakenWebSocket: setContextEnableKrakenWebSocket,
-    maxDatabaseRetries: contextMaxDatabaseRetries,
-    setMaxDatabaseRetries: setContextMaxDatabaseRetries
-  } = useKrakenWebSocket();
+  // The shared WebSocket context is already initialized above
   
   // Update symbols in the shared context when they change
   useEffect(() => {

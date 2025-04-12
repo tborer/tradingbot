@@ -5,9 +5,11 @@ import { KrakenWebSocketProvider } from '@/contexts/KrakenWebSocketContext'
 import { ResearchApiLogProvider } from '@/contexts/ResearchApiLogContext'
 import { BalanceApiLogProvider } from '@/contexts/BalanceApiLogContext'
 import { AnalysisProvider } from '@/contexts/AnalysisContext'
+import { ErrorLogProvider } from '@/contexts/ErrorLogContext'
 import '../styles/globals.css';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { Toaster } from "@/components/ui/toaster"
+import GlobalErrorBoundary from '@/components/GlobalErrorBoundary';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 
@@ -33,22 +35,26 @@ export default function App({ Component, pageProps }: AppProps) {
 
   return (
     <div className="min-h-screen">
-      <AuthProvider>
-        <WebSocketLogProvider>
-          <ResearchApiLogProvider>
-            <BalanceApiLogProvider>
-              <KrakenWebSocketProvider>
-                <AnalysisProvider>
-                  <ProtectedRoute>
-                    <Component {...pageProps} />
-                  </ProtectedRoute>
-                  <Toaster />
-                </AnalysisProvider>
-              </KrakenWebSocketProvider>
-            </BalanceApiLogProvider>
-          </ResearchApiLogProvider>
-        </WebSocketLogProvider>
-      </AuthProvider>
+      <ErrorLogProvider>
+        <GlobalErrorBoundary>
+          <AuthProvider>
+            <WebSocketLogProvider>
+              <ResearchApiLogProvider>
+                <BalanceApiLogProvider>
+                  <KrakenWebSocketProvider>
+                    <AnalysisProvider>
+                      <ProtectedRoute>
+                        <Component {...pageProps} />
+                      </ProtectedRoute>
+                      <Toaster />
+                    </AnalysisProvider>
+                  </KrakenWebSocketProvider>
+                </BalanceApiLogProvider>
+              </ResearchApiLogProvider>
+            </WebSocketLogProvider>
+          </AuthProvider>
+        </GlobalErrorBoundary>
+      </ErrorLogProvider>
     </div>
   )
 }

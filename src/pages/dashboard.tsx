@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
+import ErrorLogger from "@/components/ErrorLogger";
 import { useToast } from "@/components/ui/use-toast";
 import { parseFinnhubMessage, shouldSellStock, shouldBuyStock, StockPrice } from "@/lib/finnhub";
 import { parseKrakenMessage, createKrakenSubscription, shouldSellCrypto, shouldBuyCrypto, KrakenPrice } from "@/lib/kraken";
@@ -1230,6 +1231,7 @@ export default function Dashboard() {
             <TabsTrigger value="reporting">Reporting</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
             <TabsTrigger value="websocket-logs">API Logs</TabsTrigger>
+            <TabsTrigger value="error-logs">Error Logs</TabsTrigger>
             <TabsTrigger value="research">Research</TabsTrigger>
             <TabsTrigger value="user-management">User Management</TabsTrigger>
           </TabsList>
@@ -1444,6 +1446,10 @@ export default function Dashboard() {
           
           <TabsContent value="websocket-logs">
             <WebSocketLogger />
+          </TabsContent>
+          
+          <TabsContent value="error-logs">
+            <ErrorLogger />
           </TabsContent>
           
           <TabsContent value="research">

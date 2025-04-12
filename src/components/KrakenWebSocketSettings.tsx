@@ -7,6 +7,9 @@ import { Separator } from "@/components/ui/separator";
 import { InfoCircledIcon } from "@radix-ui/react-icons";
 import { Slider } from "@/components/ui/slider";
 
+// Define a constant for max database retries to avoid temporal dead zone issues
+const MAX_DATABASE_RETRIES = 5;
+
 interface KrakenWebSocketSettingsProps {
   websocketUrl?: string;
   enableManualCryptoTrading: boolean;
@@ -27,7 +30,7 @@ const KrakenWebSocketSettings: React.FC<KrakenWebSocketSettingsProps> = ({
   autoConnectWebSocket,
   enableKrakenWebSocket = true,
   reconnectDelay = 1000,
-  maxDatabaseRetries = 5,
+  maxDatabaseRetries = MAX_DATABASE_RETRIES,
   onEnableManualCryptoTradingChange,
   onAutoConnectWebSocketChange,
   onEnableKrakenWebSocketChange,

@@ -1642,6 +1642,7 @@ export default function Dashboard() {
                         autoConnectWebSocket={true}
                         enableKrakenWebSocket={settings.enableKrakenWebSocket !== false}
                         reconnectDelay={reconnectDelay}
+                        maxDatabaseRetries={settings.maxDatabaseRetries || 5}
                         onEnableManualCryptoTradingChange={(enabled) => {
                           console.log("Setting enableManualCryptoTrading to:", enabled);
                           setSettings({ ...settings, enableManualCryptoTrading: enabled });
@@ -1654,6 +1655,10 @@ export default function Dashboard() {
                         onReconnectDelayChange={(delay) => {
                           console.log("Setting reconnectDelay to:", delay);
                           setReconnectDelay(delay);
+                        }}
+                        onMaxDatabaseRetriesChange={(retries) => {
+                          console.log("Setting maxDatabaseRetries to:", retries);
+                          setSettings({ ...settings, maxDatabaseRetries: retries });
                         }}
                       />
                       

@@ -22,7 +22,22 @@ export function useKrakenWebSocket({
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
+  const previousSymbolsRef = useRef<string[]>([]);
   const maxReconnectAttempts = 5;
+
+  // Helper function to calculate symbol differences
+  const calculateSymbolDifferences = (prevSymbols: string[], currentSymbols: string[]) => {
+    const prevSet = new Set(prevSymbols.map(formatToKrakenSymbol));
+    const currentSet = new Set(currentSymbols.map(formatToKrakenSymbol));
+    
+    // Symbols to unsubscribe (in previous but not in current)
+    const symbolsToUnsubscribe = Array.from(prevSet).filter(symbol => !currentSet.has(symbol));
+    
+    // Symbols to subscribe (in current but not in previous)
+    const symbolsToSubscribe = Array.from(currentSet).filter(symbol => !prevSet.has(symbol));
+    
+    return { symbolsToUnsubscribe, symbolsToSubscribe };
+  };
 
   // Extracted shared connection logic
   const establishKrakenConnection = (connectionUrl: string, connectionSymbols: string[]) => {
@@ -236,6 +251,9 @@ export function useKrakenWebSocket({
 
     // Use the shared connection function
     const socket = establishKrakenConnection(url, symbols);
+    
+    // Store the initial symbols for future diffing
+    previousSymbolsRef.current = [...symbols];
 
     // Cleanup function
     return () => {
@@ -268,35 +286,53 @@ export function useKrakenWebSocket({
     };
   }, [url, JSON.stringify(symbols), enabled, onPriceUpdate]);
 
-  // Reconnect if symbols change
+  // Optimized symbol change handling with diffing
   useEffect(() => {
     if (isConnected && socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      // Unsubscribe from current symbols
-      const krakenSymbols = symbols.map(formatToKrakenSymbol);
+      // Calculate the differences between previous and current symbols
+      const { symbolsToUnsubscribe, symbolsToSubscribe } = calculateSymbolDifferences(
+        previousSymbolsRef.current,
+        symbols
+      );
       
-      // First unsubscribe
-      const unsubscribeMessage = {
-        method: 'unsubscribe',
-        params: {
-          channel: 'ticker',
-          symbol: krakenSymbols
-        }
-      };
+      // Only send unsubscribe message if there are symbols to unsubscribe
+      if (symbolsToUnsubscribe.length > 0) {
+        const unsubscribeMessage = {
+          method: 'unsubscribe',
+          params: {
+            channel: 'ticker',
+            symbol: symbolsToUnsubscribe
+          }
+        };
+        
+        console.log('Sending unsubscribe message for removed symbols:', JSON.stringify(unsubscribeMessage));
+        addLog('info', 'Unsubscribing from removed symbols', { 
+          count: symbolsToUnsubscribe.length,
+          symbols: symbolsToUnsubscribe
+        });
+        socketRef.current.send(JSON.stringify(unsubscribeMessage));
+      }
       
-      console.log('Sending unsubscribe message:', JSON.stringify(unsubscribeMessage));
-      socketRef.current.send(JSON.stringify(unsubscribeMessage));
+      // Only send subscribe message if there are symbols to subscribe
+      if (symbolsToSubscribe.length > 0) {
+        const subscribeMessage = {
+          method: 'subscribe',
+          params: {
+            channel: 'ticker',
+            symbol: symbolsToSubscribe
+          }
+        };
+        
+        console.log('Sending subscribe message for new symbols:', JSON.stringify(subscribeMessage));
+        addLog('info', 'Subscribing to new symbols', { 
+          count: symbolsToSubscribe.length,
+          symbols: symbolsToSubscribe
+        });
+        socketRef.current.send(JSON.stringify(subscribeMessage));
+      }
       
-      // Then subscribe to new symbols
-      const subscribeMessage = {
-        method: 'subscribe',
-        params: {
-          channel: 'ticker',
-          symbol: krakenSymbols
-        }
-      };
-      
-      console.log('Sending subscribe message for new symbols:', JSON.stringify(subscribeMessage));
-      socketRef.current.send(JSON.stringify(subscribeMessage));
+      // Update the previous symbols reference for future diffing
+      previousSymbolsRef.current = [...symbols];
     }
   }, [JSON.stringify(symbols), isConnected]);
 

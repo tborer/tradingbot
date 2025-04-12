@@ -17,6 +17,7 @@ export function useKrakenWebSocket({
 }: UseKrakenWebSocketOptions) {
   const { addLog } = useWebSocketLogs();
   const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -41,6 +42,9 @@ export function useKrakenWebSocket({
 
   // Extracted shared connection logic
   const establishKrakenConnection = (connectionUrl: string, connectionSymbols: string[]) => {
+    // Set connecting state to prevent redundant connection attempts
+    setIsConnecting(true);
+    
     try {
       // Ensure we're using the secure WebSocket protocol (wss://)
       let secureUrl = connectionUrl;
@@ -72,6 +76,7 @@ export function useKrakenWebSocket({
         console.log('Kraken WebSocket connected successfully');
         addLog('success', 'WebSocket connected successfully', { url: connectionUrl });
         setIsConnected(true);
+        setIsConnecting(false); // Connection attempt completed
         reconnectAttemptsRef.current = 0;
         setError(null);
 
@@ -175,6 +180,7 @@ export function useKrakenWebSocket({
         });
         setError(new Error('WebSocket connection error'));
         setIsConnected(false);
+        setIsConnecting(false); // Connection attempt completed (with error)
       };
 
       socket.onclose = (event) => {
@@ -187,6 +193,7 @@ export function useKrakenWebSocket({
           timestamp: Date.now()
         });
         setIsConnected(false);
+        setIsConnecting(false); // Connection attempt completed (closed)
 
         // Attempt to reconnect with exponential backoff
         if (reconnectAttemptsRef.current < maxReconnectAttempts) {
@@ -240,20 +247,24 @@ export function useKrakenWebSocket({
       });
       setError(err instanceof Error ? err : new Error('Unknown connection error'));
       setIsConnected(false);
+      setIsConnecting(false); // Connection attempt completed (with error)
       return null;
     }
   };
 
   useEffect(() => {
-    if (!enabled || symbols.length === 0) {
-      return;
+    // Only attempt to connect if:
+    // 1. The hook is enabled
+    // 2. There are symbols to subscribe to
+    // 3. We're not already connected
+    // 4. We're not already in the process of connecting
+    if (enabled && symbols.length > 0 && !isConnected && !isConnecting) {
+      // Use the shared connection function
+      const socket = establishKrakenConnection(url, symbols);
+      
+      // Store the initial symbols for future diffing
+      previousSymbolsRef.current = [...symbols];
     }
-
-    // Use the shared connection function
-    const socket = establishKrakenConnection(url, symbols);
-    
-    // Store the initial symbols for future diffing
-    previousSymbolsRef.current = [...symbols];
 
     // Cleanup function
     return () => {
@@ -278,13 +289,15 @@ export function useKrakenWebSocket({
           }
           
           socketRef.current.close();
+          setIsConnected(false);
+          setIsConnecting(false);
         } catch (err) {
           console.error('Error closing Kraken WebSocket:', err);
         }
         socketRef.current = null;
       }
     };
-  }, [url, JSON.stringify(symbols), enabled, onPriceUpdate]);
+  }, [url, JSON.stringify(symbols), enabled, onPriceUpdate, isConnected, isConnecting]);
 
   // Optimized symbol change handling with diffing
   useEffect(() => {
@@ -337,11 +350,22 @@ export function useKrakenWebSocket({
   }, [JSON.stringify(symbols), isConnected]);
 
   const reconnect = () => {
+    // Only attempt to reconnect if we're not already connecting
+    if (isConnecting) {
+      console.log('Connection attempt already in progress, skipping manual reconnect');
+      addLog('warning', 'Manual reconnect skipped - connection already in progress', { 
+        url, 
+        timestamp: Date.now() 
+      });
+      return;
+    }
+    
     addLog('info', 'Manual reconnect initiated', { url, timestamp: Date.now() });
     
     if (socketRef.current) {
       try {
         socketRef.current.close();
+        setIsConnected(false);
       } catch (err) {
         console.error('Error closing socket during reconnect:', err);
         addLog('error', 'Error closing socket during manual reconnect', {
@@ -367,6 +391,7 @@ export function useKrakenWebSocket({
 
   return {
     isConnected,
+    isConnecting,
     lastMessage,
     error,
     reconnect

@@ -181,9 +181,6 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
 
   // Update symbols function
   const updateSymbols = useCallback((newSymbols: string[]) => {
-    console.log('Checking for Kraken WebSocket symbol updates:', newSymbols);
-    addLog('info', 'Checking for Kraken WebSocket symbol updates', { symbols: newSymbols });
-    
     // Ensure we have valid symbols to work with
     if (!newSymbols || newSymbols.length === 0) {
       console.warn('No symbols provided for Kraken WebSocket update');
@@ -208,29 +205,23 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
       }
     }
     
-    if (!symbolsChanged) {
-      console.log('Kraken WebSocket symbols unchanged, skipping update');
-      addLog('info', 'Kraken WebSocket symbols unchanged, skipping update', {
+    // Only proceed if symbols have actually changed
+    if (symbolsChanged) {
+      console.log('Kraken WebSocket symbols changed, updating');
+      addLog('info', 'Kraken WebSocket symbols changed, updating', {
         currentSymbols: Array.from(currentSymbolsSet),
         newSymbols: Array.from(newSymbolsSet)
       });
-      return;
-    }
-    
-    console.log('Kraken WebSocket symbols changed, updating');
-    addLog('info', 'Kraken WebSocket symbols changed, updating', {
-      currentSymbols: Array.from(currentSymbolsSet),
-      newSymbols: Array.from(newSymbolsSet)
-    });
-    
-    setSymbols(newSymbols);
-    if (krakenSocket) {
-      // Format symbols to Kraken format (e.g., BTC -> XBT/USD)
-      const formattedSymbols = newSymbols.map(formatToKrakenSymbol);
-      console.log('Formatted symbols for Kraken WebSocket:', formattedSymbols);
-      addLog('info', 'Formatted symbols for Kraken WebSocket', { formattedSymbols });
       
-      krakenSocket.updateSymbols(formattedSymbols);
+      setSymbols(newSymbols);
+      if (krakenSocket) {
+        // Format symbols to Kraken format (e.g., BTC -> XBT/USD)
+        const formattedSymbols = newSymbols.map(formatToKrakenSymbol);
+        console.log('Formatted symbols for Kraken WebSocket:', formattedSymbols);
+        addLog('info', 'Formatted symbols for Kraken WebSocket', { formattedSymbols });
+        
+        krakenSocket.updateSymbols(formattedSymbols);
+      }
     }
   }, [krakenSocket, addLog, symbols]);
 

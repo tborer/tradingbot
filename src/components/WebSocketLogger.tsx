@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useWebSocketLogs, LogLevel } from '@/contexts/WebSocketLogContext';
 import { useResearchApiLogs } from '@/contexts/ResearchApiLogContext';
 import { useBalanceApiLogs } from '@/contexts/BalanceApiLogContext';
@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useToast } from '@/components/ui/use-toast';
 import { Slider } from '@/components/ui/slider';
 
 const LogLevelBadge = ({ level }: { level: LogLevel }) => {
@@ -31,6 +32,7 @@ const LogLevelBadge = ({ level }: { level: LogLevel }) => {
 };
 
 const WebSocketLogger: React.FC = () => {
+  const { toast } = useToast();
   // WebSocket logs
   const { 
     logs, 
@@ -63,6 +65,164 @@ const WebSocketLogger: React.FC = () => {
   const [activeTab, setActiveTab] = useState<LogLevel | 'all'>('all');
   const [ignoreHeartbeat, setIgnoreHeartbeat] = useState(false);
   const [activeSection, setActiveSection] = useState<'websocket' | 'research' | 'balance'>('websocket');
+  
+  // Function to copy WebSocket logs to clipboard
+  const copyLogsToClipboard = (logsToExport: typeof logs) => {
+    if (logsToExport.length === 0) {
+      toast({
+        title: "No logs to copy",
+        description: "There are no logs available to copy.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    let clipboardText = "WEBSOCKET LOGS\n\n";
+    
+    logsToExport.forEach((log) => {
+      // Format the log entry with headers and content
+      clipboardText += `${log.level.toUpperCase()}\n`;
+      clipboardText += `${log.message}\n`;
+      clipboardText += `${new Date(log.timestamp).toLocaleTimeString()}\n`;
+      
+      if (log.code) {
+        clipboardText += `Code: ${log.code}\n`;
+      }
+      
+      if (log.details) {
+        clipboardText += `${JSON.stringify(log.details, null, 2)}\n`;
+      }
+      
+      clipboardText += "\n---\n\n";
+    });
+    
+    navigator.clipboard.writeText(clipboardText)
+      .then(() => {
+        toast({
+          title: "Copied to clipboard",
+          description: `${logsToExport.length} log entries copied to clipboard.`,
+          variant: "default"
+        });
+      })
+      .catch((err) => {
+        console.error("Failed to copy logs:", err);
+        toast({
+          title: "Failed to copy",
+          description: "An error occurred while copying logs to clipboard.",
+          variant: "destructive"
+        });
+      });
+  };
+  
+  // Function to copy Research API logs to clipboard
+  const copyResearchLogsToClipboard = (logsToExport: typeof researchLogs) => {
+    if (logsToExport.length === 0) {
+      toast({
+        title: "No logs to copy",
+        description: "There are no research API logs available to copy.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    let clipboardText = "RESEARCH API LOGS\n\n";
+    
+    logsToExport.forEach((log) => {
+      // Format the log entry with headers and content
+      clipboardText += `${log.method} ${log.url}\n`;
+      clipboardText += `Timestamp: ${new Date(log.timestamp).toLocaleTimeString()}\n`;
+      
+      if (log.status) {
+        clipboardText += `Status: ${log.status}\n`;
+      }
+      
+      if (log.duration) {
+        clipboardText += `Duration: ${log.duration}ms\n`;
+      }
+      
+      if (log.error) {
+        clipboardText += `Error: ${log.error}\n`;
+      }
+      
+      if (log.requestBody) {
+        clipboardText += `Request Body:\n${JSON.stringify(log.requestBody, null, 2)}\n`;
+      }
+      
+      if (log.response) {
+        clipboardText += `Response:\n${JSON.stringify(log.response, null, 2)}\n`;
+      }
+      
+      clipboardText += "\n---\n\n";
+    });
+    
+    navigator.clipboard.writeText(clipboardText)
+      .then(() => {
+        toast({
+          title: "Copied to clipboard",
+          description: `${logsToExport.length} research API log entries copied to clipboard.`,
+          variant: "default"
+        });
+      })
+      .catch((err) => {
+        console.error("Failed to copy research logs:", err);
+        toast({
+          title: "Failed to copy",
+          description: "An error occurred while copying research API logs to clipboard.",
+          variant: "destructive"
+        });
+      });
+  };
+  
+  // Function to copy Balance API logs to clipboard
+  const copyBalanceLogsToClipboard = (logsToExport: typeof balanceLogs) => {
+    if (logsToExport.length === 0) {
+      toast({
+        title: "No logs to copy",
+        description: "There are no balance API logs available to copy.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    let clipboardText = "BALANCE API LOGS\n\n";
+    
+    logsToExport.forEach((log) => {
+      // Format the log entry with headers and content
+      clipboardText += `${log.requestMethod} ${log.requestPath}\n`;
+      clipboardText += `Timestamp: ${new Date(log.timestamp).toLocaleTimeString()}\n`;
+      
+      if (log.responseStatus > 0) {
+        clipboardText += `Status: ${log.responseStatus}\n`;
+      }
+      
+      if (log.error) {
+        clipboardText += `Error: ${log.error}\n`;
+      }
+      
+      clipboardText += `Request Headers:\n${JSON.stringify(log.requestHeaders, null, 2)}\n`;
+      clipboardText += `Request Body:\n${JSON.stringify(log.requestBody, null, 2)}\n`;
+      clipboardText += `Response Body:\n${JSON.stringify(log.responseBody, null, 2)}\n`;
+      
+      clipboardText += "\n---\n\n";
+    });
+    
+    navigator.clipboard.writeText(clipboardText)
+      .then(() => {
+        toast({
+          title: "Copied to clipboard",
+          description: `${logsToExport.length} balance API log entries copied to clipboard.`,
+          variant: "default"
+        });
+      })
+      .catch((err) => {
+        console.error("Failed to copy balance logs:", err);
+        toast({
+          title: "Failed to copy",
+          description: "An error occurred while copying balance API logs to clipboard.",
+          variant: "destructive"
+        });
+      });
+  };
   
   const filteredLogs = logs.filter(log => {
     // Filter by search term
@@ -123,6 +283,9 @@ const WebSocketLogger: React.FC = () => {
                     {isLoggingEnabled ? "Logging Enabled" : "Logging Disabled"}
                   </Label>
                 </div>
+                <Button variant="outline" size="sm" onClick={() => copyLogsToClipboard(filteredLogs)}>
+                  Copy All Logs
+                </Button>
                 <Button variant="destructive" size="sm" onClick={clearLogs}>
                   Clear Logs
                 </Button>
@@ -139,6 +302,9 @@ const WebSocketLogger: React.FC = () => {
                     {isResearchLoggingEnabled ? "Logging Enabled" : "Logging Disabled"}
                   </Label>
                 </div>
+                <Button variant="outline" size="sm" onClick={() => copyResearchLogsToClipboard(filteredResearchLogs)}>
+                  Copy All Logs
+                </Button>
                 <Button variant="destructive" size="sm" onClick={clearResearchLogs}>
                   Clear Logs
                 </Button>
@@ -155,6 +321,9 @@ const WebSocketLogger: React.FC = () => {
                     {isBalanceLoggingEnabled ? "Logging Enabled" : "Logging Disabled"}
                   </Label>
                 </div>
+                <Button variant="outline" size="sm" onClick={() => copyBalanceLogsToClipboard(balanceLogs)}>
+                  Copy All Logs
+                </Button>
                 <Button variant="destructive" size="sm" onClick={clearBalanceLogs}>
                   Clear Logs
                 </Button>

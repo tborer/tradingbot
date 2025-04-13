@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useToast } from '@/components/ui/use-toast';
 import { useErrorLog } from '@/contexts/ErrorLogContext';
 import { ErrorCategory, ErrorSeverity } from '@/lib/errorLogger';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
@@ -16,6 +17,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 const ErrorLogger: React.FC = () => {
+  const { toast } = useToast();
   const {
     logs,
     filters,
@@ -90,6 +92,62 @@ const ErrorLogger: React.FC = () => {
     return d.toLocaleString();
   };
 
+  // Function to copy logs to clipboard
+  const copyLogsToClipboard = () => {
+    if (filteredLogs.length === 0) {
+      toast({
+        title: "No logs to copy",
+        description: "There are no logs available to copy.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    let clipboardText = "ERROR LOGS\n\n";
+    
+    filteredLogs.forEach((log) => {
+      // Format the log entry with headers and content
+      clipboardText += `${log.severity}\n`;
+      clipboardText += `${log.message}\n`;
+      clipboardText += `${formatDate(log.timestamp)}\n`;
+      
+      if (log.code) {
+        clipboardText += `Code: ${log.code}\n`;
+      }
+      
+      if (log.category) {
+        clipboardText += `Category: ${log.category}\n`;
+      }
+      
+      if (log.context && Object.keys(log.context).length > 0) {
+        clipboardText += `Context:\n${JSON.stringify(log.context, null, 2)}\n`;
+      }
+      
+      if (log.stack) {
+        clipboardText += `Stack Trace:\n${log.stack}\n`;
+      }
+      
+      clipboardText += "\n---\n\n";
+    });
+    
+    navigator.clipboard.writeText(clipboardText)
+      .then(() => {
+        toast({
+          title: "Copied to clipboard",
+          description: `${filteredLogs.length} error log entries copied to clipboard.`,
+          variant: "default"
+        });
+      })
+      .catch((err) => {
+        console.error("Failed to copy logs:", err);
+        toast({
+          title: "Failed to copy",
+          description: "An error occurred while copying logs to clipboard.",
+          variant: "destructive"
+        });
+      });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -143,6 +201,13 @@ const ErrorLogger: React.FC = () => {
             <div className="flex space-x-2">
               <Button variant="outline" onClick={markAllAsRead} disabled={unreadCount === 0}>
                 Mark All as Read
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={copyLogsToClipboard}
+                disabled={filteredLogs.length === 0}
+              >
+                Copy All Logs
               </Button>
               <Button 
                 variant="destructive" 

@@ -19,6 +19,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Trash2, GripVertical, ShoppingCart, DollarSign } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { CryptoWithPrice } from "@/types/stock";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -232,6 +233,7 @@ export default function SortableCryptoList({
   const [tradeAction, setTradeAction] = useState<'buy' | 'sell'>('buy');
   const [selectedCrypto, setSelectedCrypto] = useState<{ id: string; symbol: string } | null>(null);
   const [shares, setShares] = useState<string>('');
+  const [orderType, setOrderType] = useState<string>('market');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [autoTradeModalOpen, setAutoTradeModalOpen] = useState(false);
   const [selectedAutoTradeStock, setSelectedAutoTradeStock] = useState<{ id: string; symbol: string } | null>(null);
@@ -291,6 +293,7 @@ export default function SortableCryptoList({
     setSelectedCrypto({ id, symbol });
     setTradeAction('buy');
     setShares('');
+    setOrderType('market');
     setTradeDialogOpen(true);
   };
   
@@ -318,6 +321,7 @@ export default function SortableCryptoList({
             tradeByValue: data.autoTradeSettings.tradeByValue,
             sharesAmount: data.autoTradeSettings.sharesAmount,
             totalValue: data.autoTradeSettings.totalValue,
+            orderType: data.autoTradeSettings.orderType || 'market',
           });
         } else {
           // Reset to default settings if none exist for this crypto
@@ -330,7 +334,8 @@ export default function SortableCryptoList({
             tradeByShares: true,
             tradeByValue: false,
             sharesAmount: 0,
-            totalValue: 0
+            totalValue: 0,
+            orderType: 'market'
           });
         }
       } else {
@@ -344,7 +349,8 @@ export default function SortableCryptoList({
           tradeByShares: true,
           tradeByValue: false,
           sharesAmount: 0,
-          totalValue: 0
+          totalValue: 0,
+          orderType: 'market'
         });
         console.error("Failed to fetch auto trade settings");
         toast({
@@ -365,7 +371,8 @@ export default function SortableCryptoList({
         tradeByShares: true,
         tradeByValue: false,
         sharesAmount: 0,
-        totalValue: 0
+        totalValue: 0,
+        orderType: 'market'
       });
       toast({
         variant: "destructive",
@@ -435,7 +442,25 @@ export default function SortableCryptoList({
     if (onTrade) {
       setIsSubmitting(true);
       try {
-        await onTrade(selectedCrypto.id, selectedCrypto.symbol, tradeAction, Number(shares));
+        // Pass the orderType to the API through the URL query parameter
+        const response = await fetch(`/api/cryptos/trade`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            cryptoId: selectedCrypto.id,
+            action: tradeAction,
+            shares: Number(shares),
+            orderType: orderType
+          }),
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to execute trade');
+        }
+        
         setTradeDialogOpen(false);
         toast({
           title: "Success",
@@ -529,6 +554,29 @@ export default function SortableCryptoList({
                 onChange={(e) => setShares(e.target.value)}
                 placeholder="Enter number of shares"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="order-type">Order Type</Label>
+              <Select
+                value={orderType}
+                onValueChange={setOrderType}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select order type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="market">Market</SelectItem>
+                  <SelectItem value="limit">Limit</SelectItem>
+                  <SelectItem value="iceberg">Iceberg</SelectItem>
+                  <SelectItem value="stop-loss">Stop-Loss</SelectItem>
+                  <SelectItem value="take-profit">Take-Profit</SelectItem>
+                  <SelectItem value="stop-loss-limit">Stop-Loss-Limit</SelectItem>
+                  <SelectItem value="take-profit-limit">Take-Profit-Limit</SelectItem>
+                  <SelectItem value="trailing-stop">Trailing-Stop</SelectItem>
+                  <SelectItem value="trailing-stop-limit">Trailing-Stop-Limit</SelectItem>
+                  <SelectItem value="settle-position">Settle-Position</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex space-x-2">
               <Button 

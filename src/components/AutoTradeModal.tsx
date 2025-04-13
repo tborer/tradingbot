@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 
 export interface AutoTradeSettings {
@@ -19,6 +20,7 @@ export interface AutoTradeSettings {
   nextAction: 'buy' | 'sell';
   sharesAmount: number;
   totalValue: number;
+  orderType: string;
 }
 
 interface AutoTradeModalProps {
@@ -53,6 +55,7 @@ export default function AutoTradeModal({
     nextAction: initialSettings.nextAction || 'buy',
     sharesAmount: initialSettings.sharesAmount || 0,
     totalValue: initialSettings.totalValue || 0,
+    orderType: initialSettings.orderType || 'market',
   });
   
   // Update settings when initialSettings change (when a different crypto is selected)
@@ -68,6 +71,7 @@ export default function AutoTradeModal({
       nextAction: initialSettings.nextAction || 'buy',
       sharesAmount: initialSettings.sharesAmount || 0,
       totalValue: initialSettings.totalValue || 0,
+      orderType: initialSettings.orderType || 'market',
     });
   }, [initialSettings, itemName]);
 
@@ -238,6 +242,33 @@ export default function AutoTradeModal({
             </RadioGroup>
             <p className="text-sm text-muted-foreground">
               Specify how much to trade when the threshold is reached.
+            </p>
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="order-type">Order Type</Label>
+            <Select
+              value={settings.orderType}
+              onValueChange={(value) => setSettings({ ...settings, orderType: value })}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select order type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="market">Market</SelectItem>
+                <SelectItem value="limit">Limit</SelectItem>
+                <SelectItem value="iceberg">Iceberg</SelectItem>
+                <SelectItem value="stop-loss">Stop-Loss</SelectItem>
+                <SelectItem value="take-profit">Take-Profit</SelectItem>
+                <SelectItem value="stop-loss-limit">Stop-Loss-Limit</SelectItem>
+                <SelectItem value="take-profit-limit">Take-Profit-Limit</SelectItem>
+                <SelectItem value="trailing-stop">Trailing-Stop</SelectItem>
+                <SelectItem value="trailing-stop-limit">Trailing-Stop-Limit</SelectItem>
+                <SelectItem value="settle-position">Settle-Position</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-muted-foreground">
+              Specify the type of order to execute when trading.
             </p>
           </div>
         </div>

@@ -40,13 +40,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    const { cryptoId, action, shares, price } = req.body;
+    const { cryptoId, action, shares, price, orderType } = req.body;
 
     if (!cryptoId || !action || !shares || !price) {
       return res.status(400).json({ 
         error: 'Missing required parameters: cryptoId, action, shares, price' 
       });
     }
+    
+    // Default to 'market' if orderType is not provided
+    const effectiveOrderType = orderType || 'market';
 
     // Validate action
     if (action !== 'buy' && action !== 'sell') {
@@ -72,7 +75,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const orderRequest: KrakenOrderRequest = {
       nonce,
-      ordertype: 'limit',
+      ordertype: effectiveOrderType,
       type: action as 'buy' | 'sell',
       volume: shares.toString(),
       pair,

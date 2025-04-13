@@ -118,6 +118,7 @@ model CryptoAutoTradeSettings {
   tradeByValue         Boolean  @default(false)
   sharesAmount         Float    @default(0)
   totalValue           Float    @default(0)
+  orderType            String   @default("market") // market, limit, iceberg, stop-loss, take-profit, etc.
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 }

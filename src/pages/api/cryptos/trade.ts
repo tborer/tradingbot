@@ -29,11 +29,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(403).json({ error: 'Manual crypto trading is not enabled. Please enable it in settings.' });
     }
     
-    const { cryptoId, action, shares } = req.body;
+    const { cryptoId, action, shares, orderType } = req.body;
     
     if (!cryptoId || !action || !shares) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
+    
+    // Default to 'market' if orderType is not provided
+    const effectiveOrderType = orderType || 'market';
     
     if (action !== 'buy' && action !== 'sell') {
       return res.status(400).json({ error: 'Invalid action. Must be "buy" or "sell"' });
@@ -78,6 +81,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           action,
           shares: Number(shares),
           price: currentPrice,
+          orderType: effectiveOrderType,
           isAutoOrder: req.body.isAutoOrder || false
         })
       });

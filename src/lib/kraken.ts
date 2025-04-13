@@ -354,7 +354,7 @@ export const shouldBuyCrypto = (
 // Kraken Order API Types
 export interface KrakenOrderRequest {
   nonce: number;
-  ordertype: 'limit';
+  ordertype: string; // market, limit, iceberg, stop-loss, take-profit, etc.
   type: 'buy' | 'sell';
   volume: string;
   pair: string;

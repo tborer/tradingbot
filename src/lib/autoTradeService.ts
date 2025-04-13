@@ -82,6 +82,7 @@ export async function processAutoCryptoTrades(
       const tradeByValue = crypto.autoTradeSettings?.tradeByValue || false;
       const sharesAmount = crypto.autoTradeSettings?.sharesAmount || 0;
       const totalValue = crypto.autoTradeSettings?.totalValue || 0;
+      const orderType = crypto.autoTradeSettings?.orderType || 'market';
 
       // Determine if we should buy or sell
       let shouldTrade = false;
@@ -166,6 +167,7 @@ export async function processAutoCryptoTrades(
               action,
               shares: sharesToTrade,
               price: priceData.price,
+              orderType: orderType,
               isAutoOrder: true
             })
           });
@@ -280,6 +282,7 @@ export async function checkCryptoForAutoTrade(
     const tradeByValue = crypto.autoTradeSettings?.tradeByValue || false;
     const sharesAmount = crypto.autoTradeSettings?.sharesAmount || 0;
     const totalValue = crypto.autoTradeSettings?.totalValue || 0;
+    const orderType = crypto.autoTradeSettings?.orderType || 'market';
 
     // Determine if we should buy or sell
     let shouldTrade = false;
@@ -363,6 +366,7 @@ export async function checkCryptoForAutoTrade(
             action,
             shares: sharesToTrade,
             price,
+            orderType: orderType,
             isAutoOrder: true
           })
         });

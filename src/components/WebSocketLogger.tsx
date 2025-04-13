@@ -78,6 +78,7 @@ const WebSocketLogger: React.FC = () => {
     }
     
     let clipboardText = "WEBSOCKET LOGS\n\n";
+    const seen = new Set();
     
     logsToExport.forEach((log) => {
       // Format the log entry with headers and content
@@ -90,28 +91,81 @@ const WebSocketLogger: React.FC = () => {
       }
       
       if (log.details) {
-        clipboardText += `${JSON.stringify(log.details, null, 2)}\n`;
+        // Handle circular references and convert to string safely
+        try {
+          const detailsStr = typeof log.details === 'object' 
+            ? JSON.stringify(log.details, (key, value) => {
+                // Handle circular references
+                if (typeof value === 'object' && value !== null) {
+                  if (seen.has(value)) {
+                    return '[Circular Reference]';
+                  }
+                  seen.add(value);
+                }
+                return value;
+              }, 2)
+            : String(log.details);
+          clipboardText += `${detailsStr}\n`;
+        } catch (e) {
+          clipboardText += `[Could not stringify details: ${e}]\n`;
+        }
       }
       
       clipboardText += "\n---\n\n";
     });
     
-    navigator.clipboard.writeText(clipboardText)
-      .then(() => {
-        toast({
-          title: "Copied to clipboard",
-          description: `${logsToExport.length} log entries copied to clipboard.`,
-          variant: "default"
+    // Use a temporary textarea element as a fallback for clipboard API
+    try {
+      // Try the Clipboard API first
+      navigator.clipboard.writeText(clipboardText)
+        .then(() => {
+          toast({
+            title: "Copied to clipboard",
+            description: `${logsToExport.length} log entries copied to clipboard.`,
+            variant: "default"
+          });
+        })
+        .catch((err) => {
+          console.error("Clipboard API failed:", err);
+          
+          // Fallback to textarea method
+          const textarea = document.createElement('textarea');
+          textarea.value = clipboardText;
+          textarea.style.position = 'fixed';  // Prevent scrolling to bottom
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          
+          try {
+            const successful = document.execCommand('copy');
+            if (successful) {
+              toast({
+                title: "Copied to clipboard",
+                description: `${logsToExport.length} log entries copied to clipboard.`,
+                variant: "default"
+              });
+            } else {
+              throw new Error("execCommand('copy') failed");
+            }
+          } catch (execErr) {
+            console.error("Fallback clipboard method failed:", execErr);
+            toast({
+              title: "Failed to copy",
+              description: "An error occurred while copying logs to clipboard. Try selecting and copying manually.",
+              variant: "destructive"
+            });
+          } finally {
+            document.body.removeChild(textarea);
+          }
         });
-      })
-      .catch((err) => {
-        console.error("Failed to copy logs:", err);
-        toast({
-          title: "Failed to copy",
-          description: "An error occurred while copying logs to clipboard.",
-          variant: "destructive"
-        });
+    } catch (err) {
+      console.error("Clipboard operation failed:", err);
+      toast({
+        title: "Failed to copy",
+        description: "An error occurred while copying logs to clipboard.",
+        variant: "destructive"
       });
+    }
   };
   
   // Function to copy Research API logs to clipboard
@@ -126,6 +180,7 @@ const WebSocketLogger: React.FC = () => {
     }
     
     let clipboardText = "RESEARCH API LOGS\n\n";
+    const seen = new Set();
     
     logsToExport.forEach((log) => {
       // Format the log entry with headers and content
@@ -145,32 +200,100 @@ const WebSocketLogger: React.FC = () => {
       }
       
       if (log.requestBody) {
-        clipboardText += `Request Body:\n${JSON.stringify(log.requestBody, null, 2)}\n`;
+        try {
+          const requestBodyStr = typeof log.requestBody === 'object' 
+            ? JSON.stringify(log.requestBody, (key, value) => {
+                // Handle circular references
+                if (typeof value === 'object' && value !== null) {
+                  if (seen.has(value)) {
+                    return '[Circular Reference]';
+                  }
+                  seen.add(value);
+                }
+                return value;
+              }, 2)
+            : String(log.requestBody);
+          clipboardText += `Request Body:\n${requestBodyStr}\n`;
+        } catch (e) {
+          clipboardText += `Request Body: [Could not stringify: ${e}]\n`;
+        }
       }
       
       if (log.response) {
-        clipboardText += `Response:\n${JSON.stringify(log.response, null, 2)}\n`;
+        try {
+          const responseStr = typeof log.response === 'object' 
+            ? JSON.stringify(log.response, (key, value) => {
+                // Handle circular references
+                if (typeof value === 'object' && value !== null) {
+                  if (seen.has(value)) {
+                    return '[Circular Reference]';
+                  }
+                  seen.add(value);
+                }
+                return value;
+              }, 2)
+            : String(log.response);
+          clipboardText += `Response:\n${responseStr}\n`;
+        } catch (e) {
+          clipboardText += `Response: [Could not stringify: ${e}]\n`;
+        }
       }
       
       clipboardText += "\n---\n\n";
     });
     
-    navigator.clipboard.writeText(clipboardText)
-      .then(() => {
-        toast({
-          title: "Copied to clipboard",
-          description: `${logsToExport.length} research API log entries copied to clipboard.`,
-          variant: "default"
+    // Use a temporary textarea element as a fallback for clipboard API
+    try {
+      // Try the Clipboard API first
+      navigator.clipboard.writeText(clipboardText)
+        .then(() => {
+          toast({
+            title: "Copied to clipboard",
+            description: `${logsToExport.length} research API log entries copied to clipboard.`,
+            variant: "default"
+          });
+        })
+        .catch((err) => {
+          console.error("Clipboard API failed:", err);
+          
+          // Fallback to textarea method
+          const textarea = document.createElement('textarea');
+          textarea.value = clipboardText;
+          textarea.style.position = 'fixed';  // Prevent scrolling to bottom
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          
+          try {
+            const successful = document.execCommand('copy');
+            if (successful) {
+              toast({
+                title: "Copied to clipboard",
+                description: `${logsToExport.length} research API log entries copied to clipboard.`,
+                variant: "default"
+              });
+            } else {
+              throw new Error("execCommand('copy') failed");
+            }
+          } catch (execErr) {
+            console.error("Fallback clipboard method failed:", execErr);
+            toast({
+              title: "Failed to copy",
+              description: "An error occurred while copying research API logs to clipboard. Try selecting and copying manually.",
+              variant: "destructive"
+            });
+          } finally {
+            document.body.removeChild(textarea);
+          }
         });
-      })
-      .catch((err) => {
-        console.error("Failed to copy research logs:", err);
-        toast({
-          title: "Failed to copy",
-          description: "An error occurred while copying research API logs to clipboard.",
-          variant: "destructive"
-        });
+    } catch (err) {
+      console.error("Clipboard operation failed:", err);
+      toast({
+        title: "Failed to copy",
+        description: "An error occurred while copying research API logs to clipboard.",
+        variant: "destructive"
       });
+    }
   };
   
   // Function to copy Balance API logs to clipboard
@@ -185,6 +308,7 @@ const WebSocketLogger: React.FC = () => {
     }
     
     let clipboardText = "BALANCE API LOGS\n\n";
+    const seen = new Set();
     
     logsToExport.forEach((log) => {
       // Format the log entry with headers and content
@@ -199,29 +323,113 @@ const WebSocketLogger: React.FC = () => {
         clipboardText += `Error: ${log.error}\n`;
       }
       
-      clipboardText += `Request Headers:\n${JSON.stringify(log.requestHeaders, null, 2)}\n`;
-      clipboardText += `Request Body:\n${JSON.stringify(log.requestBody, null, 2)}\n`;
-      clipboardText += `Response Body:\n${JSON.stringify(log.responseBody, null, 2)}\n`;
+      // Safely stringify objects with circular reference handling
+      try {
+        const headersStr = typeof log.requestHeaders === 'object' 
+          ? JSON.stringify(log.requestHeaders, (key, value) => {
+              if (typeof value === 'object' && value !== null) {
+                if (seen.has(value)) {
+                  return '[Circular Reference]';
+                }
+                seen.add(value);
+              }
+              return value;
+            }, 2)
+          : String(log.requestHeaders);
+        clipboardText += `Request Headers:\n${headersStr}\n`;
+      } catch (e) {
+        clipboardText += `Request Headers: [Could not stringify: ${e}]\n`;
+      }
+      
+      try {
+        const requestBodyStr = typeof log.requestBody === 'object' 
+          ? JSON.stringify(log.requestBody, (key, value) => {
+              if (typeof value === 'object' && value !== null) {
+                if (seen.has(value)) {
+                  return '[Circular Reference]';
+                }
+                seen.add(value);
+              }
+              return value;
+            }, 2)
+          : String(log.requestBody);
+        clipboardText += `Request Body:\n${requestBodyStr}\n`;
+      } catch (e) {
+        clipboardText += `Request Body: [Could not stringify: ${e}]\n`;
+      }
+      
+      try {
+        const responseBodyStr = typeof log.responseBody === 'object' 
+          ? JSON.stringify(log.responseBody, (key, value) => {
+              if (typeof value === 'object' && value !== null) {
+                if (seen.has(value)) {
+                  return '[Circular Reference]';
+                }
+                seen.add(value);
+              }
+              return value;
+            }, 2)
+          : String(log.responseBody);
+        clipboardText += `Response Body:\n${responseBodyStr}\n`;
+      } catch (e) {
+        clipboardText += `Response Body: [Could not stringify: ${e}]\n`;
+      }
       
       clipboardText += "\n---\n\n";
     });
     
-    navigator.clipboard.writeText(clipboardText)
-      .then(() => {
-        toast({
-          title: "Copied to clipboard",
-          description: `${logsToExport.length} balance API log entries copied to clipboard.`,
-          variant: "default"
+    // Use a temporary textarea element as a fallback for clipboard API
+    try {
+      // Try the Clipboard API first
+      navigator.clipboard.writeText(clipboardText)
+        .then(() => {
+          toast({
+            title: "Copied to clipboard",
+            description: `${logsToExport.length} balance API log entries copied to clipboard.`,
+            variant: "default"
+          });
+        })
+        .catch((err) => {
+          console.error("Clipboard API failed:", err);
+          
+          // Fallback to textarea method
+          const textarea = document.createElement('textarea');
+          textarea.value = clipboardText;
+          textarea.style.position = 'fixed';  // Prevent scrolling to bottom
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          
+          try {
+            const successful = document.execCommand('copy');
+            if (successful) {
+              toast({
+                title: "Copied to clipboard",
+                description: `${logsToExport.length} balance API log entries copied to clipboard.`,
+                variant: "default"
+              });
+            } else {
+              throw new Error("execCommand('copy') failed");
+            }
+          } catch (execErr) {
+            console.error("Fallback clipboard method failed:", execErr);
+            toast({
+              title: "Failed to copy",
+              description: "An error occurred while copying balance API logs to clipboard. Try selecting and copying manually.",
+              variant: "destructive"
+            });
+          } finally {
+            document.body.removeChild(textarea);
+          }
         });
-      })
-      .catch((err) => {
-        console.error("Failed to copy balance logs:", err);
-        toast({
-          title: "Failed to copy",
-          description: "An error occurred while copying balance API logs to clipboard.",
-          variant: "destructive"
-        });
+    } catch (err) {
+      console.error("Clipboard operation failed:", err);
+      toast({
+        title: "Failed to copy",
+        description: "An error occurred while copying balance API logs to clipboard.",
+        variant: "destructive"
       });
+    }
   };
   
   const filteredLogs = logs.filter(log => {

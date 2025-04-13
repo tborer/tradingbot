@@ -39,6 +39,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   
   console.log(`[${requestId}] Batch update prices request received at ${new Date().toISOString()}`);
   
+  // Log the API request for error tracking
+  createAndLogError(
+    ErrorCategory.API,
+    ErrorSeverity.INFO,
+    3000,
+    `Batch update prices request received`,
+    { 
+      requestId,
+      timestamp: requestStartTime,
+      method: req.method,
+      url: req.url,
+      headers: {
+        'user-agent': req.headers['user-agent'],
+        'content-type': req.headers['content-type'],
+        'x-forwarded-for': req.headers['x-forwarded-for']
+      }
+    }
+  );
+  
   // Check if circuit breaker is open
   if (connectionManager.isCircuitBreakerOpen()) {
     const status = connectionManager.getConnectionStatus();
@@ -509,6 +528,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log(`[${requestId}] Executing database transaction with fallback for ${updateData.length} updates`);
     const transactionStartTime = Date.now();
     
+    // Log the database transaction attempt
+    createAndLogError(
+      ErrorCategory.DATABASE,
+      ErrorSeverity.INFO,
+      3001,
+      `Starting database transaction for batch price update`,
+      { 
+        requestId,
+        timestamp: Date.now(),
+        userId: user.id,
+        updateCount: updateData.length,
+        symbols: updateData.map(d => d.symbol)
+      }
+    );
+    
     try {
       const result = await executeWithFallback(
         async () => {
@@ -539,7 +573,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const transactionDuration = Date.now() - transactionStartTime;
       console.log(`[${requestId}] Database transaction completed in ${transactionDuration}ms, updated ${updatedCount} cryptos`);
       
-      // Log successful transaction
+      // Log successful transaction with detailed performance metrics
       createAndLogError(
         ErrorCategory.DATABASE,
         ErrorSeverity.INFO,
@@ -551,7 +585,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           timestamp: Date.now(),
           updateCount: updatedCount,
           transactionDuration,
-          totalRequested: updates.length
+          totalRequested: updates.length,
+          averageTimePerUpdate: updatedCount > 0 ? Math.round(transactionDuration / updatedCount) : 0,
+          symbols: updateData.map(d => d.symbol),
+          prices: updateData.map(d => ({ symbol: d.symbol, price: d.lastPrice })),
+          cacheKey: transactionCacheKey
         }
       );
       

@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/use-toast';
 import WebSocketConnectionStatus from '@/components/WebSocketConnectionStatus';
 import { useKrakenWebSocket } from '@/contexts/KrakenWebSocketContext';
+import { useThrottledPriceUpdates } from '@/hooks/useThrottledPriceUpdates';
 
 interface KrakenPriceMonitorProps {
   symbols: string[];
@@ -349,13 +350,38 @@ export default function KrakenPriceMonitor({
     }
   }, [user, autoTradeEnabled, toast, enableKrakenWebSocket]);
   
+  const { addLog } = useWebSocketLogs();
+  
   const handlePriceUpdate = useCallback((newPrices: KrakenPrice[]) => {
     if (newPrices.length === 0) {
       console.log('No new prices to update in KrakenPriceMonitor');
+      addLog('info', 'No new prices to update', { 
+        timestamp: Date.now(),
+        component: 'KrakenPriceMonitor'
+      });
       return;
     }
     
-    console.log('KrakenPriceMonitor received price updates:', newPrices);
+    // Enhanced logging for price updates
+    const updateTimestamp = Date.now();
+    const symbols = newPrices.map(p => p.symbol);
+    const priceData = newPrices.map(p => ({ symbol: p.symbol, price: p.price }));
+    
+    console.log(`KrakenPriceMonitor received ${newPrices.length} price updates at ${new Date(updateTimestamp).toISOString()}:`, newPrices);
+    
+    // Log detailed information about the price update
+    addLog('info', `Received price updates for ${newPrices.length} symbols`, { 
+      timestamp: updateTimestamp,
+      component: 'KrakenPriceMonitor',
+      updateCount: newPrices.length,
+      symbols: symbols,
+      prices: priceData,
+      memoryUsage: performance.memory ? {
+        jsHeapSizeLimit: Math.round(performance.memory.jsHeapSizeLimit / (1024 * 1024)),
+        totalJSHeapSize: Math.round(performance.memory.totalJSHeapSize / (1024 * 1024)),
+        usedJSHeapSize: Math.round(performance.memory.usedJSHeapSize / (1024 * 1024))
+      } : undefined
+    });
     
     setPrices(prevPrices => {
       // Merge new prices with existing ones
@@ -388,9 +414,25 @@ export default function KrakenPriceMonitor({
       const lastUpdateTime = parseInt(localStorage.getItem(lastUpdateKey) || '0', 10);
       const MIN_UPDATE_INTERVAL = 2000; // 2 seconds minimum between updates
       
+      // Log database update attempt
+      addLog('info', 'Preparing database price update', { 
+        timestamp: now,
+        component: 'KrakenPriceMonitor',
+        updateCount: newPrices.length,
+        symbols: newPrices.map(p => p.symbol),
+        timeSinceLastUpdate: now - lastUpdateTime,
+        minUpdateInterval: MIN_UPDATE_INTERVAL
+      });
+      
       // Skip update if it's too soon after the last one
       if (now - lastUpdateTime < MIN_UPDATE_INTERVAL) {
         console.log(`Skipping price update, last update was ${now - lastUpdateTime}ms ago`);
+        addLog('warning', 'Skipping price update due to rate limiting', { 
+          timestamp: now,
+          component: 'KrakenPriceMonitor',
+          timeSinceLastUpdate: now - lastUpdateTime,
+          minUpdateInterval: MIN_UPDATE_INTERVAL
+        });
         return;
       }
       
@@ -462,6 +504,16 @@ export default function KrakenPriceMonitor({
             return;
           }
           
+          // Log the API call attempt
+          const apiCallStartTime = Date.now();
+          addLog('info', 'Sending batch price update to API', { 
+            timestamp: apiCallStartTime,
+            component: 'KrakenPriceMonitor',
+            updateCount: updates.length,
+            symbols: updates.map(u => u.symbol),
+            endpoint: '/api/cryptos/batch-update-prices'
+          });
+          
           // Send a single batch update request instead of multiple individual requests
           const response = await fetch('/api/cryptos/batch-update-prices', {
             method: 'POST',
@@ -469,6 +521,19 @@ export default function KrakenPriceMonitor({
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({ updates }),
+          });
+          
+          // Calculate API call duration
+          const apiCallDuration = Date.now() - apiCallStartTime;
+          
+          // Log the API response
+          addLog('info', 'Received batch price update API response', { 
+            timestamp: Date.now(),
+            component: 'KrakenPriceMonitor',
+            status: response.status,
+            statusText: response.statusText,
+            duration: apiCallDuration,
+            endpoint: '/api/cryptos/batch-update-prices'
           });
           
           // Store the update time
@@ -537,9 +602,30 @@ export default function KrakenPriceMonitor({
           
           const result = await response.json();
           
+          // Log the detailed API response data
+          addLog('success', 'Successfully processed batch price update', { 
+            timestamp: Date.now(),
+            component: 'KrakenPriceMonitor',
+            processedCount: result.processedCount,
+            totalRequested: result.totalRequested,
+            requestId: result.requestId,
+            duration: result.duration,
+            degraded: result.degraded || false,
+            status: result.status
+          });
+          
           // Handle degraded mode response
           if (result.degraded) {
             console.log(`Batch processed in degraded mode for ${result.processedCount} cryptos`);
+            
+            // Log degraded mode operation
+            addLog('warning', 'Batch processed in degraded mode', { 
+              timestamp: Date.now(),
+              component: 'KrakenPriceMonitor',
+              processedCount: result.processedCount,
+              totalRequested: result.totalRequested,
+              requestId: result.requestId
+            });
             
             // Show degraded mode toast (but not too frequently)
             const lastDegradedToastKey = 'last-degraded-mode-toast-time';
@@ -557,6 +643,17 @@ export default function KrakenPriceMonitor({
             }
           } else {
             console.log(`Batch updated lastPrice for ${result.processedCount} cryptos`);
+            
+            // Log successful update with performance metrics
+            addLog('success', 'Batch updated prices in database', { 
+              timestamp: Date.now(),
+              component: 'KrakenPriceMonitor',
+              processedCount: result.processedCount,
+              totalRequested: result.totalRequested,
+              requestId: result.requestId,
+              apiDuration: result.duration,
+              totalDuration: Date.now() - apiCallStartTime
+            });
           }
         } catch (error) {
           console.error('Error batch updating lastPrices:', error);
@@ -593,11 +690,39 @@ export default function KrakenPriceMonitor({
   // Get settings for auto-connect
   const [autoConnect, setAutoConnect] = useState<boolean>(false);
   
+  // Get settings for throttling
+  const [enableThrottling, setEnableThrottling] = useState<boolean>(true);
+  const [throttleInterval, setThrottleInterval] = useState<number>(5000); // 5 seconds default
+  
+  // Initialize the throttled updates hook
+  const { 
+    addPriceUpdates, 
+    isProcessing, 
+    pendingCount, 
+    stats: throttleStats 
+  } = useThrottledPriceUpdates({
+    interval: throttleInterval,
+    maxBatchSize: 20,
+    onBatchProcess: handlePriceUpdate,
+    enabled: enableThrottling
+  });
+  
   useEffect(() => {
     // Load auto-connect setting from localStorage
     const savedAutoConnect = localStorage.getItem('kraken-websocket-auto-connect');
     if (savedAutoConnect !== null) {
       setAutoConnect(savedAutoConnect === 'true');
+    }
+    
+    // Load throttling settings from localStorage
+    const savedEnableThrottling = localStorage.getItem('kraken-websocket-throttling-enabled');
+    if (savedEnableThrottling !== null) {
+      setEnableThrottling(savedEnableThrottling === 'true');
+    }
+    
+    const savedThrottleInterval = localStorage.getItem('kraken-websocket-throttle-interval');
+    if (savedThrottleInterval !== null) {
+      setThrottleInterval(parseInt(savedThrottleInterval, 10));
     }
   }, []);
   
@@ -615,11 +740,37 @@ export default function KrakenPriceMonitor({
   useEffect(() => {
     if (lastPrices.length > 0 && enableKrakenWebSocket) {
       console.log('Processing price updates from shared context:', lastPrices);
-      handlePriceUpdate(lastPrices);
+      
+      // Log the incoming price updates
+      addLog('info', 'Received WebSocket price updates', { 
+        timestamp: Date.now(),
+        component: 'KrakenPriceMonitor',
+        updateCount: lastPrices.length,
+        symbols: lastPrices.map(p => p.symbol),
+        throttlingEnabled: enableThrottling
+      });
+      
+      if (enableThrottling) {
+        // Add to throttled batch instead of processing immediately
+        addPriceUpdates(lastPrices);
+        
+        // Log the throttling
+        addLog('info', 'Added price updates to throttled batch', { 
+          timestamp: Date.now(),
+          component: 'KrakenPriceMonitor',
+          updateCount: lastPrices.length,
+          pendingCount: pendingCount,
+          isProcessing: isProcessing,
+          throttleInterval: throttleInterval
+        });
+      } else {
+        // Process immediately if throttling is disabled
+        handlePriceUpdate(lastPrices);
+      }
     } else if (lastPrices.length > 0 && !enableKrakenWebSocket) {
       console.log('Ignoring price updates because Kraken WebSocket is disabled');
     }
-  }, [lastPrices, handlePriceUpdate, enableKrakenWebSocket]);
+  }, [lastPrices, handlePriceUpdate, enableKrakenWebSocket, enableThrottling, addPriceUpdates, pendingCount, isProcessing, throttleInterval, addLog]);
   
   // Clear prices when symbols change
   useEffect(() => {
@@ -746,6 +897,61 @@ export default function KrakenPriceMonitor({
               <p className="text-muted-foreground">
                 Monitoring {symbols.length} cryptocurrencies for price updates.
               </p>
+              
+              {enableThrottling && (
+                <div className="mt-4 p-3 bg-slate-100 dark:bg-slate-800 rounded-md">
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-sm font-medium">WebSocket Throttling</h4>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => {
+                        const newValue = !enableThrottling;
+                        setEnableThrottling(newValue);
+                        localStorage.setItem('kraken-websocket-throttling-enabled', newValue.toString());
+                        addLog('info', `WebSocket throttling ${newValue ? 'enabled' : 'disabled'}`, { 
+                          timestamp: Date.now(),
+                          component: 'KrakenPriceMonitor'
+                        });
+                      }}
+                    >
+                      {enableThrottling ? 'Disable' : 'Enable'}
+                    </Button>
+                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>Interval: {throttleInterval / 1000}s</div>
+                      <div>Pending: {pendingCount}</div>
+                      <div>Batches: {throttleStats.totalBatchesProcessed}</div>
+                      <div>Avg Size: {throttleStats.averageBatchSize}</div>
+                      <div>Last Size: {throttleStats.lastBatchSize}</div>
+                      <div>Last Duration: {throttleStats.lastProcessDuration}ms</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {!enableThrottling && (
+                <div className="mt-4">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      setEnableThrottling(true);
+                      localStorage.setItem('kraken-websocket-throttling-enabled', 'true');
+                      addLog('info', 'WebSocket throttling enabled', { 
+                        timestamp: Date.now(),
+                        component: 'KrakenPriceMonitor'
+                      });
+                    }}
+                  >
+                    Enable Throttling
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Throttling batches WebSocket updates to reduce database load.
+                  </p>
+                </div>
+              )}
               
               {contextLastUpdated && (
                 <p className="text-xs text-muted-foreground mt-4">

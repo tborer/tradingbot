@@ -87,17 +87,33 @@ export async function processAutoCryptoTrades(
       let shouldTrade = false;
       let action: 'buy' | 'sell' | null = null;
 
-      if (crypto.autoBuy && nextAction === 'buy') {
-        if (shouldBuyCrypto(priceData.price, crypto.purchasePrice, buyThreshold)) {
-          shouldTrade = true;
-          action = 'buy';
+      // Check for auto buy conditions
+      if (crypto.autoBuy) {
+        console.log(`Checking buy conditions for ${crypto.symbol}: nextAction=${nextAction}, oneTimeBuy=${oneTimeBuy}`);
+        // Check if we should buy based on either nextAction or oneTimeBuy flag
+        if ((nextAction === 'buy' || oneTimeBuy)) {
+          console.log(`Buy condition check for ${crypto.symbol}: currentPrice=${priceData.price}, purchasePrice=${crypto.purchasePrice}, buyThreshold=${buyThreshold}`);
+          if (shouldBuyCrypto(priceData.price, crypto.purchasePrice, buyThreshold)) {
+            console.log(`Buy condition met for ${crypto.symbol}!`);
+            shouldTrade = true;
+            action = 'buy';
+          }
         }
       }
 
-      if (crypto.autoSell && nextAction === 'sell') {
-        if (shouldSellCrypto(priceData.price, crypto.purchasePrice, sellThreshold)) {
-          shouldTrade = true;
-          action = 'sell';
+      // Check for auto sell conditions
+      if (crypto.autoSell) {
+        console.log(`Checking sell conditions for ${crypto.symbol}: nextAction=${nextAction}, oneTimeSell=${oneTimeSell}`);
+        // Check if we should sell based on either nextAction or oneTimeSell flag
+        if ((nextAction === 'sell' || oneTimeSell)) {
+          console.log(`Sell condition check for ${crypto.symbol}: currentPrice=${priceData.price}, purchasePrice=${crypto.purchasePrice}, sellThreshold=${sellThreshold}`);
+          const percentGain = ((priceData.price - crypto.purchasePrice) / crypto.purchasePrice) * 100;
+          console.log(`Current gain for ${crypto.symbol}: ${percentGain.toFixed(2)}% (threshold: ${sellThreshold}%)`);
+          if (shouldSellCrypto(priceData.price, crypto.purchasePrice, sellThreshold)) {
+            console.log(`Sell condition met for ${crypto.symbol}!`);
+            shouldTrade = true;
+            action = 'sell';
+          }
         }
       }
 
@@ -269,17 +285,33 @@ export async function checkCryptoForAutoTrade(
     let shouldTrade = false;
     let action: 'buy' | 'sell' | null = null;
 
-    if (crypto.autoBuy && nextAction === 'buy') {
-      if (shouldBuyCrypto(price, crypto.purchasePrice, buyThreshold)) {
-        shouldTrade = true;
-        action = 'buy';
+    // Check for auto buy conditions
+    if (crypto.autoBuy) {
+      console.log(`Checking buy conditions for ${crypto.symbol}: nextAction=${nextAction}, oneTimeBuy=${oneTimeBuy}`);
+      // Check if we should buy based on either nextAction or oneTimeBuy flag
+      if ((nextAction === 'buy' || oneTimeBuy)) {
+        console.log(`Buy condition check for ${crypto.symbol}: currentPrice=${price}, purchasePrice=${crypto.purchasePrice}, buyThreshold=${buyThreshold}`);
+        if (shouldBuyCrypto(price, crypto.purchasePrice, buyThreshold)) {
+          console.log(`Buy condition met for ${crypto.symbol}!`);
+          shouldTrade = true;
+          action = 'buy';
+        }
       }
     }
 
-    if (crypto.autoSell && nextAction === 'sell') {
-      if (shouldSellCrypto(price, crypto.purchasePrice, sellThreshold)) {
-        shouldTrade = true;
-        action = 'sell';
+    // Check for auto sell conditions
+    if (crypto.autoSell) {
+      console.log(`Checking sell conditions for ${crypto.symbol}: nextAction=${nextAction}, oneTimeSell=${oneTimeSell}`);
+      // Check if we should sell based on either nextAction or oneTimeSell flag
+      if ((nextAction === 'sell' || oneTimeSell)) {
+        console.log(`Sell condition check for ${crypto.symbol}: currentPrice=${price}, purchasePrice=${crypto.purchasePrice}, sellThreshold=${sellThreshold}`);
+        const percentGain = ((price - crypto.purchasePrice) / crypto.purchasePrice) * 100;
+        console.log(`Current gain for ${crypto.symbol}: ${percentGain.toFixed(2)}% (threshold: ${sellThreshold}%)`);
+        if (shouldSellCrypto(price, crypto.purchasePrice, sellThreshold)) {
+          console.log(`Sell condition met for ${crypto.symbol}!`);
+          shouldTrade = true;
+          action = 'sell';
+        }
       }
     }
 

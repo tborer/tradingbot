@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
+import { getApiUrl } from '@/lib/utils';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -76,9 +77,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Execute the order using the Kraken API
     try {
       // Call the execute-order API endpoint to use the Kraken API
-      // Fix: Use absolute URL with origin for API calls
-      const origin = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-      const executeOrderResponse = await fetch(`${origin}/api/cryptos/execute-order`, {
+      // Use absolute URL with proper base URL for server-side API calls
+      const apiUrl = getApiUrl('/api/cryptos/execute-order');
+      console.log('Calling execute-order API at:', apiUrl);
+      
+      const executeOrderResponse = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -91,9 +94,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           orderType: effectiveOrderType,
           isAutoOrder: req.body.isAutoOrder || false
         })
+      }).catch(error => {
+        console.error('Network error calling execute-order API:', error);
+        throw new Error(`Network error: ${error.message}`);
       });
 
-      const executeOrderResult = await executeOrderResponse.json();
+      if (!executeOrderResponse) {
+        throw new Error('No response received from execute-order API');
+      }
+
+      const executeOrderResult = await executeOrderResponse.json().catch(error => {
+        console.error('Error parsing JSON response from execute-order API:', error);
+        throw new Error('Invalid response format from execute-order API');
+      });
 
       if (!executeOrderResponse.ok) {
         // The execute-order endpoint already logs the failed transaction
@@ -142,7 +155,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         details: error.message,
         transaction // Return the transaction record for the client
       });
-      
     }
     
 

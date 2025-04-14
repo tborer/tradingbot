@@ -6,8 +6,12 @@ import { KrakenOrderRequest, KrakenOrderResponse, getKrakenTradingPair, generate
 import { createHash, createHmac } from 'crypto';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  console.log('Execute Order API called with method:', req.method);
+  console.log('Request body:', JSON.stringify(req.body));
+  
   // Only allow POST requests
   if (req.method !== 'POST') {
+    console.error('Execute Order API: Method not allowed:', req.method);
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
@@ -17,7 +21,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   
   if (authError || !user) {
-    console.error('Authentication error:', authError);
+    console.error('Execute Order API: Authentication error:', authError);
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -111,6 +115,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (krakenResponse.error && krakenResponse.error.length > 0) {
       console.error('Kraken API error:', krakenResponse.error);
+      
+      // Calculate total amount
+      const totalAmount = shares * price;
       
       // Record the failed transaction with error details
       await prisma.cryptoTransaction.create({

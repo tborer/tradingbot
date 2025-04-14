@@ -442,8 +442,8 @@ export default function SortableCryptoList({
     if (onTrade) {
       setIsSubmitting(true);
       try {
-        // Pass the orderType to the API through the URL query parameter
-        const response = await fetch(`/api/cryptos/trade`, {
+        // Make sure we're using the correct API endpoint path
+        const response = await fetch('/api/cryptos/trade', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

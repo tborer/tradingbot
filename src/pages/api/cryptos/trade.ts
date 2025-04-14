@@ -4,6 +4,9 @@ import prisma from '@/lib/prisma';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
+    console.log('Trade API called with method:', req.method);
+    console.log('Request body:', JSON.stringify(req.body));
+    
     // Initialize Supabase client
     const supabase = createClient(req, res);
     
@@ -11,11 +14,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
+      console.error('Trade API: Unauthorized access attempt');
       return res.status(401).json({ error: 'Unauthorized' });
     }
     
     // Only allow POST requests
     if (req.method !== 'POST') {
+      console.error('Trade API: Method not allowed:', req.method);
       return res.status(405).json({ error: 'Method not allowed' });
     }
     

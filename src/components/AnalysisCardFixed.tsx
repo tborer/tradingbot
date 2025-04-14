@@ -324,6 +324,8 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
           bands.upper !== null && bands.middle !== null && bands.lower !== null) {
         const breakoutResult = detectBreakoutPatterns(extractedPrices, trendLinesValues, bands);
         setBreakoutAnalysis(breakoutResult);
+      } else {
+        setBreakoutAnalysis(null);
       }
 
       // Generate recommendation
@@ -340,7 +342,14 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
       if (ema12Value !== null && ema26Value !== null && rsi14Value !== null && 
           bands.upper !== null && bands.middle !== null && bands.lower !== null && 
           trendLinesValues.support !== null && trendLinesValues.resistance !== null && 
-          sma20Value !== null && breakoutAnalysis !== null) {
+          sma20Value !== null) {
+        // For breakout analysis, we need to check if we have enough data to detect patterns
+        const breakoutResult = extractedPrices.length >= 10 && trendLinesValues.support !== null && 
+                              trendLinesValues.resistance !== null && bands.upper !== null && 
+                              bands.middle !== null && bands.lower !== null ? 
+                              detectBreakoutPatterns(extractedPrices, trendLinesValues, bands) : null;
+        
+        // Calculate the weighted decision with all available indicators
         const decision = calculateWeightedDecision(
           price,
           ema12Value,
@@ -350,7 +359,7 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
           trendLinesValues,
           sma20Value,
           fibLevels,
-          breakoutAnalysis
+          breakoutResult
         );
         setWeightedDecision(decision);
       }

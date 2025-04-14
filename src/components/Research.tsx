@@ -20,6 +20,8 @@ const Research: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [openAIApiKey, setOpenAIApiKey] = useState<string | null>(null);
+  const [anthropicApiKey, setAnthropicApiKey] = useState<string | null>(null);
+  const [researchApiPreference, setResearchApiPreference] = useState<string>('openai');
   const [plan, setPlan] = useState<string | null>(null);
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -44,12 +46,17 @@ const Research: React.FC = () => {
           // Log the API keys for debugging (without showing the actual keys)
           console.log('API keys fetched:', {
             hasAlphaVantageApiKey: !!data.alphaVantageApiKey,
-            hasCoinDeskApiKey: !!data.coinDeskApiKey
+            hasCoinDeskApiKey: !!data.coinDeskApiKey,
+            hasOpenAIApiKey: !!data.openAIApiKey,
+            hasAnthropicApiKey: !!data.anthropicApiKey,
+            researchApiPreference: data.researchApiPreference
           });
           
           setAlphaVantageApiKey(data.alphaVantageApiKey || null);
           setCoinDeskApiKey(data.coinDeskApiKey || null);
           setOpenAIApiKey(data.openAIApiKey || null);
+          setAnthropicApiKey(data.anthropicApiKey || null);
+          setResearchApiPreference(data.researchApiPreference || 'openai');
           setApiKey(data.alphaVantageApiKey || null); // For backward compatibility
           
           // Add a log entry for debugging
@@ -58,7 +65,10 @@ const Research: React.FC = () => {
             method: 'GET',
             response: {
               hasAlphaVantageApiKey: !!data.alphaVantageApiKey,
-              hasCoinDeskApiKey: !!data.coinDeskApiKey
+              hasCoinDeskApiKey: !!data.coinDeskApiKey,
+              hasOpenAIApiKey: !!data.openAIApiKey,
+              hasAnthropicApiKey: !!data.anthropicApiKey,
+              researchApiPreference: data.researchApiPreference
             },
             status: 200
           });
@@ -431,11 +441,20 @@ const Research: React.FC = () => {
   };
 
   const generatePlan = useCallback(async () => {
-    // Check if OpenAI API key is available
-    if (!openAIApiKey) {
+    // Check if the appropriate API key is available based on preference
+    if (researchApiPreference === 'openai' && !openAIApiKey) {
       toast({
         title: "OpenAI API Key Missing",
         description: "Please add your OpenAI API key in the settings tab",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    if (researchApiPreference === 'anthropic' && !anthropicApiKey) {
+      toast({
+        title: "Anthropic API Key Missing",
+        description: "Please add your Anthropic API key in the settings tab",
         variant: "destructive"
       });
       return;
@@ -529,7 +548,7 @@ const Research: React.FC = () => {
     } finally {
       setGeneratingPlan(false);
     }
-  }, [items, openAIApiKey, toast, addLog]);
+  }, [items, openAIApiKey, anthropicApiKey, researchApiPreference, toast, addLog]);
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -785,19 +804,29 @@ const Research: React.FC = () => {
             </div>
             <Button 
               onClick={generatePlan} 
-              disabled={generatingPlan || !openAIApiKey}
+              disabled={generatingPlan || (researchApiPreference === 'openai' && !openAIApiKey) || (researchApiPreference === 'anthropic' && !anthropicApiKey)}
             >
               {generatingPlan ? "Generating..." : "Create Plan"}
             </Button>
           </div>
         </CardHeader>
         <CardContent>
-          {!openAIApiKey && (
+          {(researchApiPreference === 'openai' && !openAIApiKey) && (
             <Alert variant="destructive" className="mb-4">
               <CrossCircledIcon className="h-4 w-4" />
               <AlertTitle>OpenAI API Key Missing</AlertTitle>
               <AlertDescription>
                 Please add your OpenAI API key in the settings tab to use this feature.
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          {(researchApiPreference === 'anthropic' && !anthropicApiKey) && (
+            <Alert variant="destructive" className="mb-4">
+              <CrossCircledIcon className="h-4 w-4" />
+              <AlertTitle>Anthropic API Key Missing</AlertTitle>
+              <AlertDescription>
+                Please add your Anthropic API key in the settings tab to use this feature.
               </AlertDescription>
             </Alert>
           )}

@@ -1686,11 +1686,19 @@ export default function Dashboard() {
                         }
                       />
                       
-                      {/* OpenAI API Settings */}
+                      {/* AI API Settings */}
                       <OpenAISettings
-                        apiKey={settings.openAIApiKey || ''}
-                        onApiKeyChange={(apiKey) => 
+                        openAIApiKey={settings.openAIApiKey || ''}
+                        anthropicApiKey={settings.anthropicApiKey || ''}
+                        apiPreference={settings.researchApiPreference || 'openai'}
+                        onOpenAIApiKeyChange={(apiKey) => 
                           setSettings({ ...settings, openAIApiKey: apiKey })
+                        }
+                        onAnthropicApiKeyChange={(apiKey) => 
+                          setSettings({ ...settings, anthropicApiKey: apiKey })
+                        }
+                        onApiPreferenceChange={(preference) => 
+                          setSettings({ ...settings, researchApiPreference: preference })
                         }
                       />
                     </div>

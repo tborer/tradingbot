@@ -30,7 +30,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     logRequest('User authenticated', { userId: user.id });
 
-    // Get the user's OpenAI API key from settings
+    // Get the user's API keys from settings
     logRequest('Fetching settings', { userId: user.id });
     const settings = await prisma.settings.findUnique({
       where: { userId: user.id },
@@ -41,12 +41,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Settings not found. Please configure your settings first.' });
     }
 
-    if (!settings.openAIApiKey) {
+    // Check which API to use based on user preference
+    const apiPreference = settings.researchApiPreference || 'openai';
+    logRequest('API preference', { preference: apiPreference });
+
+    if (apiPreference === 'openai' && !settings.openAIApiKey) {
       logRequest('OpenAI API key missing', { userId: user.id });
       return res.status(400).json({ error: 'OpenAI API key not found. Please add it in the settings.' });
     }
 
-    logRequest('Settings retrieved', { hasOpenAIKey: !!settings.openAIApiKey });
+    if (apiPreference === 'anthropic' && !settings.anthropicApiKey) {
+      logRequest('Anthropic API key missing', { userId: user.id });
+      return res.status(400).json({ error: 'Anthropic API key not found. Please add it in the settings.' });
+    }
+
+    logRequest('Settings retrieved', { 
+      hasOpenAIKey: !!settings.openAIApiKey,
+      hasAnthropicKey: !!settings.anthropicApiKey,
+      apiPreference
+    });
 
     // Get the analysis data from the request body
     const { analysisData } = req.body;
@@ -120,80 +133,161 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // Make the OpenAI API request
-    logRequest('Sending request to OpenAI', { 
-      model: "gpt-3.5-turbo",
-      messageCount: 2
-    });
-
-    try {
-      const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${settings.openAIApiKey}`
-        },
-        body: JSON.stringify({
-          model: "gpt-3.5-turbo",
-          messages: [
-            { role: "system", content: "You are a crypto trading analyst." },
-            { role: "user", content: prompt }
-          ]
-        })
+    // Make the API request based on user preference
+    if (apiPreference === 'openai') {
+      logRequest('Sending request to OpenAI', { 
+        model: "gpt-3.5-turbo",
+        messageCount: 2
       });
 
-      logRequest('OpenAI response received', { 
-        status: openaiResponse.status,
-        statusText: openaiResponse.statusText,
-        ok: openaiResponse.ok
-      });
+      try {
+        const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${settings.openAIApiKey}`
+          },
+          body: JSON.stringify({
+            model: "gpt-3.5-turbo",
+            messages: [
+              { role: "system", content: "You are a crypto trading analyst." },
+              { role: "user", content: prompt }
+            ]
+          })
+        });
 
-      if (!openaiResponse.ok) {
-        const errorData = await openaiResponse.json();
-        logRequest('OpenAI API error', { 
+        logRequest('OpenAI response received', { 
           status: openaiResponse.status,
-          error: errorData
+          statusText: openaiResponse.statusText,
+          ok: openaiResponse.ok
         });
-        console.error('OpenAI API error:', errorData);
-        return res.status(openaiResponse.status).json({ 
-          error: 'Error from OpenAI API', 
-          details: errorData 
+
+        if (!openaiResponse.ok) {
+          const errorData = await openaiResponse.json();
+          logRequest('OpenAI API error', { 
+            status: openaiResponse.status,
+            error: errorData
+          });
+          console.error('OpenAI API error:', errorData);
+          return res.status(openaiResponse.status).json({ 
+            error: 'Error from OpenAI API', 
+            details: errorData 
+          });
+        }
+
+        const data = await openaiResponse.json();
+        
+        logRequest('OpenAI response parsed', { 
+          hasChoices: !!data.choices,
+          choicesLength: data.choices?.length || 0,
+          hasContent: !!data.choices?.[0]?.message?.content
         });
-      }
 
-      const data = await openaiResponse.json();
-      
-      logRequest('OpenAI response parsed', { 
-        hasChoices: !!data.choices,
-        choicesLength: data.choices?.length || 0,
-        hasContent: !!data.choices?.[0]?.message?.content
-      });
+        if (!data.choices || !data.choices.length || !data.choices[0].message) {
+          logRequest('Invalid OpenAI response format', { data });
+          return res.status(500).json({ 
+            error: 'Invalid response format from OpenAI API',
+            details: data
+          });
+        }
 
-      if (!data.choices || !data.choices.length || !data.choices[0].message) {
-        logRequest('Invalid OpenAI response format', { data });
+        const planText = data.choices[0].message.content;
+
+        logRequest('Plan generated successfully', { 
+          planLength: planText.length,
+          planPreview: planText.substring(0, 100) + '...'
+        });
+
+        return res.status(200).json({ plan: planText });
+      } catch (openaiError) {
+        logRequest('OpenAI API request failed', { 
+          error: openaiError instanceof Error ? openaiError.message : 'Unknown OpenAI error'
+        });
+        console.error('OpenAI API request failed:', openaiError);
         return res.status(500).json({ 
-          error: 'Invalid response format from OpenAI API',
-          details: data
+          error: 'Failed to communicate with OpenAI API', 
+          details: openaiError instanceof Error ? openaiError.message : 'Unknown OpenAI error' 
         });
       }
-
-      const planText = data.choices[0].message.content;
-
-      logRequest('Plan generated successfully', { 
-        planLength: planText.length,
-        planPreview: planText.substring(0, 100) + '...'
+    } else if (apiPreference === 'anthropic') {
+      logRequest('Sending request to Anthropic', { 
+        model: "claude-3-haiku-20240307",
+        messageCount: 2
       });
 
-      return res.status(200).json({ plan: planText });
-    } catch (openaiError) {
-      logRequest('OpenAI API request failed', { 
-        error: openaiError instanceof Error ? openaiError.message : 'Unknown OpenAI error'
-      });
-      console.error('OpenAI API request failed:', openaiError);
-      return res.status(500).json({ 
-        error: 'Failed to communicate with OpenAI API', 
-        details: openaiError instanceof Error ? openaiError.message : 'Unknown OpenAI error' 
-      });
+      try {
+        const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': settings.anthropicApiKey,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: "claude-3-haiku-20240307",
+            max_tokens: 4000,
+            system: "You are a crypto trading analyst.",
+            messages: [
+              { role: "user", content: prompt }
+            ]
+          })
+        });
+
+        logRequest('Anthropic response received', { 
+          status: anthropicResponse.status,
+          statusText: anthropicResponse.statusText,
+          ok: anthropicResponse.ok
+        });
+
+        if (!anthropicResponse.ok) {
+          const errorData = await anthropicResponse.json();
+          logRequest('Anthropic API error', { 
+            status: anthropicResponse.status,
+            error: errorData
+          });
+          console.error('Anthropic API error:', errorData);
+          return res.status(anthropicResponse.status).json({ 
+            error: 'Error from Anthropic API', 
+            details: errorData 
+          });
+        }
+
+        const data = await anthropicResponse.json();
+        
+        logRequest('Anthropic response parsed', { 
+          hasContent: !!data.content,
+          contentLength: data.content?.length || 0
+        });
+
+        if (!data.content || !data.content.length) {
+          logRequest('Invalid Anthropic response format', { data });
+          return res.status(500).json({ 
+            error: 'Invalid response format from Anthropic API',
+            details: data
+          });
+        }
+
+        const planText = data.content[0].text;
+
+        logRequest('Plan generated successfully', { 
+          planLength: planText.length,
+          planPreview: planText.substring(0, 100) + '...'
+        });
+
+        return res.status(200).json({ plan: planText });
+      } catch (anthropicError) {
+        logRequest('Anthropic API request failed', { 
+          error: anthropicError instanceof Error ? anthropicError.message : 'Unknown Anthropic error'
+        });
+        console.error('Anthropic API request failed:', anthropicError);
+        return res.status(500).json({ 
+          error: 'Failed to communicate with Anthropic API', 
+          details: anthropicError instanceof Error ? anthropicError.message : 'Unknown Anthropic error' 
+        });
+      }
+    } else {
+      logRequest('Invalid API preference', { preference: apiPreference });
+      return res.status(400).json({ error: 'Invalid API preference. Please select either "openai" or "anthropic".' });
     }
   } catch (error) {
     logRequest('Unhandled error', { 

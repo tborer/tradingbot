@@ -48,6 +48,8 @@ model Settings {
   alphaVantageApiKey String?
   coinDeskApiKey    String?
   openAIApiKey      String?
+  anthropicApiKey   String?
+  researchApiPreference String @default("openai") // Values: "openai" or "anthropic"
   enableAutoStockTrading Boolean @default(false)
   enableAutoCryptoTrading Boolean @default(false)
   enableManualCryptoTrading Boolean @default(false)

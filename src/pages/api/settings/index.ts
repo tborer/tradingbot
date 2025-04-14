@@ -98,6 +98,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (alphaVantageApiKey !== undefined) updateData['alphaVantageApiKey'] = alphaVantageApiKey;
       if (coinDeskApiKey !== undefined) updateData['coinDeskApiKey'] = coinDeskApiKey;
       if (req.body.openAIApiKey !== undefined) updateData['openAIApiKey'] = req.body.openAIApiKey;
+      if (req.body.anthropicApiKey !== undefined) updateData['anthropicApiKey'] = req.body.anthropicApiKey;
+      if (req.body.researchApiPreference !== undefined) updateData['researchApiPreference'] = req.body.researchApiPreference;
       if (krakenWebsocketUrl !== undefined) updateData['krakenWebsocketUrl'] = krakenWebsocketUrl;
       
       const settings = await prisma.settings.upsert({

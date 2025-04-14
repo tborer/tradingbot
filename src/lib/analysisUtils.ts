@@ -810,6 +810,361 @@ export function getBreakoutMessage(
   return message;
 }
 
+/**
+ * Calculate a weighted average decision based on all technical indicators
+ * @param currentPrice Current price
+ * @param ema12 12-day EMA value
+ * @param ema26 26-day EMA value
+ * @param rsi14 14-day RSI value
+ * @param bollingerBands Bollinger Bands values
+ * @param trendLines Support and resistance levels
+ * @param sma20 20-day SMA value
+ * @param fibonacciLevels Fibonacci retracement levels
+ * @param breakoutAnalysis Breakout pattern analysis results
+ * @returns Object containing decision (buy/sell/hold) and confidence score
+ */
+export function calculateWeightedDecision(
+  currentPrice: number,
+  ema12: number | null,
+  ema26: number | null,
+  rsi14: number | null,
+  bollingerBands: { upper: number | null; middle: number | null; lower: number | null },
+  trendLines: { support: number | null; resistance: number | null },
+  sma20: number | null,
+  fibonacciLevels: ReturnType<typeof calculateFibonacciRetracements> | null,
+  breakoutAnalysis: ReturnType<typeof detectBreakoutPatterns> | null
+): { decision: 'buy' | 'sell' | 'hold'; confidence: number; explanation: string } {
+  // Initialize scores for each decision type
+  let buyScore = 0;
+  let sellScore = 0;
+  let holdScore = 0;
+  
+  // Track which indicators contributed to the decision
+  const buyIndicators: string[] = [];
+  const sellIndicators: string[] = [];
+  const holdIndicators: string[] = [];
+  
+  // 1. EMA Analysis (15% weight)
+  if (ema12 !== null && ema26 !== null) {
+    const emaWeight = 0.15;
+    
+    // Bullish: EMA12 > EMA26
+    if (ema12 > ema26) {
+      buyScore += emaWeight;
+      buyIndicators.push('EMA crossover (bullish)');
+    } 
+    // Bearish: EMA12 < EMA26
+    else if (ema12 < ema26) {
+      sellScore += emaWeight;
+      sellIndicators.push('EMA crossover (bearish)');
+    }
+    // Neutral: EMA12 ≈ EMA26
+    else {
+      holdScore += emaWeight;
+      holdIndicators.push('EMA (neutral)');
+    }
+  }
+  
+  // 2. RSI Analysis (20% weight)
+  if (rsi14 !== null) {
+    const rsiWeight = 0.20;
+    
+    // Oversold: RSI < 30 (buy signal)
+    if (rsi14 < 30) {
+      buyScore += rsiWeight;
+      buyIndicators.push('RSI oversold');
+    }
+    // Overbought: RSI > 70 (sell signal)
+    else if (rsi14 > 70) {
+      sellScore += rsiWeight;
+      sellIndicators.push('RSI overbought');
+    }
+    // Approaching oversold: 30 <= RSI < 40
+    else if (rsi14 < 40) {
+      buyScore += rsiWeight * 0.5;
+      holdScore += rsiWeight * 0.5;
+      buyIndicators.push('RSI approaching oversold');
+    }
+    // Approaching overbought: 60 < RSI <= 70
+    else if (rsi14 > 60) {
+      sellScore += rsiWeight * 0.5;
+      holdScore += rsiWeight * 0.5;
+      sellIndicators.push('RSI approaching overbought');
+    }
+    // Neutral: 40 <= RSI <= 60
+    else {
+      holdScore += rsiWeight;
+      holdIndicators.push('RSI neutral');
+    }
+  }
+  
+  // 3. Bollinger Bands Analysis (15% weight)
+  if (bollingerBands.upper !== null && bollingerBands.middle !== null && bollingerBands.lower !== null) {
+    const bbWeight = 0.15;
+    
+    // Calculate %B (position within the bands)
+    const percentB = (currentPrice - bollingerBands.lower) / (bollingerBands.upper - bollingerBands.lower);
+    
+    // Below lower band (oversold)
+    if (currentPrice < bollingerBands.lower) {
+      buyScore += bbWeight;
+      buyIndicators.push('Price below lower Bollinger Band');
+    }
+    // Above upper band (overbought)
+    else if (currentPrice > bollingerBands.upper) {
+      sellScore += bbWeight;
+      sellIndicators.push('Price above upper Bollinger Band');
+    }
+    // Near lower band (approaching oversold)
+    else if (percentB < 0.2) {
+      buyScore += bbWeight * 0.7;
+      holdScore += bbWeight * 0.3;
+      buyIndicators.push('Price near lower Bollinger Band');
+    }
+    // Near upper band (approaching overbought)
+    else if (percentB > 0.8) {
+      sellScore += bbWeight * 0.7;
+      holdScore += bbWeight * 0.3;
+      sellIndicators.push('Price near upper Bollinger Band');
+    }
+    // Middle of the bands (neutral)
+    else {
+      holdScore += bbWeight;
+      holdIndicators.push('Price within Bollinger Bands');
+    }
+  }
+  
+  // 4. Trend Lines Analysis (15% weight)
+  if (trendLines.support !== null && trendLines.resistance !== null) {
+    const trendWeight = 0.15;
+    
+    // Below support (strong buy or continued downtrend)
+    if (currentPrice < trendLines.support) {
+      // If we're in a confirmed downtrend, this could be continuation
+      if (sma20 !== null && currentPrice < sma20) {
+        sellScore += trendWeight * 0.6;
+        buyScore += trendWeight * 0.4; // Still some buy potential due to oversold
+        sellIndicators.push('Price below support in downtrend');
+      } else {
+        buyScore += trendWeight;
+        buyIndicators.push('Price below support');
+      }
+    }
+    // Above resistance (strong sell or continued uptrend)
+    else if (currentPrice > trendLines.resistance) {
+      // If we're in a confirmed uptrend, this could be continuation
+      if (sma20 !== null && currentPrice > sma20) {
+        buyScore += trendWeight * 0.6;
+        sellScore += trendWeight * 0.4; // Still some sell potential due to overbought
+        buyIndicators.push('Price above resistance in uptrend');
+      } else {
+        sellScore += trendWeight;
+        sellIndicators.push('Price above resistance');
+      }
+    }
+    // Near support (potential buy)
+    else if (Math.abs((currentPrice - trendLines.support) / trendLines.support) < 0.03) {
+      buyScore += trendWeight * 0.8;
+      holdScore += trendWeight * 0.2;
+      buyIndicators.push('Price near support');
+    }
+    // Near resistance (potential sell)
+    else if (Math.abs((currentPrice - trendLines.resistance) / trendLines.resistance) < 0.03) {
+      sellScore += trendWeight * 0.8;
+      holdScore += trendWeight * 0.2;
+      sellIndicators.push('Price near resistance');
+    }
+    // In the middle of the range (hold)
+    else {
+      holdScore += trendWeight;
+      holdIndicators.push('Price between support and resistance');
+    }
+  }
+  
+  // 5. Simple Moving Average Analysis (10% weight)
+  if (sma20 !== null) {
+    const smaWeight = 0.10;
+    
+    // Price above SMA (bullish)
+    if (currentPrice > sma20) {
+      buyScore += smaWeight;
+      buyIndicators.push('Price above SMA');
+    }
+    // Price below SMA (bearish)
+    else if (currentPrice < sma20) {
+      sellScore += smaWeight;
+      sellIndicators.push('Price below SMA');
+    }
+    // Price at SMA (neutral)
+    else {
+      holdScore += smaWeight;
+      holdIndicators.push('Price at SMA');
+    }
+  }
+  
+  // 6. Fibonacci Retracement Analysis (10% weight)
+  if (fibonacciLevels !== null) {
+    const fibWeight = 0.10;
+    
+    // Find the closest Fibonacci level
+    const levels = [
+      { name: '0%', value: fibonacciLevels.level0 },
+      { name: '23.6%', value: fibonacciLevels.level236 },
+      { name: '38.2%', value: fibonacciLevels.level382 },
+      { name: '50%', value: fibonacciLevels.level500 },
+      { name: '61.8%', value: fibonacciLevels.level618 },
+      { name: '78.6%', value: fibonacciLevels.level786 },
+      { name: '100%', value: fibonacciLevels.level1000 }
+    ];
+    
+    // Sort levels by distance to current price
+    const sortedLevels = [...levels].sort((a, b) => 
+      Math.abs(a.value - currentPrice) - Math.abs(b.value - currentPrice)
+    );
+    
+    const closestLevel = sortedLevels[0];
+    
+    // At 0% level (potential reversal/sell)
+    if (closestLevel.name === '0%' && Math.abs(currentPrice - closestLevel.value) / closestLevel.value < 0.02) {
+      sellScore += fibWeight;
+      sellIndicators.push('Price at 0% Fibonacci level');
+    }
+    // At 100% level (potential reversal/buy)
+    else if (closestLevel.name === '100%' && Math.abs(currentPrice - closestLevel.value) / closestLevel.value < 0.02) {
+      buyScore += fibWeight;
+      buyIndicators.push('Price at 100% Fibonacci level');
+    }
+    // At 61.8% level (golden ratio - strong support/resistance)
+    else if (closestLevel.name === '61.8%' && Math.abs(currentPrice - closestLevel.value) / closestLevel.value < 0.02) {
+      // If price is falling to this level, it's a potential buy
+      if (currentPrice < fibonacciLevels.level500) {
+        buyScore += fibWeight * 0.7;
+        holdScore += fibWeight * 0.3;
+        buyIndicators.push('Price at 61.8% Fibonacci support');
+      }
+      // If price is rising to this level, it's a potential resistance/sell
+      else {
+        sellScore += fibWeight * 0.7;
+        holdScore += fibWeight * 0.3;
+        sellIndicators.push('Price at 61.8% Fibonacci resistance');
+      }
+    }
+    // At 50% level (neutral retracement)
+    else if (closestLevel.name === '50%' && Math.abs(currentPrice - closestLevel.value) / closestLevel.value < 0.02) {
+      holdScore += fibWeight;
+      holdIndicators.push('Price at 50% Fibonacci level');
+    }
+    // At other levels or between levels
+    else {
+      holdScore += fibWeight * 0.7;
+      
+      // Slight bias based on position in the retracement
+      if (currentPrice < fibonacciLevels.level500) {
+        buyScore += fibWeight * 0.3;
+        holdIndicators.push('Price in lower half of Fibonacci range');
+      } else {
+        sellScore += fibWeight * 0.3;
+        holdIndicators.push('Price in upper half of Fibonacci range');
+      }
+    }
+  }
+  
+  // 7. Breakout Patterns Analysis (15% weight)
+  if (breakoutAnalysis !== null) {
+    const breakoutWeight = 0.15;
+    
+    if (breakoutAnalysis.breakoutDetected) {
+      // Strong bullish breakout
+      if (breakoutAnalysis.breakoutType === 'bullish' && breakoutAnalysis.breakoutStrength === 'strong') {
+        buyScore += breakoutWeight;
+        buyIndicators.push('Strong bullish breakout');
+      }
+      // Moderate bullish breakout
+      else if (breakoutAnalysis.breakoutType === 'bullish' && breakoutAnalysis.breakoutStrength === 'moderate') {
+        buyScore += breakoutWeight * 0.8;
+        holdScore += breakoutWeight * 0.2;
+        buyIndicators.push('Moderate bullish breakout');
+      }
+      // Weak bullish breakout
+      else if (breakoutAnalysis.breakoutType === 'bullish' && breakoutAnalysis.breakoutStrength === 'weak') {
+        buyScore += breakoutWeight * 0.6;
+        holdScore += breakoutWeight * 0.4;
+        buyIndicators.push('Weak bullish breakout');
+      }
+      // Strong bearish breakout
+      else if (breakoutAnalysis.breakoutType === 'bearish' && breakoutAnalysis.breakoutStrength === 'strong') {
+        sellScore += breakoutWeight;
+        sellIndicators.push('Strong bearish breakout');
+      }
+      // Moderate bearish breakout
+      else if (breakoutAnalysis.breakoutType === 'bearish' && breakoutAnalysis.breakoutStrength === 'moderate') {
+        sellScore += breakoutWeight * 0.8;
+        holdScore += breakoutWeight * 0.2;
+        sellIndicators.push('Moderate bearish breakout');
+      }
+      // Weak bearish breakout
+      else if (breakoutAnalysis.breakoutType === 'bearish' && breakoutAnalysis.breakoutStrength === 'weak') {
+        sellScore += breakoutWeight * 0.6;
+        holdScore += breakoutWeight * 0.4;
+        sellIndicators.push('Weak bearish breakout');
+      }
+    } else {
+      // No breakout, but potential setup
+      if (breakoutAnalysis.consolidationDetected && breakoutAnalysis.volatilityContraction) {
+        holdScore += breakoutWeight * 0.8;
+        // Slight bias based on price position
+        if (breakoutAnalysis.priceNearResistance) {
+          buyScore += breakoutWeight * 0.2;
+          holdIndicators.push('Consolidation near resistance');
+        } else if (breakoutAnalysis.priceNearSupport) {
+          sellScore += breakoutWeight * 0.2;
+          holdIndicators.push('Consolidation near support');
+        } else {
+          holdScore += breakoutWeight * 0.2;
+          holdIndicators.push('Price consolidation with contracting volatility');
+        }
+      }
+      // Normal market conditions
+      else {
+        holdScore += breakoutWeight;
+        holdIndicators.push('No breakout patterns');
+      }
+    }
+  }
+  
+  // Determine the final decision
+  let decision: 'buy' | 'sell' | 'hold';
+  let confidence: number;
+  let explanation: string;
+  
+  // Calculate total score (should be close to 1.0 if all indicators were available)
+  const totalScore = buyScore + sellScore + holdScore;
+  
+  // Normalize scores if we have a valid total
+  if (totalScore > 0) {
+    buyScore = buyScore / totalScore;
+    sellScore = sellScore / totalScore;
+    holdScore = holdScore / totalScore;
+  }
+  
+  // Determine decision based on highest score
+  if (buyScore > sellScore && buyScore > holdScore) {
+    decision = 'buy';
+    confidence = buyScore;
+    explanation = `Buy recommendation (${(buyScore * 100).toFixed(1)}% confidence) based on: ${buyIndicators.join(', ')}`;
+  } else if (sellScore > buyScore && sellScore > holdScore) {
+    decision = 'sell';
+    confidence = sellScore;
+    explanation = `Sell recommendation (${(sellScore * 100).toFixed(1)}% confidence) based on: ${sellIndicators.join(', ')}`;
+  } else {
+    decision = 'hold';
+    confidence = holdScore;
+    explanation = `Hold recommendation (${(holdScore * 100).toFixed(1)}% confidence) based on: ${holdIndicators.join(', ')}`;
+  }
+  
+  return { decision, confidence, explanation };
+}
+
 export function generateRecommendation(
   currentPrice: number,
   sma: number | null,

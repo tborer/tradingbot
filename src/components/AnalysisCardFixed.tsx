@@ -18,7 +18,10 @@ import {
   calculateEMA,
   getEMAMessage,
   calculateRSI,
-  getRSIMessage
+  getRSIMessage,
+  detectBreakoutPatterns,
+  getBreakoutMessage,
+  calculateWeightedDecision
 } from '@/lib/analysisUtils';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -61,6 +64,12 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
     middle: null,
     lower: null
   });
+  const [breakoutAnalysis, setBreakoutAnalysis] = useState<ReturnType<typeof detectBreakoutPatterns> | null>(null);
+  const [weightedDecision, setWeightedDecision] = useState<{ 
+    decision: 'buy' | 'sell' | 'hold'; 
+    confidence: number; 
+    explanation: string 
+  } | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [dataSource, setDataSource] = useState<string>('');
   const [includedInPlan, setIncludedInPlan] = useState<boolean>(false);
@@ -293,6 +302,7 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
       setTrendLines(trendLinesValues);
 
       // Calculate Fibonacci retracement levels
+      let fibLevels = null;
       if (extractedPrices.length >= 2) {
         // Find highest and lowest prices in the dataset
         const sortedPrices = [...extractedPrices].sort((a, b) => a - b);
@@ -300,7 +310,7 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
         const highestPrice = sortedPrices[sortedPrices.length - 1];
         
         // Calculate Fibonacci levels
-        const fibLevels = calculateFibonacciRetracements(highestPrice, lowestPrice);
+        fibLevels = calculateFibonacciRetracements(highestPrice, lowestPrice);
         setFibonacciLevels(fibLevels);
       }
       
@@ -308,8 +318,15 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
       const bands = calculateBollingerBands(extractedPrices, 20, 2);
       setBollingerBands(bands);
 
-      // Generate recommendation
+      // Detect breakout patterns
       const price = currentPrice || (extractedPrices.length > 0 ? extractedPrices[0] : purchasePrice);
+      if (extractedPrices.length >= 10 && trendLinesValues.support !== null && trendLinesValues.resistance !== null && 
+          bands.upper !== null && bands.middle !== null && bands.lower !== null) {
+        const breakoutResult = detectBreakoutPatterns(extractedPrices, trendLinesValues, bands);
+        setBreakoutAnalysis(breakoutResult);
+      }
+
+      // Generate recommendation
       const recommendationText = generateRecommendation(
         price,
         sma20Value,
@@ -318,6 +335,25 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
         bands
       );
       setRecommendation(recommendationText);
+
+      // Calculate weighted decision
+      if (ema12Value !== null && ema26Value !== null && rsi14Value !== null && 
+          bands.upper !== null && bands.middle !== null && bands.lower !== null && 
+          trendLinesValues.support !== null && trendLinesValues.resistance !== null && 
+          sma20Value !== null && breakoutAnalysis !== null) {
+        const decision = calculateWeightedDecision(
+          price,
+          ema12Value,
+          ema26Value,
+          rsi14Value,
+          bands,
+          trendLinesValues,
+          sma20Value,
+          fibLevels,
+          breakoutAnalysis
+        );
+        setWeightedDecision(decision);
+      }
     };
     
     if (historicalData) {
@@ -450,6 +486,48 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
                         ? getRSIMessage(rsi14) 
                         : "Calculating 14-day RSI..."}
                     </p>
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div>
+                    <h4 className="font-medium mb-1">Breakout Patterns</h4>
+                    <p className="text-sm">
+                      {breakoutAnalysis !== null && trendLines.support !== null && trendLines.resistance !== null
+                        ? getBreakoutMessage(breakoutAnalysis, price, trendLines)
+                        : "Analyzing breakout patterns..."}
+                    </p>
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div className="bg-secondary/30 p-3 rounded-md mt-4">
+                    <h4 className="font-medium mb-1 text-primary">Weighted Average Decision</h4>
+                    {weightedDecision ? (
+                      <>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`text-lg font-bold ${
+                            weightedDecision.decision === 'buy' 
+                              ? 'text-green-500' 
+                              : weightedDecision.decision === 'sell' 
+                                ? 'text-red-500' 
+                                : 'text-yellow-500'
+                          }`}>
+                            {weightedDecision.decision.toUpperCase()}
+                          </span>
+                          <span className="text-sm">
+                            ({(weightedDecision.confidence * 100).toFixed(1)}% confidence)
+                          </span>
+                        </div>
+                        <p className="text-sm">{weightedDecision.explanation}</p>
+                        <p className="text-xs mt-2 text-muted-foreground">
+                          Based on weighted analysis: EMA (15%), RSI (20%), Bollinger Bands (15%), 
+                          Trend Lines (15%), SMA (10%), Fibonacci (10%), Breakout Patterns (15%)
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm">Calculating weighted decision...</p>
+                    )}
                   </div>
                 </div>
               </AccordionContent>

@@ -88,140 +88,206 @@ const Research: React.FC = () => {
 
   // Function to process and add data to the analysis dashboard
   const processAndAddToAnalysis = async (data: any, source: string, symbolName: string) => {
-    console.log(`Processing ${source} data for analysis:`, { 
-      dataType: typeof data,
-      hasData: !!data,
-      hasNestedData: data && !!data.data,
-      hasMetaData: data && !!data['Meta Data'],
-      hasTimeSeriesDaily: data && !!data['Time Series (Digital Currency Daily)'],
-      hasTopLevelData: data && !!data.Data,
-      hasNestedDataData: data && data.data && !!data.data.Data,
-      hasEntries: data && data.data && !!data.data.entries
-    });
-    
-    let symbolCode = symbol;
-    let currentPrice = 0;
-    let isCrypto = true; // Default to crypto for CoinDesk data
-    let processedData = data; // Default to using the original data
-    
-    // Extract current price based on the data format
-    if (source === 'alphavantage' && data['Meta Data']) {
-      symbolCode = data['Meta Data']['2. Digital Currency Code'] || symbol;
-      symbolName = data['Meta Data']['3. Digital Currency Name'] || symbolName;
-      isCrypto = !!data['Meta Data']['2. Digital Currency Code'];
+    try {
+      // Log the start of processing
+      addLog({
+        url: `${source} Processing`,
+        method: "INFO",
+        requestBody: { symbol: symbolName, source },
+        response: "Starting data processing"
+      });
       
-      // Get the current price from the most recent data point
-      const timeSeriesKey = data['Time Series (Digital Currency Daily)'] 
-        ? 'Time Series (Digital Currency Daily)' 
-        : 'Time Series (Digital Currency Monthly)';
+      console.log(`Processing ${source} data for analysis:`, { 
+        dataType: typeof data,
+        hasData: !!data,
+        hasNestedData: data && !!data.data,
+        hasMetaData: data && !!data['Meta Data'],
+        hasTimeSeriesDaily: data && !!data['Time Series (Digital Currency Daily)'],
+        hasTopLevelData: data && !!data.Data,
+        hasNestedDataData: data && data.data && !!data.data.Data,
+        hasEntries: data && data.data && !!data.data.entries
+      });
+      
+      // Use trimmed symbol to prevent whitespace issues
+      let symbolCode = symbolName.trim();
+      let currentPrice = 0;
+      let isCrypto = true; // Default to crypto for CoinDesk data
+      let processedData = data; // Default to using the original data
+      
+      // Extract current price based on the data format
+      if (source === 'alphavantage' && data && data['Meta Data']) {
+        symbolCode = data['Meta Data']['2. Digital Currency Code'] || symbolName.trim();
+        symbolName = data['Meta Data']['3. Digital Currency Name'] || symbolName;
+        isCrypto = !!data['Meta Data']['2. Digital Currency Code'];
         
-      if (data[timeSeriesKey]) {
-        const dates = Object.keys(data[timeSeriesKey]);
-        if (dates.length > 0) {
-          // Sort dates in descending order
-          dates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-          const latestDate = dates[0];
-          currentPrice = parseFloat(data[timeSeriesKey][latestDate]['4. close']);
-        }
-      }
-    } else if (source === 'coindesk') {
-      // Check which CoinDesk format we're dealing with
-      if (data.data && data.data.entries && data.data.entries.length > 0) {
-        // Original format with entries array in data.entries
-        console.log('Extracting current price from CoinDesk original format with entries array');
-        const entries = [...data.data.entries];
-        // Sort entries by date (newest first)
-        entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        currentPrice = entries[0].value;
-        console.log(`Current price from entries array: ${currentPrice}`);
-      } 
-      else if (data.data && data.data.Data && Array.isArray(data.data.Data) && data.data.Data.length > 0) {
-        // Format with Data array nested in data property
-        console.log('Extracting current price from CoinDesk format with nested data.Data array');
-        const dataEntries = [...data.data.Data];
-        // Sort entries by timestamp (newest first)
-        dataEntries.sort((a, b) => b.TIMESTAMP - a.TIMESTAMP);
-        currentPrice = dataEntries[0].CLOSE;
-        console.log(`Current price from nested data.Data array: ${currentPrice}`);
-      }
-      else if (data.Data && Array.isArray(data.Data) && data.Data.length > 0) {
-        // New format with Data array at the top level
-        console.log('Extracting current price from CoinDesk format with top-level Data array');
-        const dataEntries = [...data.Data];
-        // Sort entries by timestamp (newest first)
-        dataEntries.sort((a, b) => b.TIMESTAMP - a.TIMESTAMP);
-        currentPrice = dataEntries[0].CLOSE;
-        console.log(`Current price from top-level Data array: ${currentPrice}`);
-        
-        // Extract symbol from the INSTRUMENT field if available
-        if (dataEntries[0].INSTRUMENT) {
-          const instrumentParts = dataEntries[0].INSTRUMENT.split('-');
-          if (instrumentParts.length > 0) {
-            symbolCode = instrumentParts[0];
-            console.log(`Extracted symbol from INSTRUMENT: ${symbolCode}`);
+        // Get the current price from the most recent data point
+        const timeSeriesKey = data['Time Series (Digital Currency Daily)'] 
+          ? 'Time Series (Digital Currency Daily)' 
+          : 'Time Series (Digital Currency Monthly)';
+          
+        if (data[timeSeriesKey]) {
+          const dates = Object.keys(data[timeSeriesKey]);
+          if (dates.length > 0) {
+            // Sort dates in descending order
+            dates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+            const latestDate = dates[0];
+            currentPrice = parseFloat(data[timeSeriesKey][latestDate]['4. close']);
+            console.log(`Extracted current price from AlphaVantage: ${currentPrice}`);
           }
         }
+      } else if (source === 'coindesk') {
+        // Check which CoinDesk format we're dealing with
+        if (data && data.data && data.data.entries && data.data.entries.length > 0) {
+          // Original format with entries array in data.entries
+          console.log('Extracting current price from CoinDesk original format with entries array');
+          const entries = [...data.data.entries];
+          // Sort entries by date (newest first)
+          entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          currentPrice = entries[0].value;
+          console.log(`Current price from entries array: ${currentPrice}`);
+        } 
+        else if (data && data.data && data.data.Data && Array.isArray(data.data.Data) && data.data.Data.length > 0) {
+          // Format with Data array nested in data property
+          console.log('Extracting current price from CoinDesk format with nested data.Data array');
+          const dataEntries = [...data.data.Data];
+          // Sort entries by timestamp (newest first)
+          dataEntries.sort((a, b) => b.TIMESTAMP - a.TIMESTAMP);
+          currentPrice = dataEntries[0].CLOSE;
+          console.log(`Current price from nested data.Data array: ${currentPrice}`);
+        }
+        else if (data && data.Data && Array.isArray(data.Data) && data.Data.length > 0) {
+          // New format with Data array at the top level
+          console.log('Extracting current price from CoinDesk format with top-level Data array');
+          const dataEntries = [...data.Data];
+          // Sort entries by timestamp (newest first)
+          dataEntries.sort((a, b) => b.TIMESTAMP - a.TIMESTAMP);
+          currentPrice = dataEntries[0].CLOSE;
+          console.log(`Current price from top-level Data array: ${currentPrice}`);
+          
+          // Extract symbol from the INSTRUMENT field if available
+          if (dataEntries[0].INSTRUMENT) {
+            const instrumentParts = dataEntries[0].INSTRUMENT.split('-');
+            if (instrumentParts.length > 0) {
+              symbolCode = instrumentParts[0];
+              console.log(`Extracted symbol from INSTRUMENT: ${symbolCode}`);
+            }
+          }
+        }
+        
+        // Format CoinDesk data to be compatible with analysis functions
+        try {
+          processedData = formatCoinDeskDataForAnalysis(data);
+          
+          // Log the formatted data for debugging
+          console.log('Formatted CoinDesk data for analysis:', {
+            hasFormattedData: !!processedData,
+            hasMetaData: processedData && !!processedData['Meta Data'],
+            hasTimeSeries: processedData && !!processedData['Time Series (Digital Currency Daily)']
+          });
+          
+          // If formatting failed, use the original data
+          if (!processedData) {
+            processedData = data;
+            console.warn('Failed to format CoinDesk data, using original format');
+          }
+        } catch (error) {
+          console.error('Error formatting CoinDesk data:', error);
+          
+          // Log the formatting error
+          addLog({
+            url: `${source} Formatting Error`,
+            method: "ERROR",
+            requestBody: { symbol: symbolName },
+            error: error instanceof Error ? error.message : "Unknown error during formatting"
+          });
+          
+          processedData = data; // Use original data if formatting fails
+        }
       }
       
-      // Format CoinDesk data to be compatible with analysis functions
-      try {
-        processedData = formatCoinDeskDataForAnalysis(data);
-        
-        // Log the formatted data for debugging
-        console.log('Formatted CoinDesk data for analysis:', {
-          hasFormattedData: !!processedData,
-          hasMetaData: processedData && !!processedData['Meta Data'],
-          hasTimeSeries: processedData && !!processedData['Time Series (Digital Currency Daily)']
-        });
-        
-        // If formatting failed, use the original data
-        if (!processedData) {
-          processedData = data;
-          console.warn('Failed to format CoinDesk data, using original format');
+      // If we still don't have a current price, try to extract it from the processed data
+      if (!currentPrice && processedData) {
+        try {
+          // Import the extractHistoricalPrices function
+          const { extractHistoricalPrices } = await import('@/lib/analysisUtils');
+          
+          // Extract prices from the processed data
+          const prices = extractHistoricalPrices(processedData);
+          
+          if (prices.length > 0) {
+            currentPrice = prices[0]; // Use the first (most recent) price
+            console.log(`Extracted current price from processed data: ${currentPrice}`);
+          }
+        } catch (error) {
+          console.error('Error extracting current price from processed data:', error);
+          
+          // Log the extraction error
+          addLog({
+            url: `${source} Price Extraction Error`,
+            method: "ERROR",
+            requestBody: { symbol: symbolName },
+            error: error instanceof Error ? error.message : "Unknown error during price extraction"
+          });
         }
-      } catch (error) {
-        console.error('Error formatting CoinDesk data:', error);
-        processedData = data; // Use original data if formatting fails
       }
+      
+      // Add to analysis dashboard with explicit data source
+      addItem({
+        symbol: symbolCode,
+        currentPrice: currentPrice || undefined,
+        purchasePrice: currentPrice || 0,
+        type: isCrypto ? 'crypto' : 'stock',
+        historicalData: processedData,
+        dataSource: source // Add explicit data source
+      });
+      
+      // Log successful processing
+      addLog({
+        url: `${source} Processing Success`,
+        method: "INFO",
+        requestBody: { symbol: symbolName, source },
+        response: {
+          symbol: symbolCode,
+          currentPrice: currentPrice || 0,
+          dataSource: source
+        },
+        status: 200
+      });
+      
+      setResult({
+        success: true,
+        message: `Successfully retrieved data for ${symbolCode} (${symbolName}) using ${source === 'alphavantage' ? 'AlphaVantage' : 'CoinDesk'} API`
+      });
+      
+      toast({
+        title: "Added to Analysis Dashboard",
+        description: `${symbolCode} has been added to your analysis dashboard.`,
+      });
+    } catch (error) {
+      console.error(`Error processing ${source} data:`, error);
+      
+      // Log the processing error
+      addLog({
+        url: `${source} Processing Error`,
+        method: "ERROR",
+        requestBody: { symbol: symbolName, source },
+        error: error instanceof Error ? error.message : "Unknown error during data processing"
+      });
+      
+      setResult({
+        success: false,
+        message: `Error processing data from ${source}. Please try again.`
+      });
+      
+      toast({
+        title: "Processing Error",
+        description: `Failed to process data for ${symbolName}. Please try again.`,
+        variant: "destructive"
+      });
+    } finally {
+      // Always ensure loading state is reset
+      setLoading(false);
     }
-    
-    // If we still don't have a current price, try to extract it from the processed data
-    if (!currentPrice && processedData) {
-      try {
-        // Import the extractHistoricalPrices function
-        const { extractHistoricalPrices } = await import('@/lib/analysisUtils');
-        
-        // Extract prices from the processed data
-        const prices = extractHistoricalPrices(processedData);
-        
-        if (prices.length > 0) {
-          currentPrice = prices[0]; // Use the first (most recent) price
-          console.log(`Extracted current price from processed data: ${currentPrice}`);
-        }
-      } catch (error) {
-        console.error('Error extracting current price from processed data:', error);
-      }
-    }
-    
-    // Add to analysis dashboard with explicit data source
-    addItem({
-      symbol: symbolCode,
-      currentPrice: currentPrice || undefined,
-      purchasePrice: currentPrice || 0,
-      type: isCrypto ? 'crypto' : 'stock',
-      historicalData: processedData,
-      dataSource: source // Add explicit data source
-    });
-    
-    setResult({
-      success: true,
-      message: `Successfully retrieved data for ${symbolCode} (${symbolName}) using ${source === 'alphavantage' ? 'AlphaVantage' : 'CoinDesk'} API`
-    });
-    
-    toast({
-      title: "Added to Analysis Dashboard",
-      description: `${symbolCode} has been added to your analysis dashboard.`,
-    });
   };
 
   // Function to try CoinDesk API as fallback
@@ -236,18 +302,21 @@ const Research: React.FC = () => {
     }
     
     try {
+      // Use trimmed symbol to prevent whitespace issues
+      const trimmedSymbol = symbol.trim();
+      
       // Log that we're trying CoinDesk as fallback
       addLog({
-        url: "CoinDesk API Fallback",
+        url: "CoinDesk API Request",
         method: "INFO",
-        requestBody: { instrument: `${symbol}-USD`, market: 'cadli' },
-        response: "Attempting to use CoinDesk API as fallback",
+        requestBody: { instrument: `${trimmedSymbol}-USD`, market: 'cadli' },
+        response: "Attempting to use CoinDesk API",
         status: 200
       });
       
       // Use the updated fetchCoinDeskHistoricalData with logging
       const coinDeskData = await fetchCoinDeskHistoricalData(
-        symbol, 
+        trimmedSymbol, 
         coinDeskApiKey,
         30, // Default to 30 days
         // Pass the logging function
@@ -282,17 +351,46 @@ const Research: React.FC = () => {
         // Log the successful data format detection
         console.log(`CoinDesk data format detected: ${hasOldFormat ? 'old format with entries' : hasNestedDataFormat ? 'nested data.Data array' : 'top-level Data array'}`);
         
-        // Format the CoinDesk data for analysis
-        const formattedData = formatCoinDeskDataForAnalysis(coinDeskData);
-        
-        if (formattedData) {
-          console.log('Successfully formatted CoinDesk data for analysis');
-          // Process the formatted CoinDesk data
-          processAndAddToAnalysis(formattedData, 'coindesk', symbol);
-        } else {
-          console.warn('Failed to format CoinDesk data, attempting to use raw data');
-          // Try to use the raw data as a fallback
-          processAndAddToAnalysis(coinDeskData, 'coindesk', symbol);
+        try {
+          // Format the CoinDesk data for analysis
+          const formattedData = formatCoinDeskDataForAnalysis(coinDeskData);
+          
+          if (formattedData) {
+            console.log('Successfully formatted CoinDesk data for analysis');
+            // Process the formatted CoinDesk data
+            processAndAddToAnalysis(formattedData, 'coindesk', trimmedSymbol);
+          } else {
+            console.warn('Failed to format CoinDesk data, attempting to use raw data');
+            // Try to use the raw data as a fallback
+            processAndAddToAnalysis(coinDeskData, 'coindesk', trimmedSymbol);
+          }
+        } catch (formatError) {
+          console.error('Error formatting CoinDesk data:', formatError);
+          
+          // Log the formatting error
+          addLog({
+            url: "CoinDesk Format Error",
+            method: "ERROR",
+            requestBody: { instrument: `${trimmedSymbol}-USD`, market: 'cadli' },
+            error: formatError instanceof Error ? formatError.message : "Unknown error during formatting"
+          });
+          
+          // Try to use the raw data as a last resort
+          try {
+            processAndAddToAnalysis(coinDeskData, 'coindesk', trimmedSymbol);
+          } catch (processError) {
+            console.error('Error processing raw CoinDesk data:', processError);
+            
+            // Log the processing error
+            addLog({
+              url: "CoinDesk Processing Error",
+              method: "ERROR",
+              requestBody: { instrument: `${trimmedSymbol}-USD`, market: 'cadli' },
+              error: processError instanceof Error ? processError.message : "Unknown error during processing"
+            });
+            
+            throw processError; // Re-throw to be caught by the outer catch block
+          }
         }
       } else {
         console.error('CoinDesk API returned data but in an unexpected format:', coinDeskData);
@@ -301,7 +399,7 @@ const Research: React.FC = () => {
         addLog({
           url: "CoinDesk Format Error",
           method: "ERROR",
-          requestBody: { instrument: `${symbol}-USD`, market: 'cadli' },
+          requestBody: { instrument: `${trimmedSymbol}-USD`, market: 'cadli' },
           response: coinDeskData,
           error: "Unexpected data format from CoinDesk API"
         });
@@ -309,17 +407,18 @@ const Research: React.FC = () => {
         // Both APIs failed (logging is handled in the fetchCoinDeskHistoricalData function)
         setResult({
           success: false,
-          message: `Symbol ${symbol} not found in either AlphaVantage or CoinDesk APIs.`
+          message: `Symbol ${trimmedSymbol} not found in either AlphaVantage or CoinDesk APIs.`
         });
+        setLoading(false);
       }
     } catch (error) {
       console.error('Error fetching CoinDesk data:', error);
       
       // Log error
       addLog({
-        url: `https://data-api.coindesk.com/index/cc/v1/historical/days?market=cadli&instrument=${symbol}-USD`,
+        url: `https://data-api.coindesk.com/index/cc/v1/historical/days?market=cadli&instrument=${symbol.trim()}-USD`,
         method: "GET",
-        requestBody: { instrument: `${symbol}-USD`, market: 'cadli' },
+        requestBody: { instrument: `${symbol.trim()}-USD`, market: 'cadli' },
         error: error instanceof Error ? error.message : "Unknown error"
       });
       
@@ -327,7 +426,6 @@ const Research: React.FC = () => {
         success: false,
         message: "Both AlphaVantage and CoinDesk APIs failed. Please try again later."
       });
-    } finally {
       setLoading(false);
     }
   };
@@ -359,6 +457,16 @@ const Research: React.FC = () => {
     setPlan(null);
     
     try {
+      // Log the request data for debugging
+      addLog({
+        url: '/api/research/generate-plan',
+        method: 'POST',
+        requestBody: {
+          analysisDataCount: itemsForPlan.length,
+          symbols: itemsForPlan.map(item => item.symbol)
+        }
+      });
+      
       const response = await fetch('/api/research/generate-plan', {
         method: 'POST',
         headers: {
@@ -369,13 +477,35 @@ const Research: React.FC = () => {
         }),
       });
       
+      // Log the response status
+      addLog({
+        url: '/api/research/generate-plan',
+        method: 'POST',
+        status: response.status
+      });
+      
+      const responseData = await response.json();
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate plan');
+        // Log the error response
+        addLog({
+          url: '/api/research/generate-plan',
+          method: 'POST',
+          error: responseData.error || 'Unknown error',
+          response: responseData
+        });
+        
+        throw new Error(responseData.error || 'Failed to generate plan');
       }
       
-      const data = await response.json();
-      setPlan(data.plan);
+      // Log successful response
+      addLog({
+        url: '/api/research/generate-plan',
+        method: 'POST',
+        response: { success: true, planLength: responseData.plan?.length || 0 }
+      });
+      
+      setPlan(responseData.plan);
       
       toast({
         title: "Plan Generated",
@@ -383,6 +513,14 @@ const Research: React.FC = () => {
       });
     } catch (error) {
       console.error('Error generating plan:', error);
+      
+      // Log the error
+      addLog({
+        url: '/api/research/generate-plan',
+        method: 'ERROR',
+        error: error instanceof Error ? error.message : 'An unknown error occurred'
+      });
+      
       toast({
         title: "Error Generating Plan",
         description: error instanceof Error ? error.message : 'An unknown error occurred',
@@ -391,12 +529,15 @@ const Research: React.FC = () => {
     } finally {
       setGeneratingPlan(false);
     }
-  }, [items, openAIApiKey, toast]);
+  }, [items, openAIApiKey, toast, addLog]);
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!symbol) {
+    // Reset state to prevent stale data
+    setSymbol(symbol.trim());
+    
+    if (!symbol.trim()) {
       toast({
         title: "Symbol Required",
         description: "Please enter a ticker or crypto symbol",
@@ -414,15 +555,29 @@ const Research: React.FC = () => {
       return;
     }
 
+    // Prevent multiple submissions
+    if (loading) {
+      console.log('Already loading data, ignoring duplicate request');
+      return;
+    }
+
     setLoading(true);
     setResult(null);
     setHistoricalData(null);
+
+    // Log the start of the request
+    addLog({
+      url: "Research Request",
+      method: "INFO",
+      requestBody: { symbol: symbol.trim(), market },
+      response: "Starting historical data request"
+    });
 
     try {
       // If AlphaVantage API key is available, try it first
       if (alphaVantageApiKey) {
         const data = await fetchHistoricalData(
-          symbol, 
+          symbol.trim(), 
           market, 
           alphaVantageApiKey,
           // Pass the logging function to the API call
@@ -440,46 +595,47 @@ const Research: React.FC = () => {
         );
         
         // Check if AlphaVantage returned valid data
-        if (data['Meta Data'] && (data['Time Series (Digital Currency Daily)'] || data['Time Series (Digital Currency Monthly)'])) {
+        if (data && data['Meta Data'] && (data['Time Series (Digital Currency Daily)'] || data['Time Series (Digital Currency Monthly)'])) {
           // AlphaVantage success
           setHistoricalData(data);
           processAndAddToAnalysis(data, 'alphavantage', 'Unknown');
+          setLoading(false); // Make sure to set loading to false
           return; // Exit early on success
         } else {
           // AlphaVantage failed, log the error but don't show it to the user
-          if (data.Error) {
+          if (data && data.Error) {
             console.error(`AlphaVantage API error: ${data.Error}`);
             addLog({
               url: "AlphaVantage Error",
               method: "ERROR",
-              requestBody: { symbol, market },
+              requestBody: { symbol: symbol.trim(), market },
               response: data,
               error: data.Error
             });
-          } else if (data.Note) {
+          } else if (data && data.Note) {
             console.error(`AlphaVantage API limit: ${data.Note}`);
             addLog({
               url: "AlphaVantage Limit",
               method: "ERROR",
-              requestBody: { symbol, market },
+              requestBody: { symbol: symbol.trim(), market },
               response: data,
               error: data.Note
             });
-          } else if (data.Information) {
+          } else if (data && data.Information) {
             console.error(`AlphaVantage API key issue: ${data.Information}`);
             addLog({
               url: "AlphaVantage Key Issue",
               method: "ERROR",
-              requestBody: { symbol, market },
+              requestBody: { symbol: symbol.trim(), market },
               response: data,
               error: data.Information
             });
           } else {
-            console.error("Unexpected AlphaVantage API response format");
+            console.error("Unexpected AlphaVantage API response format", data);
             addLog({
               url: "AlphaVantage Unexpected Format",
               method: "ERROR",
-              requestBody: { symbol, market },
+              requestBody: { symbol: symbol.trim(), market },
               response: data,
               error: "Unexpected response format"
             });
@@ -490,7 +646,7 @@ const Research: React.FC = () => {
         addLog({
           url: "AlphaVantage Skipped",
           method: "INFO",
-          requestBody: { symbol, market },
+          requestBody: { symbol: symbol.trim(), market },
           response: "AlphaVantage API key not available, skipping to CoinDesk",
           status: 200
         });
@@ -504,16 +660,33 @@ const Research: React.FC = () => {
       // Log the error
       addLog({
         url: alphaVantageApiKey 
-          ? `https://www.alphavantage.co/query?function=DIGITAL_CURRENCY_DAILY&symbol=${symbol}&market=${market}`
+          ? `https://www.alphavantage.co/query?function=DIGITAL_CURRENCY_DAILY&symbol=${symbol.trim()}&market=${market}`
           : "API Error",
         method: "ERROR",
-        requestBody: { symbol, market },
+        requestBody: { symbol: symbol.trim(), market },
         error: error instanceof Error ? error.message : "Unknown error"
       });
       
       // If error occurred with AlphaVantage, try CoinDesk as fallback
       if (alphaVantageApiKey) {
-        await tryWithCoinDesk();
+        try {
+          await tryWithCoinDesk();
+        } catch (coinDeskError) {
+          console.error('Error in CoinDesk fallback:', coinDeskError);
+          addLog({
+            url: "CoinDesk Fallback Error",
+            method: "ERROR",
+            requestBody: { symbol: symbol.trim(), market },
+            error: coinDeskError instanceof Error ? coinDeskError.message : "Unknown error"
+          });
+          
+          // Ensure loading state is reset
+          setResult({
+            success: false,
+            message: "Both APIs failed. Please try a different symbol or try again later."
+          });
+          setLoading(false);
+        }
       } else {
         // If we're already trying CoinDesk as primary, show error
         setResult({

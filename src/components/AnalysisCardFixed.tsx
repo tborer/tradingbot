@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { 
   calculateSMA, 
@@ -13,7 +14,11 @@ import {
   calculateFibonacciRetracements,
   getFibonacciMessage,
   calculateBollingerBands,
-  getBollingerBandsMessage
+  getBollingerBandsMessage,
+  calculateEMA,
+  getEMAMessage,
+  calculateRSI,
+  getRSIMessage
 } from '@/lib/analysisUtils';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -42,6 +47,9 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
   const [prices, setPrices] = useState<number[]>([]);
   const [sma20, setSma20] = useState<number | null>(null);
   const [sma50, setSma50] = useState<number | null>(null);
+  const [ema12, setEma12] = useState<number | null>(null);
+  const [ema26, setEma26] = useState<number | null>(null);
+  const [rsi14, setRsi14] = useState<number | null>(null);
   const [trendLines, setTrendLines] = useState<{ support: number | null; resistance: number | null }>({
     support: null,
     resistance: null
@@ -55,6 +63,7 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [dataSource, setDataSource] = useState<string>('');
+  const [includedInPlan, setIncludedInPlan] = useState<boolean>(false);
   
   // Fetch historical data if not provided
   useEffect(() => {
@@ -269,6 +278,16 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
       setSma20(sma20Value);
       setSma50(sma50Value);
 
+      // Calculate EMA values
+      const ema12Value = calculateEMA(extractedPrices, 12);
+      const ema26Value = calculateEMA(extractedPrices, 26);
+      setEma12(ema12Value);
+      setEma26(ema26Value);
+      
+      // Calculate RSI
+      const rsi14Value = calculateRSI(extractedPrices, 14);
+      setRsi14(rsi14Value);
+
       // Identify trend lines
       const trendLinesValues = identifyTrendLines(extractedPrices);
       setTrendLines(trendLinesValues);
@@ -316,9 +335,14 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
       <CardHeader className="pb-2">
         <div className="flex justify-between items-center">
           <CardTitle>{symbol}</CardTitle>
-          <Badge variant={percentChange >= 0 ? "default" : "destructive"}>
-            {percentChange >= 0 ? '+' : ''}{percentChange.toFixed(2)}%
-          </Badge>
+          <div className="flex items-center space-x-2">
+            <Checkbox 
+              id={`include-in-plan-${symbol}`} 
+              checked={includedInPlan} 
+              onCheckedChange={(checked) => setIncludedInPlan(checked as boolean)}
+            />
+            <Label htmlFor={`include-in-plan-${symbol}`} className="text-sm">Include in Plan</Label>
+          </div>
         </div>
         <CardDescription>
           Current: ${price?.toFixed(2)} | Purchase: ${purchasePrice.toFixed(2)}
@@ -389,6 +413,42 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
                       {bollingerBands.upper !== null && bollingerBands.middle !== null && bollingerBands.lower !== null
                         ? getBollingerBandsMessage(price, bollingerBands)
                         : "Calculating Bollinger Bands..."}
+                    </p>
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div>
+                    <h4 className="font-medium mb-1">Exponential Moving Average (EMA)</h4>
+                    <p className="text-sm mb-2">
+                      {ema12 !== null 
+                        ? getEMAMessage(price, ema12, 12) 
+                        : "Calculating 12-day EMA..."}
+                    </p>
+                    <p className="text-sm">
+                      {ema26 !== null 
+                        ? getEMAMessage(price, ema26, 26) 
+                        : "Calculating 26-day EMA..."}
+                    </p>
+                    {ema12 !== null && ema26 !== null && (
+                      <p className="text-sm mt-2">
+                        {ema12 > ema26 
+                          ? "12-day EMA is above 26-day EMA, indicating a bullish trend." 
+                          : ema12 < ema26 
+                            ? "12-day EMA is below 26-day EMA, indicating a bearish trend." 
+                            : "12-day EMA equals 26-day EMA, indicating a potential trend reversal."}
+                      </p>
+                    )}
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div>
+                    <h4 className="font-medium mb-1">Relative Strength Index (RSI)</h4>
+                    <p className="text-sm">
+                      {rsi14 !== null 
+                        ? getRSIMessage(rsi14) 
+                        : "Calculating 14-day RSI..."}
                     </p>
                   </div>
                 </div>

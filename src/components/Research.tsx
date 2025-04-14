@@ -534,6 +534,21 @@ const Research: React.FC = () => {
       {items.length > 0 && (
         <AnalysisDashboard items={items} />
       )}
+      
+      {/* Plan Section */}
+      <Card className="w-full mt-6">
+        <CardHeader>
+          <CardTitle>Plan</CardTitle>
+          <CardDescription>
+            Your trading plan based on selected assets
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-center text-muted-foreground py-8">
+            Select assets to include in your plan by checking "Include in Plan" on the analysis cards.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 };

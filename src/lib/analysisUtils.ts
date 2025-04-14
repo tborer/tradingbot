@@ -1,6 +1,140 @@
 // Analysis utility functions for stock and crypto data
 
 /**
+ * Calculate Exponential Moving Average (EMA) for a given period
+ * @param prices Array of price data points (most recent first)
+ * @param period Number of periods to calculate EMA for
+ * @returns The calculated EMA value
+ */
+export function calculateEMA(prices: number[], period: number): number | null {
+  if (!prices || prices.length < period) {
+    return null;
+  }
+
+  // Calculate the multiplier
+  const multiplier = 2 / (period + 1);
+  
+  // Start with SMA for the first EMA value
+  const sma = calculateSMA(prices.slice(0, period), period);
+  if (sma === null) {
+    return null;
+  }
+  
+  // Calculate EMA starting with SMA as the first value
+  let ema = sma;
+  
+  // Calculate EMA for each price after the initial period
+  for (let i = period - 1; i >= 0; i--) {
+    ema = (prices[i] - ema) * multiplier + ema;
+  }
+  
+  return ema;
+}
+
+/**
+ * Generate a message about the EMA trend
+ * @param currentPrice Current price
+ * @param ema EMA value
+ * @param period Period used for EMA calculation
+ * @returns A message describing the EMA trend
+ */
+export function getEMAMessage(currentPrice: number, ema: number | null, period: number): string {
+  if (ema === null) {
+    return `Not enough data to calculate ${period}-day EMA.`;
+  }
+
+  const percentDiff = ((currentPrice - ema) / ema) * 100;
+  
+  if (currentPrice > ema) {
+    return `Current price is ${percentDiff.toFixed(2)}% above the ${period}-day EMA (${ema.toFixed(2)}), suggesting a strong upward trend.`;
+  } else if (currentPrice < ema) {
+    return `Current price is ${Math.abs(percentDiff).toFixed(2)}% below the ${period}-day EMA (${ema.toFixed(2)}), suggesting a strong downward trend.`;
+  } else {
+    return `Current price is at the ${period}-day EMA (${ema.toFixed(2)}), suggesting a neutral trend.`;
+  }
+}
+
+/**
+ * Calculate Relative Strength Index (RSI)
+ * @param prices Array of price data points (most recent first)
+ * @param period Number of periods to calculate RSI for (typically 14)
+ * @returns The calculated RSI value (0-100)
+ */
+export function calculateRSI(prices: number[], period: number = 14): number | null {
+  if (!prices || prices.length < period + 1) {
+    return null;
+  }
+
+  // Calculate price changes
+  const priceChanges: number[] = [];
+  for (let i = prices.length - 1; i > 0; i--) {
+    priceChanges.push(prices[i - 1] - prices[i]);
+  }
+  
+  // Calculate gains and losses
+  const gains: number[] = [];
+  const losses: number[] = [];
+  
+  for (let i = 0; i < priceChanges.length; i++) {
+    if (priceChanges[i] >= 0) {
+      gains.push(priceChanges[i]);
+      losses.push(0);
+    } else {
+      gains.push(0);
+      losses.push(Math.abs(priceChanges[i]));
+    }
+  }
+  
+  // Calculate average gain and average loss for the first period
+  let avgGain = gains.slice(0, period).reduce((sum, gain) => sum + gain, 0) / period;
+  let avgLoss = losses.slice(0, period).reduce((sum, loss) => sum + loss, 0) / period;
+  
+  // Calculate smoothed average gain and loss for subsequent periods
+  for (let i = period; i < gains.length; i++) {
+    avgGain = ((avgGain * (period - 1)) + gains[i]) / period;
+    avgLoss = ((avgLoss * (period - 1)) + losses[i]) / period;
+  }
+  
+  // Calculate RS and RSI
+  if (avgLoss === 0) {
+    return 100; // No losses means RSI is 100
+  }
+  
+  const rs = avgGain / avgLoss;
+  const rsi = 100 - (100 / (1 + rs));
+  
+  return rsi;
+}
+
+/**
+ * Generate a message about the RSI value
+ * @param rsi RSI value
+ * @param period Period used for RSI calculation
+ * @returns A message describing the RSI value
+ */
+export function getRSIMessage(rsi: number | null, period: number = 14): string {
+  if (rsi === null) {
+    return `Not enough data to calculate ${period}-day RSI.`;
+  }
+
+  let message = `${period}-day RSI: ${rsi.toFixed(2)}. `;
+  
+  if (rsi > 70) {
+    message += `RSI is above 70, indicating overbought conditions. This suggests a potential reversal or correction to the downside.`;
+  } else if (rsi < 30) {
+    message += `RSI is below 30, indicating oversold conditions. This suggests a potential reversal or bounce to the upside.`;
+  } else if (rsi > 60) {
+    message += `RSI is in the upper neutral zone, showing bullish momentum but not yet overbought.`;
+  } else if (rsi < 40) {
+    message += `RSI is in the lower neutral zone, showing bearish momentum but not yet oversold.`;
+  } else {
+    message += `RSI is in the neutral zone, suggesting no strong momentum in either direction.`;
+  }
+  
+  return message;
+}
+
+/**
  * Calculate standard deviation for a set of values
  * @param values Array of values
  * @param mean The mean value of the array

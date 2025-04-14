@@ -111,6 +111,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (krakenResponse.error && krakenResponse.error.length > 0) {
       console.error('Kraken API error:', krakenResponse.error);
+      
+      // Record the failed transaction with error details
+      await prisma.cryptoTransaction.create({
+        data: {
+          cryptoId: crypto.id,
+          action,
+          shares,
+          price,
+          totalAmount,
+          userId: user.id,
+          apiRequest: JSON.stringify({
+            endpoint: apiEndpoint,
+            method: 'POST',
+            headers: {
+              'API-Key': '[REDACTED]', // Don't store actual API key
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: postData
+          }, null, 2),
+          apiResponse: JSON.stringify(krakenResponse, null, 2),
+          logInfo: JSON.stringify({
+            timestamp: new Date().toISOString(),
+            orderId,
+            pair,
+            action,
+            shares,
+            price,
+            totalAmount,
+            status: 'failed',
+            error: krakenResponse.error.join(', '),
+            message: `Failed to execute ${action} order for ${shares} shares of ${crypto.symbol} at $${price}`
+          }, null, 2)
+        }
+      });
+      
       return res.status(400).json({ error: krakenResponse.error.join(', ') });
     }
 

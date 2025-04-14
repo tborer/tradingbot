@@ -21,7 +21,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(405).json({ error: 'Method not allowed' });
     }
     
-    // Get all non-expired crypto transactions for the user
+    // Get all non-expired crypto transactions for the user, including failed ones
     const transactions = await prisma.$queryRaw`
       SELECT 
         ct.id, 

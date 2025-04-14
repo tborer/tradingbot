@@ -89,7 +89,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const executeOrderResult = await executeOrderResponse.json();
 
       if (!executeOrderResponse.ok) {
-        return res.status(400).json({ error: executeOrderResult.error || 'Failed to execute order via Kraken API' });
+        // The execute-order endpoint already logs the failed transaction
+        return res.status(400).json({ 
+          error: executeOrderResult.error || 'Failed to execute order via Kraken API',
+          details: executeOrderResult
+        });
       }
 
       // Return the transaction from the execute-order API
@@ -102,11 +106,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } catch (error) {
       console.error('Error executing order via Kraken API:', error);
       
-      // Fallback to direct database update if Kraken API fails
-      console.log('Falling back to direct database update...');
-      
-      // Create the transaction with logging information
-      const transaction = await prisma.cryptoTransaction.create({
+      // Log the failed transaction with error details
+      await prisma.cryptoTransaction.create({
         data: {
           cryptoId: crypto.id,
           action,
@@ -116,79 +117,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           userId: user.id,
           logInfo: JSON.stringify({
             timestamp: new Date().toISOString(),
-            method: 'manual_trade',
+            method: 'trade_api_error',
             action,
             shares: Number(shares),
             price: currentPrice,
             totalAmount,
-            status: 'success',
-            message: `Successfully executed manual ${action} for ${shares} shares of ${crypto.symbol} at $${currentPrice} (Kraken API fallback)`
+            status: 'failed',
+            error: error.message || 'Unknown error',
+            message: `Failed to execute ${action} order for ${shares} shares of ${crypto.symbol} at $${currentPrice}`
           }, null, 2)
         },
       });
       
-      // Update the crypto shares
-      const newShares = action === 'buy' 
-        ? crypto.shares + Number(shares) 
-        : crypto.shares - Number(shares);
-      
-      // If this is an auto order, flip the nextAction in the settings
-      if (req.body.isAutoOrder) {
-        // Get the current auto trade settings for this crypto
-        const autoTradeSettings = await prisma.cryptoAutoTradeSettings.findFirst({
-          where: { cryptoId: crypto.id }
-        });
-        
-        if (autoTradeSettings) {
-          // Flip the next action from buy to sell or vice versa
-          const nextAction = autoTradeSettings.nextAction === 'buy' ? 'sell' : 'buy';
-          
-          // Update the settings
-          await prisma.cryptoAutoTradeSettings.update({
-            where: { id: autoTradeSettings.id },
-            data: { nextAction }
-          });
-          
-          console.log(`Auto trade completed successfully. Next action flipped to: ${nextAction}`);
-        }
-      }
-      
-      // Get current user's USD balance
-      const userData = await prisma.user.findUnique({
-        where: { id: user.id },
-        select: { usdBalance: true }
+      // Return error to client
+      return res.status(500).json({ 
+        error: 'Failed to execute order via Kraken API', 
+        details: error.message 
       });
       
-      // Calculate new USD balance based on the trade
-      let newUsdBalance = userData?.usdBalance || 0;
-      if (action === 'buy') {
-        // Subtract the total amount when buying
-        newUsdBalance -= totalAmount;
-      } else {
-        // Add the total amount when selling
-        newUsdBalance += totalAmount;
-      }
-      
-      // Ensure balance doesn't go below zero
-      newUsdBalance = Math.max(0, newUsdBalance);
-      
-      // Update both the crypto shares and user's USD balance
-      await prisma.$transaction([
-        prisma.crypto.update({
-          where: { id: crypto.id },
-          data: { shares: newShares },
-        }),
-        prisma.user.update({
-          where: { id: user.id },
-          data: { usdBalance: newUsdBalance },
-        })
-      ]);
-      
-      return res.status(200).json({
-        transaction,
-        newShares,
-        message: `Successfully ${action === 'buy' ? 'bought' : 'sold'} ${shares} shares of ${crypto.symbol} (Kraken API fallback)`,
-      });
     }
     
 

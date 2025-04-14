@@ -456,9 +456,22 @@ export default function SortableCryptoList({
           }),
         });
         
+        const responseData = await response.json();
+        
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to execute trade');
+          // Extract detailed error information
+          let errorMessage = responseData.error || 'Failed to execute trade';
+          
+          // If there are Kraken API specific errors, display them
+          if (responseData.details && responseData.details.error) {
+            if (Array.isArray(responseData.details.error)) {
+              errorMessage = responseData.details.error.join(', ');
+            } else {
+              errorMessage = responseData.details.error;
+            }
+          }
+          
+          throw new Error(errorMessage);
         }
         
         setTradeDialogOpen(false);
@@ -466,13 +479,26 @@ export default function SortableCryptoList({
           title: "Success",
           description: `Successfully ${tradeAction === 'buy' ? 'bought' : 'sold'} ${shares} shares of ${selectedCrypto.symbol}.`,
         });
+        
+        // Refresh the page to show updated transaction history
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
       } catch (error) {
         console.error(`Error ${tradeAction}ing crypto:`, error);
         toast({
           variant: "destructive",
-          title: "Error",
-          description: `Failed to ${tradeAction} crypto. Please try again.`,
+          title: `Failed to ${tradeAction} ${selectedCrypto?.symbol}`,
+          description: error.message || `An error occurred. Check transaction history for details.`,
         });
+        
+        // Close the dialog after error
+        setTradeDialogOpen(false);
+        
+        // Refresh the page to show the failed transaction in history
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
       } finally {
         setIsSubmitting(false);
       }

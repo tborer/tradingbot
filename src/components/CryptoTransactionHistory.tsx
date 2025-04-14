@@ -6,6 +6,8 @@ import { format } from 'date-fns';
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { AlertCircle } from "lucide-react";
 
 export default function CryptoTransactionHistory() {
   const [transactions, setTransactions] = useState<CryptoTransaction[]>([]);
@@ -70,13 +72,24 @@ export default function CryptoTransactionHistory() {
           </TableHeader>
           <TableBody>
             {transactions.map((transaction) => (
-              <TableRow key={transaction.id}>
+              <TableRow 
+                key={transaction.id}
+                className={transaction.logInfo?.includes('"status":"failed"') ? 'bg-red-50 dark:bg-red-900/10' : ''}
+              >
                 <TableCell>{format(new Date(transaction.createdAt), 'MMM d, yyyy h:mm a')}</TableCell>
                 <TableCell className="font-medium">{transaction.symbol}</TableCell>
                 <TableCell>
-                  <span className={transaction.action === 'buy' ? 'text-green-600' : 'text-red-600'}>
-                    {transaction.action === 'buy' ? 'Buy' : 'Sell'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={transaction.action === 'buy' ? 'text-green-600' : 'text-red-600'}>
+                      {transaction.action === 'buy' ? 'Buy' : 'Sell'}
+                    </span>
+                    {transaction.logInfo?.includes('"status":"failed"') && (
+                      <Badge variant="destructive" className="text-xs">
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        Failed
+                      </Badge>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell>{transaction.shares.toFixed(8)}</TableCell>
                 <TableCell>${transaction.price.toFixed(6)}</TableCell>
@@ -100,8 +113,11 @@ export default function CryptoTransactionHistory() {
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
               Transaction Details - {selectedTransaction?.symbol} {selectedTransaction?.action.toUpperCase()}
+              {selectedTransaction?.logInfo?.includes('"status":"failed"') && (
+                <Badge variant="destructive">Failed Transaction</Badge>
+              )}
             </DialogTitle>
           </DialogHeader>
           
@@ -151,9 +167,39 @@ export default function CryptoTransactionHistory() {
               {selectedTransaction.logInfo && (
                 <div>
                   <h3 className="text-sm font-medium mb-1">Log Information</h3>
-                  <div className="bg-gray-100 dark:bg-gray-800 p-2 rounded text-xs">
+                  <div className={`p-2 rounded text-xs ${
+                    selectedTransaction.logInfo.includes('"status":"failed"') 
+                      ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' 
+                      : 'bg-gray-100 dark:bg-gray-800'
+                  }`}>
                     <ScrollArea className="h-24">
-                      <pre>{selectedTransaction.logInfo}</pre>
+                      {(() => {
+                        try {
+                          const logData = JSON.parse(selectedTransaction.logInfo);
+                          if (logData.status === 'failed') {
+                            return (
+                              <div className="space-y-2">
+                                <div className="text-red-600 dark:text-red-400 font-semibold">
+                                  Error: {logData.error || 'Unknown error'}
+                                </div>
+                                <div>
+                                  <strong>Status:</strong> {logData.status}
+                                </div>
+                                <div>
+                                  <strong>Message:</strong> {logData.message}
+                                </div>
+                                <div>
+                                  <strong>Timestamp:</strong> {logData.timestamp}
+                                </div>
+                                <pre>{JSON.stringify(logData, null, 2)}</pre>
+                              </div>
+                            );
+                          }
+                          return <pre>{JSON.stringify(logData, null, 2)}</pre>;
+                        } catch (e) {
+                          return <pre>{selectedTransaction.logInfo}</pre>;
+                        }
+                      })()}
                     </ScrollArea>
                   </div>
                 </div>
@@ -173,9 +219,35 @@ export default function CryptoTransactionHistory() {
               {selectedTransaction.apiResponse && (
                 <div>
                   <h3 className="text-sm font-medium mb-1">API Response</h3>
-                  <div className="bg-gray-100 dark:bg-gray-800 p-2 rounded text-xs">
+                  <div className={`p-2 rounded text-xs ${
+                    selectedTransaction.apiResponse.includes('"error":') 
+                      ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' 
+                      : 'bg-gray-100 dark:bg-gray-800'
+                  }`}>
                     <ScrollArea className="h-32">
-                      <pre>{selectedTransaction.apiResponse}</pre>
+                      {(() => {
+                        try {
+                          const responseData = JSON.parse(selectedTransaction.apiResponse);
+                          if (responseData.error && responseData.error.length > 0) {
+                            return (
+                              <div className="space-y-2">
+                                <div className="text-red-600 dark:text-red-400 font-semibold">
+                                  API Errors:
+                                </div>
+                                <ul className="list-disc pl-5 space-y-1">
+                                  {responseData.error.map((err: string, idx: number) => (
+                                    <li key={idx} className="text-red-600 dark:text-red-400">{err}</li>
+                                  ))}
+                                </ul>
+                                <pre>{JSON.stringify(responseData, null, 2)}</pre>
+                              </div>
+                            );
+                          }
+                          return <pre>{JSON.stringify(responseData, null, 2)}</pre>;
+                        } catch (e) {
+                          return <pre>{selectedTransaction.apiResponse}</pre>;
+                        }
+                      })()}
                     </ScrollArea>
                   </div>
                 </div>

@@ -23,6 +23,7 @@ import KrakenWebSocketSettings from "@/components/KrakenWebSocketSettings";
 import FinnHubWebSocketSettings from "@/components/FinnHubWebSocketSettings";
 import AlphaVantageSettings from "@/components/AlphaVantageSettings";
 import CoinDeskSettings from "@/components/CoinDeskSettings";
+import OpenAISettings from "@/components/OpenAISettings";
 import WebSocketLogger from "@/components/WebSocketLogger";
 import Research from "@/components/Research";
 import UserManagement from "@/components/UserManagement";
@@ -1681,6 +1682,14 @@ export default function Dashboard() {
                         apiKey={settings.coinDeskApiKey || ''}
                         onApiKeyChange={(apiKey) => 
                           setSettings({ ...settings, coinDeskApiKey: apiKey })
+                        }
+                      />
+                      
+                      {/* OpenAI API Settings */}
+                      <OpenAISettings
+                        apiKey={settings.openAIApiKey || ''}
+                        onApiKeyChange={(apiKey) => 
+                          setSettings({ ...settings, openAIApiKey: apiKey })
                         }
                       />
                     </div>

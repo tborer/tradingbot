@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,9 @@ const Research: React.FC = () => {
   const [market, setMarket] = useState('USD');
   const [loading, setLoading] = useState(false);
   const [apiKey, setApiKey] = useState<string | null>(null);
+  const [openAIApiKey, setOpenAIApiKey] = useState<string | null>(null);
+  const [plan, setPlan] = useState<string | null>(null);
+  const [generatingPlan, setGeneratingPlan] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const [historicalData, setHistoricalData] = useState<any>(null);
   const { toast } = useToast();
@@ -46,6 +49,7 @@ const Research: React.FC = () => {
           
           setAlphaVantageApiKey(data.alphaVantageApiKey || null);
           setCoinDeskApiKey(data.coinDeskApiKey || null);
+          setOpenAIApiKey(data.openAIApiKey || null);
           setApiKey(data.alphaVantageApiKey || null); // For backward compatibility
           
           // Add a log entry for debugging
@@ -328,6 +332,67 @@ const Research: React.FC = () => {
     }
   };
 
+  const generatePlan = useCallback(async () => {
+    // Check if OpenAI API key is available
+    if (!openAIApiKey) {
+      toast({
+        title: "OpenAI API Key Missing",
+        description: "Please add your OpenAI API key in the settings tab",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Get items that are included in the plan
+    const itemsForPlan = items.filter(item => item.includedInPlan);
+    
+    if (itemsForPlan.length === 0) {
+      toast({
+        title: "No Items Selected",
+        description: "Please select at least one item to include in the plan by checking 'Include in Plan'",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setGeneratingPlan(true);
+    setPlan(null);
+    
+    try {
+      const response = await fetch('/api/research/generate-plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          analysisData: itemsForPlan
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate plan');
+      }
+      
+      const data = await response.json();
+      setPlan(data.plan);
+      
+      toast({
+        title: "Plan Generated",
+        description: "Your trading plan has been generated successfully",
+      });
+    } catch (error) {
+      console.error('Error generating plan:', error);
+      toast({
+        title: "Error Generating Plan",
+        description: error instanceof Error ? error.message : 'An unknown error occurred',
+        variant: "destructive"
+      });
+    } finally {
+      setGeneratingPlan(false);
+    }
+  }, [items, openAIApiKey, toast]);
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -538,15 +603,43 @@ const Research: React.FC = () => {
       {/* Plan Section */}
       <Card className="w-full mt-6">
         <CardHeader>
-          <CardTitle>Plan</CardTitle>
-          <CardDescription>
-            Your trading plan based on selected assets
-          </CardDescription>
+          <div className="flex justify-between items-center">
+            <div>
+              <CardTitle>Plan</CardTitle>
+              <CardDescription>
+                Your trading plan based on selected assets
+              </CardDescription>
+            </div>
+            <Button 
+              onClick={generatePlan} 
+              disabled={generatingPlan || !openAIApiKey}
+            >
+              {generatingPlan ? "Generating..." : "Create Plan"}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
-          <p className="text-center text-muted-foreground py-8">
-            Select assets to include in your plan by checking "Include in Plan" on the analysis cards.
-          </p>
+          {!openAIApiKey && (
+            <Alert variant="destructive" className="mb-4">
+              <CrossCircledIcon className="h-4 w-4" />
+              <AlertTitle>OpenAI API Key Missing</AlertTitle>
+              <AlertDescription>
+                Please add your OpenAI API key in the settings tab to use this feature.
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          {plan ? (
+            <div className="whitespace-pre-wrap bg-muted p-4 rounded-md">
+              {plan}
+            </div>
+          ) : (
+            <p className="text-center text-muted-foreground py-8">
+              {generatingPlan 
+                ? "Generating your trading plan..." 
+                : "Select assets to include in your plan by checking \"Include in Plan\" on the analysis cards, then click \"Create Plan\"."}
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

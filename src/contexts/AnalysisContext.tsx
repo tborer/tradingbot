@@ -8,6 +8,16 @@ interface AnalysisItem {
   type: 'stock' | 'crypto';
   historicalData: any;
   dataSource?: string; // Add dataSource field to track which API was used
+  includedInPlan?: boolean; // Track if this item should be included in the plan
+  analysisData?: {
+    sma?: { sma20?: number; sma50?: number };
+    ema?: { ema12?: number; ema26?: number };
+    rsi?: number;
+    trendLines?: { support?: number; resistance?: number };
+    fibonacci?: any;
+    bollingerBands?: { upper?: number; middle?: number; lower?: number };
+    breakoutPatterns?: any;
+  };
 }
 
 interface AnalysisContextType {

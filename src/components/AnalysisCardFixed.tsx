@@ -24,6 +24,7 @@ import {
   calculateWeightedDecision
 } from '@/lib/analysisUtils';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAnalysis } from '@/contexts/AnalysisContext';
 
 // Define constants at the module level to avoid temporal dead zone issues
 const MAX_DATABASE_RETRIES = 3;
@@ -72,7 +73,18 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
   } | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [dataSource, setDataSource] = useState<string>('');
+  const { items, updateItem } = useAnalysis();
   const [includedInPlan, setIncludedInPlan] = useState<boolean>(false);
+  
+  // Find the current item in the analysis context
+  const currentItem = items.find(item => item.symbol === symbol);
+  
+  // Initialize includedInPlan from the context
+  useEffect(() => {
+    if (currentItem) {
+      setIncludedInPlan(currentItem.includedInPlan || false);
+    }
+  }, [currentItem]);
   
   // Fetch historical data if not provided
   useEffect(() => {
@@ -384,7 +396,33 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
             <Checkbox 
               id={`include-in-plan-${symbol}`} 
               checked={includedInPlan} 
-              onCheckedChange={(checked) => setIncludedInPlan(checked as boolean)}
+              onCheckedChange={(checked) => {
+                const newValue = checked as boolean;
+                setIncludedInPlan(newValue);
+                
+                // Update the item in the context
+                if (currentItem) {
+                  updateItem(currentItem.id, { 
+                    includedInPlan: newValue,
+                    analysisData: {
+                      sma: { sma20: sma20 || undefined, sma50: sma50 || undefined },
+                      ema: { ema12: ema12 || undefined, ema26: ema26 || undefined },
+                      rsi: rsi14 || undefined,
+                      trendLines: { 
+                        support: trendLines.support || undefined, 
+                        resistance: trendLines.resistance || undefined 
+                      },
+                      fibonacci: fibonacciLevels || undefined,
+                      bollingerBands: {
+                        upper: bollingerBands.upper || undefined,
+                        middle: bollingerBands.middle || undefined,
+                        lower: bollingerBands.lower || undefined
+                      },
+                      breakoutPatterns: breakoutAnalysis || undefined
+                    }
+                  });
+                }
+              }}
             />
             <Label htmlFor={`include-in-plan-${symbol}`} className="text-sm">Include in Plan</Label>
           </div>

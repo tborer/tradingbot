@@ -732,6 +732,7 @@ export default function Dashboard() {
           finnhubApiKey: settings.finnhubApiKey,
           alphaVantageApiKey: settings.alphaVantageApiKey,
           coinDeskApiKey: settings.coinDeskApiKey,
+          openAIApiKey: settings.openAIApiKey,
           enableAutoStockTrading: settings.enableAutoStockTrading,
           enableAutoCryptoTrading: settings.enableAutoCryptoTrading,
           enableManualCryptoTrading: settings.enableManualCryptoTrading,

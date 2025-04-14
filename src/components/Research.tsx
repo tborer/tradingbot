@@ -589,7 +589,7 @@ const Research: React.FC = () => {
               type="submit" 
               disabled={loading || (!alphaVantageApiKey && !coinDeskApiKey)}
             >
-              {loading ? "Loading..." : "Get Historical Data"}
+              {loading ? "Loading..." : "Get Historical Data & Analyze"}
             </Button>
           </form>
         </CardContent>

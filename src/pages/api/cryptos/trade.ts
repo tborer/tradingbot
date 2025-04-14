@@ -12,12 +12,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const supabase = createClient(req, res);
     
     // Get the user session
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
     
-    if (!user) {
-      console.error('Trade API: Unauthorized access attempt');
-      return res.status(401).json({ error: 'Unauthorized' });
+    if (authError || !user) {
+      console.error('Trade API: Authentication error:', authError);
+      
+      // Create a detailed error log for troubleshooting
+      try {
+        await prisma.cryptoTransaction.create({
+          data: {
+            cryptoId: req.body.cryptoId || 'unknown',
+            action: 'error',
+            shares: req.body.shares || 0,
+            price: 0,
+            totalAmount: 0,
+            userId: 'unauthorized', // We don't have a valid user ID
+            logInfo: JSON.stringify({
+              timestamp: new Date().toISOString(),
+              method: 'trade_api',
+              requestedAction: req.body.action || 'unknown',
+              status: 'failed',
+              error: 'Authentication failed: ' + (authError?.message || 'User not authenticated'),
+              message: 'Failed to authenticate user for crypto trade',
+              requestBody: req.body,
+              authErrorDetails: authError || 'No user found'
+            }, null, 2)
+          },
+        }).catch(err => {
+          console.error('Failed to log authentication error to database:', err);
+        });
+      } catch (logError) {
+        console.error('Error creating authentication error log:', logError);
+      }
+      
+      return res.status(401).json({ 
+        error: 'Unauthorized: You must be logged in to execute trades',
+        details: authError?.message || 'User authentication failed'
+      });
     }
+    
+    console.log('Trade API: User authenticated:', user.id);
     
     // Only allow POST requests
     if (req.method !== 'POST') {
@@ -81,10 +115,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const apiUrl = getApiUrl('/api/cryptos/execute-order');
       console.log('Calling execute-order API at:', apiUrl);
       
+      // Pass the cookies from the original request to maintain authentication
+      const cookies = req.headers.cookie;
+      
       const executeOrderResponse = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Cookie': cookies || '', // Forward cookies to maintain authentication
         },
         body: JSON.stringify({
           cryptoId: crypto.id,

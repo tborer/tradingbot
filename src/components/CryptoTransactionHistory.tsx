@@ -20,19 +20,33 @@ export default function CryptoTransactionHistory() {
   useEffect(() => {
     const fetchTransactions = async () => {
       try {
+        console.log('Fetching crypto transactions...');
         const response = await fetch('/api/crypto-transactions');
-        if (response.ok) {
-          const data = await response.json();
-          setTransactions(data);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+          console.error('Error response from API:', errorData);
+          
+          if (response.status === 401) {
+            toast({
+              variant: 'destructive',
+              title: 'Authentication Error',
+              description: 'You must be logged in to view transaction history. Please log in again.',
+            });
+          } else {
+            throw new Error(errorData.error || `Server error: ${response.status}`);
+          }
         } else {
-          throw new Error('Failed to fetch crypto transactions');
+          const data = await response.json();
+          console.log(`Loaded ${data.length} transactions`);
+          setTransactions(data);
         }
       } catch (error) {
         console.error('Error fetching crypto transactions:', error);
         toast({
           variant: 'destructive',
           title: 'Error',
-          description: 'Failed to load crypto transaction history. Please try again.',
+          description: `Failed to load transaction history: ${error.message || 'Unknown error'}`,
         });
       } finally {
         setLoading(false);

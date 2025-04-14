@@ -620,6 +620,196 @@ export function getFibonacciMessage(currentPrice: number, fibLevels: ReturnType<
  * @param bollingerBands Bollinger Bands values
  * @returns A recommendation string
  */
+/**
+ * Detect potential breakout patterns using trend lines and Bollinger Bands
+ * @param prices Array of price data points (most recent first)
+ * @param trendLines Support and resistance levels
+ * @param bollingerBands Bollinger Bands values
+ * @returns Object containing breakout analysis
+ */
+export function detectBreakoutPatterns(
+  prices: number[],
+  trendLines: { support: number | null; resistance: number | null },
+  bollingerBands: { upper: number | null; middle: number | null; lower: number | null }
+): {
+  breakoutDetected: boolean;
+  breakoutType: 'bullish' | 'bearish' | 'none';
+  breakoutStrength: 'strong' | 'moderate' | 'weak' | 'none';
+  consolidationDetected: boolean;
+  volatilityContraction: boolean;
+  priceNearResistance: boolean;
+  priceNearSupport: boolean;
+} {
+  if (!prices || prices.length < 10 || !trendLines.support || !trendLines.resistance || 
+      !bollingerBands.upper || !bollingerBands.middle || !bollingerBands.lower) {
+    return {
+      breakoutDetected: false,
+      breakoutType: 'none',
+      breakoutStrength: 'none',
+      consolidationDetected: false,
+      volatilityContraction: false,
+      priceNearResistance: false,
+      priceNearSupport: false
+    };
+  }
+
+  const currentPrice = prices[0];
+  const previousPrice = prices[1];
+  
+  // Check if price is near support or resistance (within 3%)
+  const priceNearSupport = Math.abs((currentPrice - trendLines.support) / trendLines.support) < 0.03;
+  const priceNearResistance = Math.abs((currentPrice - trendLines.resistance) / trendLines.resistance) < 0.03;
+  
+  // Calculate Bollinger Band width (volatility indicator)
+  const bandWidth = (bollingerBands.upper - bollingerBands.lower) / bollingerBands.middle;
+  
+  // Check for volatility contraction (narrowing Bollinger Bands)
+  // Calculate previous Bollinger Bands (using prices[1:21] instead of prices[0:20])
+  const previousPeriodPrices = prices.slice(1, 21);
+  const previousSMA = previousPeriodPrices.reduce((sum, price) => sum + price, 0) / 20;
+  const previousStdDev = calculateStandardDeviation(previousPeriodPrices, previousSMA);
+  const previousBandWidth = (2 * previousStdDev) / previousSMA;
+  
+  const volatilityContraction = bandWidth < previousBandWidth;
+  
+  // Check for price consolidation (prices moving in a narrow range)
+  const recentPrices = prices.slice(0, 10);
+  const priceRange = Math.max(...recentPrices) - Math.min(...recentPrices);
+  const avgPrice = recentPrices.reduce((sum, price) => sum + price, 0) / recentPrices.length;
+  const consolidationDetected = (priceRange / avgPrice) < 0.05; // Less than 5% range
+  
+  // Detect breakout
+  let breakoutDetected = false;
+  let breakoutType: 'bullish' | 'bearish' | 'none' = 'none';
+  let breakoutStrength: 'strong' | 'moderate' | 'weak' | 'none' = 'none';
+  
+  // Bullish breakout: price breaks above resistance or upper Bollinger Band
+  if (previousPrice < trendLines.resistance && currentPrice > trendLines.resistance) {
+    breakoutDetected = true;
+    breakoutType = 'bullish';
+    breakoutStrength = 'strong';
+  } else if (previousPrice < bollingerBands.upper && currentPrice > bollingerBands.upper) {
+    breakoutDetected = true;
+    breakoutType = 'bullish';
+    breakoutStrength = 'moderate';
+  } else if (consolidationDetected && currentPrice > bollingerBands.middle && previousPrice < bollingerBands.middle) {
+    breakoutDetected = true;
+    breakoutType = 'bullish';
+    breakoutStrength = 'weak';
+  }
+  
+  // Bearish breakout: price breaks below support or lower Bollinger Band
+  if (previousPrice > trendLines.support && currentPrice < trendLines.support) {
+    breakoutDetected = true;
+    breakoutType = 'bearish';
+    breakoutStrength = 'strong';
+  } else if (previousPrice > bollingerBands.lower && currentPrice < bollingerBands.lower) {
+    breakoutDetected = true;
+    breakoutType = 'bearish';
+    breakoutStrength = 'moderate';
+  } else if (consolidationDetected && currentPrice < bollingerBands.middle && previousPrice > bollingerBands.middle) {
+    breakoutDetected = true;
+    breakoutType = 'bearish';
+    breakoutStrength = 'weak';
+  }
+  
+  return {
+    breakoutDetected,
+    breakoutType,
+    breakoutStrength,
+    consolidationDetected,
+    volatilityContraction,
+    priceNearResistance,
+    priceNearSupport
+  };
+}
+
+/**
+ * Generate a message about breakout patterns
+ * @param breakoutAnalysis Breakout analysis results
+ * @param currentPrice Current price
+ * @param trendLines Support and resistance levels
+ * @returns A message describing the breakout pattern analysis
+ */
+export function getBreakoutMessage(
+  breakoutAnalysis: ReturnType<typeof detectBreakoutPatterns>,
+  currentPrice: number,
+  trendLines: { support: number | null; resistance: number | null }
+): string {
+  if (!trendLines.support || !trendLines.resistance) {
+    return "Not enough data to analyze breakout patterns.";
+  }
+
+  let message = "Breakout Pattern Analysis: ";
+  
+  // Describe consolidation and volatility
+  if (breakoutAnalysis.consolidationDetected) {
+    message += "Price is consolidating in a narrow range. ";
+    
+    if (breakoutAnalysis.volatilityContraction) {
+      message += "Volatility is contracting (narrowing Bollinger Bands), which often precedes a significant price movement. ";
+    } else {
+      message += "Volatility remains stable during consolidation. ";
+    }
+  } else {
+    if (breakoutAnalysis.volatilityContraction) {
+      message += "Volatility is contracting, which may lead to a breakout soon. ";
+    } else {
+      message += "Price is showing normal volatility patterns. ";
+    }
+  }
+  
+  // Describe proximity to support/resistance
+  if (breakoutAnalysis.priceNearResistance) {
+    message += `Price is testing resistance at $${trendLines.resistance.toFixed(2)}. `;
+    if (breakoutAnalysis.consolidationDetected) {
+      message += "Multiple tests of resistance during consolidation often precede a breakout. ";
+    }
+  } else if (breakoutAnalysis.priceNearSupport) {
+    message += `Price is testing support at $${trendLines.support.toFixed(2)}. `;
+    if (breakoutAnalysis.consolidationDetected) {
+      message += "Multiple tests of support during consolidation often precede a breakout. ";
+    }
+  }
+  
+  // Describe breakout if detected
+  if (breakoutAnalysis.breakoutDetected) {
+    if (breakoutAnalysis.breakoutType === 'bullish') {
+      message += `A ${breakoutAnalysis.breakoutStrength} bullish breakout has been detected. `;
+      
+      if (breakoutAnalysis.breakoutStrength === 'strong') {
+        message += `Price has broken above resistance at $${trendLines.resistance.toFixed(2)}, suggesting potential for continued upward movement. `;
+      } else if (breakoutAnalysis.breakoutStrength === 'moderate') {
+        message += "Price has broken above the upper Bollinger Band, suggesting increased buying pressure. ";
+      } else {
+        message += "Price is showing early signs of bullish momentum. Confirmation is needed for a stronger signal. ";
+      }
+    } else if (breakoutAnalysis.breakoutType === 'bearish') {
+      message += `A ${breakoutAnalysis.breakoutStrength} bearish breakout has been detected. `;
+      
+      if (breakoutAnalysis.breakoutStrength === 'strong') {
+        message += `Price has broken below support at $${trendLines.support.toFixed(2)}, suggesting potential for continued downward movement. `;
+      } else if (breakoutAnalysis.breakoutStrength === 'moderate') {
+        message += "Price has broken below the lower Bollinger Band, suggesting increased selling pressure. ";
+      } else {
+        message += "Price is showing early signs of bearish momentum. Confirmation is needed for a stronger signal. ";
+      }
+    }
+    
+    // Add volume consideration note
+    message += "Note: Breakouts are more reliable when accompanied by increased trading volume. ";
+  } else {
+    // No breakout detected
+    if (breakoutAnalysis.consolidationDetected && breakoutAnalysis.volatilityContraction) {
+      message += "No breakout yet, but the combination of price consolidation and decreasing volatility suggests a potential breakout may occur soon. ";
+    } else {
+      message += "No breakout patterns detected at this time. ";
+    }
+  }
+  
+  return message;
+}
+
 export function generateRecommendation(
   currentPrice: number,
   sma: number | null,

@@ -21,7 +21,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(405).json({ error: 'Method not allowed' });
     }
     
-    // Get all non-expired crypto transactions for the user, including failed ones
+    // Get all crypto transactions for the user, including failed ones and expired ones
+    // We want to show all transactions, especially errors, regardless of expiration
     const transactions = await prisma.$queryRaw`
       SELECT 
         ct.id, 
@@ -39,7 +40,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       FROM "CryptoTransaction" ct
       JOIN "Crypto" c ON ct."cryptoId" = c.id
       WHERE ct."userId" = ${user.id}::uuid
-        AND ct."expiresAt" > NOW()
       ORDER BY ct."createdAt" DESC
     `;
     

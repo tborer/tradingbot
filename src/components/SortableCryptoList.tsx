@@ -471,7 +471,23 @@ export default function SortableCryptoList({
             }
           }
           
-          throw new Error(errorMessage);
+          // Even if the API call failed, we might have a transaction record for the failed attempt
+          if (responseData.transaction) {
+            toast({
+              variant: "destructive",
+              title: `Failed to ${tradeAction} ${selectedCrypto?.symbol}`,
+              description: `${errorMessage}. The failed transaction has been recorded in your history.`,
+            });
+          } else {
+            throw new Error(errorMessage);
+          }
+          
+          // Close the dialog and refresh to show the failed transaction
+          setTradeDialogOpen(false);
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+          return;
         }
         
         setTradeDialogOpen(false);

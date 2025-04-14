@@ -71,7 +71,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Execute the order using the Kraken API
     try {
       // Call the execute-order API endpoint to use the Kraken API
-      const executeOrderResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/api/cryptos/execute-order`, {
+      // Fix: Use absolute URL with origin for API calls
+      const origin = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+      const executeOrderResponse = await fetch(`${origin}/api/cryptos/execute-order`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -107,10 +109,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.error('Error executing order via Kraken API:', error);
       
       // Log the failed transaction with error details
-      await prisma.cryptoTransaction.create({
+      const transaction = await prisma.cryptoTransaction.create({
         data: {
           cryptoId: crypto.id,
-          action,
+          action: 'error', // Change action to 'error' for failed transactions
           shares: Number(shares),
           price: currentPrice,
           totalAmount,
@@ -118,7 +120,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           logInfo: JSON.stringify({
             timestamp: new Date().toISOString(),
             method: 'trade_api_error',
-            action,
+            requestedAction: action, // Store the originally requested action
             shares: Number(shares),
             price: currentPrice,
             totalAmount,
@@ -132,7 +134,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Return error to client
       return res.status(500).json({ 
         error: 'Failed to execute order via Kraken API', 
-        details: error.message 
+        details: error.message,
+        transaction // Return the transaction record for the client
       });
       
     }

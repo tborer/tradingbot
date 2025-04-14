@@ -116,7 +116,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       await prisma.cryptoTransaction.create({
         data: {
           cryptoId: crypto.id,
-          action,
+          action: 'error', // Change action to 'error' for failed transactions
           shares,
           price,
           totalAmount,
@@ -135,7 +135,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             timestamp: new Date().toISOString(),
             orderId,
             pair,
-            action,
+            requestedAction: action, // Store the originally requested action
             shares,
             price,
             totalAmount,

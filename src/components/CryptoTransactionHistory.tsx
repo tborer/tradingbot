@@ -80,10 +80,14 @@ export default function CryptoTransactionHistory() {
                 <TableCell className="font-medium">{transaction.symbol}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <span className={transaction.action === 'buy' ? 'text-green-600' : 'text-red-600'}>
-                      {transaction.action === 'buy' ? 'Buy' : 'Sell'}
-                    </span>
-                    {transaction.logInfo?.includes('"status":"failed"') && (
+                    {transaction.action === 'error' ? (
+                      <span className="text-red-600 font-medium">ERROR</span>
+                    ) : (
+                      <span className={transaction.action === 'buy' ? 'text-green-600' : 'text-red-600'}>
+                        {transaction.action === 'buy' ? 'Buy' : 'Sell'}
+                      </span>
+                    )}
+                    {(transaction.logInfo?.includes('"status":"failed"') || transaction.action === 'error') && (
                       <Badge variant="destructive" className="text-xs">
                         <AlertCircle className="h-3 w-3 mr-1" />
                         Failed
@@ -114,8 +118,8 @@ export default function CryptoTransactionHistory() {
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              Transaction Details - {selectedTransaction?.symbol} {selectedTransaction?.action.toUpperCase()}
-              {selectedTransaction?.logInfo?.includes('"status":"failed"') && (
+              Transaction Details - {selectedTransaction?.symbol} {selectedTransaction?.action === 'error' ? 'ERROR' : selectedTransaction?.action.toUpperCase()}
+              {(selectedTransaction?.logInfo?.includes('"status":"failed"') || selectedTransaction?.action === 'error') && (
                 <Badge variant="destructive">Failed Transaction</Badge>
               )}
             </DialogTitle>
@@ -136,9 +140,30 @@ export default function CryptoTransactionHistory() {
                 </div>
                 <div>
                   <h3 className="text-sm font-medium">Action</h3>
-                  <p className={`text-sm ${selectedTransaction.action === 'buy' ? 'text-green-600' : 'text-red-600'}`}>
-                    {selectedTransaction.action === 'buy' ? 'Buy' : 'Sell'}
-                  </p>
+                  {selectedTransaction.action === 'error' ? (
+                    <div>
+                      <p className="text-sm text-red-600 font-medium">ERROR</p>
+                      {(() => {
+                        try {
+                          const logData = JSON.parse(selectedTransaction.logInfo || '{}');
+                          if (logData.requestedAction) {
+                            return (
+                              <p className="text-xs text-muted-foreground">
+                                Attempted: {logData.requestedAction.toUpperCase()}
+                              </p>
+                            );
+                          }
+                          return null;
+                        } catch (e) {
+                          return null;
+                        }
+                      })()}
+                    </div>
+                  ) : (
+                    <p className={`text-sm ${selectedTransaction.action === 'buy' ? 'text-green-600' : 'text-red-600'}`}>
+                      {selectedTransaction.action === 'buy' ? 'Buy' : 'Sell'}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <h3 className="text-sm font-medium">Symbol</h3>

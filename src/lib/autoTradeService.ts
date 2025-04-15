@@ -111,6 +111,13 @@ export async function processAutoCryptoTrades(
         // Check if we should buy based on either nextAction or oneTimeBuy flag
         if ((nextAction === 'buy' || oneTimeBuy)) {
           console.log(`Buy condition check for ${crypto.symbol}: currentPrice=${priceData.price}, purchasePrice=${crypto.purchasePrice}, buyThreshold=${buyThreshold}`);
+          
+          // Log detailed information about the price comparison
+          const priceDifference = crypto.purchasePrice - priceData.price;
+          const percentDifference = crypto.purchasePrice > 0 ? (priceDifference / crypto.purchasePrice) * 100 : 0;
+          console.log(`Price difference for ${crypto.symbol}: $${priceDifference.toFixed(2)} (${percentDifference.toFixed(2)}%)`);
+          console.log(`Buy threshold: ${buyThreshold}%`);
+          
           if (shouldBuyCrypto(priceData.price, crypto.purchasePrice, buyThreshold)) {
             console.log(`Buy condition met for ${crypto.symbol}!`);
             shouldTrade = true;
@@ -132,8 +139,13 @@ export async function processAutoCryptoTrades(
         // Check if we should sell based on either nextAction or oneTimeSell flag
         if ((nextAction === 'sell' || oneTimeSell)) {
           console.log(`Sell condition check for ${crypto.symbol}: currentPrice=${priceData.price}, purchasePrice=${crypto.purchasePrice}, sellThreshold=${sellThreshold}`);
-          const percentGain = ((priceData.price - crypto.purchasePrice) / crypto.purchasePrice) * 100;
-          console.log(`Current gain for ${crypto.symbol}: ${percentGain.toFixed(2)}% (threshold: ${sellThreshold}%)`);
+          
+          // Calculate and log detailed gain information
+          const priceGain = priceData.price - crypto.purchasePrice;
+          const percentGain = crypto.purchasePrice > 0 ? ((priceData.price - crypto.purchasePrice) / crypto.purchasePrice) * 100 : 0;
+          console.log(`Current gain for ${crypto.symbol}: $${priceGain.toFixed(2)} (${percentGain.toFixed(2)}%)`);
+          console.log(`Sell threshold: ${sellThreshold}%`);
+          console.log(`Comparison: ${percentGain.toFixed(2)}% >= ${sellThreshold}%: ${percentGain >= sellThreshold}`);
           
           if (shouldSellCrypto(priceData.price, crypto.purchasePrice, sellThreshold)) {
             console.log(`Sell condition met for ${crypto.symbol}!`);
@@ -181,9 +193,16 @@ export async function processAutoCryptoTrades(
               sharesToTrade = Math.min(sharesToTrade, crypto.shares);
             }
           } else {
-            // Default to trading 100% of available shares for sell, or use purchase price for buy
-            sharesToTrade = action === 'sell' ? crypto.shares : 
-              (crypto.purchasePrice > 0 ? 1 / crypto.purchasePrice : 0);
+            // Default to trading 100% of available shares for sell, or a reasonable default for buy
+            if (action === 'sell') {
+              sharesToTrade = crypto.shares;
+              console.log(`Using default sell amount: ${sharesToTrade} shares (100% of holdings)`);
+            } else {
+              // For buy, use a reasonable default amount (e.g., $100 worth)
+              const defaultBuyValue = 100; // $100 worth of crypto
+              sharesToTrade = priceData.price > 0 ? defaultBuyValue / priceData.price : 0;
+              console.log(`Using default buy amount: ${sharesToTrade} shares ($${defaultBuyValue} worth at $${priceData.price})`);
+            }
             purchaseMethod = 'shares';
           }
 
@@ -356,6 +375,14 @@ export async function checkCryptoForAutoTrade(
       // Check if we should buy based on either nextAction or oneTimeBuy flag
       if ((nextAction === 'buy' || oneTimeBuy)) {
         console.log(`Buy condition check for ${crypto.symbol}: currentPrice=${price}, purchasePrice=${crypto.purchasePrice}, buyThreshold=${buyThreshold}`);
+        
+        // Log detailed information about the price comparison
+        const priceDifference = crypto.purchasePrice - price;
+        const percentDifference = crypto.purchasePrice > 0 ? (priceDifference / crypto.purchasePrice) * 100 : 0;
+        console.log(`Price difference for ${crypto.symbol}: $${priceDifference.toFixed(2)} (${percentDifference.toFixed(2)}%)`);
+        console.log(`Buy threshold: ${buyThreshold}%`);
+        console.log(`Comparison: ${percentDifference.toFixed(2)}% >= ${buyThreshold}%: ${percentDifference >= buyThreshold}`);
+        
         if (shouldBuyCrypto(price, crypto.purchasePrice, buyThreshold)) {
           console.log(`Buy condition met for ${crypto.symbol}!`);
           shouldTrade = true;
@@ -376,8 +403,13 @@ export async function checkCryptoForAutoTrade(
       // Check if we should sell based on either nextAction or oneTimeSell flag
       if ((nextAction === 'sell' || oneTimeSell)) {
         console.log(`Sell condition check for ${crypto.symbol}: currentPrice=${price}, purchasePrice=${crypto.purchasePrice}, sellThreshold=${sellThreshold}`);
-        const percentGain = ((price - crypto.purchasePrice) / crypto.purchasePrice) * 100;
-        console.log(`Current gain for ${crypto.symbol}: ${percentGain.toFixed(2)}% (threshold: ${sellThreshold}%)`);
+        
+        // Calculate and log detailed gain information
+        const priceGain = price - crypto.purchasePrice;
+        const percentGain = crypto.purchasePrice > 0 ? ((price - crypto.purchasePrice) / crypto.purchasePrice) * 100 : 0;
+        console.log(`Current gain for ${crypto.symbol}: $${priceGain.toFixed(2)} (${percentGain.toFixed(2)}%)`);
+        console.log(`Sell threshold: ${sellThreshold}%`);
+        console.log(`Comparison: ${percentGain.toFixed(2)}% >= ${sellThreshold}%: ${percentGain >= sellThreshold}`);
         
         if (shouldSellCrypto(price, crypto.purchasePrice, sellThreshold)) {
           console.log(`Sell condition met for ${crypto.symbol}!`);
@@ -425,9 +457,16 @@ export async function checkCryptoForAutoTrade(
             sharesToTrade = Math.min(sharesToTrade, crypto.shares);
           }
         } else {
-          // Default to trading 100% of available shares for sell, or use purchase price for buy
-          sharesToTrade = action === 'sell' ? crypto.shares : 
-            (crypto.purchasePrice > 0 ? 1 / crypto.purchasePrice : 0);
+          // Default to trading 100% of available shares for sell, or a reasonable default for buy
+          if (action === 'sell') {
+            sharesToTrade = crypto.shares;
+            console.log(`Using default sell amount: ${sharesToTrade} shares (100% of holdings)`);
+          } else {
+            // For buy, use a reasonable default amount (e.g., $100 worth)
+            const defaultBuyValue = 100; // $100 worth of crypto
+            sharesToTrade = price > 0 ? defaultBuyValue / price : 0;
+            console.log(`Using default buy amount: ${sharesToTrade} shares ($${defaultBuyValue} worth at $${price})`);
+          }
           purchaseMethod = 'shares';
         }
 

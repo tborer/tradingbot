@@ -135,8 +135,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       
       // Update the crypto's auto buy/sell flags based on settings
+      // Enable autoBuy if nextAction is 'buy' OR oneTimeBuy is true
+      // Enable autoSell if nextAction is 'sell' OR oneTimeSell is true
       const autoBuy = settings.nextAction === 'buy' || settings.oneTimeBuy;
       const autoSell = settings.nextAction === 'sell' || settings.oneTimeSell;
+      
+      console.log(`Setting auto trade flags based on: nextAction=${settings.nextAction}, oneTimeBuy=${settings.oneTimeBuy}, oneTimeSell=${settings.oneTimeSell}`);
+      console.log(`Resulting flags: autoBuy=${autoBuy}, autoSell=${autoSell}`);
       
       console.log(`Updating auto trade flags for ${crypto.symbol}: autoBuy=${autoBuy}, autoSell=${autoSell}`);
       console.log(`Settings that determined these flags: nextAction=${settings.nextAction}, oneTimeBuy=${settings.oneTimeBuy}, oneTimeSell=${settings.oneTimeSell}`);

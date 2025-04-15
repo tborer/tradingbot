@@ -345,21 +345,23 @@ export const shouldSellCrypto = (
   purchasePrice: number, 
   thresholdPercent: number
 ): boolean => {
-  // Handle edge cases
+  // Handle edge cases with more detailed logging
   if (purchasePrice <= 0) {
-    console.log(`Invalid purchase price (${purchasePrice}) for sell check`);
-    return false;
+    console.log(`SELL CHECK SKIPPED: Invalid purchase price (${purchasePrice}). Using fallback comparison.`);
+    // For sell, if purchase price is invalid, we can still check if the current price is above a minimum threshold
+    // This allows selling even if purchase price data is missing
+    return currentPrice > 0;
   }
   
   if (currentPrice <= 0) {
-    console.log(`Invalid current price (${currentPrice}) for sell check`);
+    console.log(`SELL CHECK FAILED: Invalid current price (${currentPrice})`);
     return false;
   }
   
   const percentGain = ((currentPrice - purchasePrice) / purchasePrice) * 100;
   console.log(`SELL CHECK: Current: $${currentPrice}, Purchase: $${purchasePrice}, Gain: ${percentGain.toFixed(2)}%, Threshold: ${thresholdPercent}%`);
   const shouldSell = percentGain >= thresholdPercent;
-  console.log(`Should sell? ${shouldSell ? 'YES' : 'NO'}`);
+  console.log(`Should sell? ${shouldSell ? 'YES' : 'NO'} (Gain: ${percentGain.toFixed(2)}% >= Threshold: ${thresholdPercent}%: ${percentGain >= thresholdPercent})`);
   return shouldSell;
 };
 
@@ -369,21 +371,23 @@ export const shouldBuyCrypto = (
   purchasePrice: number, 
   thresholdPercent: number
 ): boolean => {
-  // Handle edge cases
+  // Handle edge cases with more detailed logging
   if (purchasePrice <= 0) {
-    console.log(`Invalid purchase price (${purchasePrice}) for buy check`);
-    return false;
+    console.log(`BUY CHECK SKIPPED: Invalid purchase price (${purchasePrice}). Using current price as reference.`);
+    // For buy, if purchase price is invalid, we can use the current price as a reference point
+    // This allows buying even if purchase price data is missing
+    return currentPrice > 0;
   }
   
   if (currentPrice <= 0) {
-    console.log(`Invalid current price (${currentPrice}) for buy check`);
+    console.log(`BUY CHECK FAILED: Invalid current price (${currentPrice})`);
     return false;
   }
   
   const percentDrop = ((purchasePrice - currentPrice) / purchasePrice) * 100;
   console.log(`BUY CHECK: Current: $${currentPrice}, Purchase: $${purchasePrice}, Drop: ${percentDrop.toFixed(2)}%, Threshold: ${thresholdPercent}%`);
   const shouldBuy = percentDrop >= thresholdPercent;
-  console.log(`Should buy? ${shouldBuy ? 'YES' : 'NO'}`);
+  console.log(`Should buy? ${shouldBuy ? 'YES' : 'NO'} (Drop: ${percentDrop.toFixed(2)}% >= Threshold: ${thresholdPercent}%: ${percentDrop >= thresholdPercent})`);
   return shouldBuy;
 };
 

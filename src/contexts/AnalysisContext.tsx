@@ -17,6 +17,14 @@ interface AnalysisItem {
     fibonacci?: any;
     bollingerBands?: { upper?: number; middle?: number; lower?: number };
     breakoutPatterns?: any;
+    drawdownDrawup?: {
+      maxDrawdown?: number;
+      maxDrawup?: number;
+      avgDrawdown?: number;
+      avgDrawup?: number;
+      frequentDrawdown?: number;
+      frequentDrawup?: number;
+    };
   };
 }
 

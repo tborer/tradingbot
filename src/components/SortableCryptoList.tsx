@@ -221,9 +221,8 @@ function SortableCryptoItem({
             e.stopPropagation();
             onOpenTrendsPopup(crypto.symbol);
           }}
-          disabled={!hasAnalysisData(crypto.symbol)}
-          className={hasAnalysisData(crypto.symbol) ? "text-blue-500 hover:text-blue-700" : "text-gray-400"}
-          title={hasAnalysisData(crypto.symbol) ? "View trend analysis" : "Analysis not available yet"}
+          className={hasAnalysisData(crypto.symbol) ? "text-blue-500 hover:text-blue-700" : "text-gray-400 hover:text-gray-600"}
+          title="View trend analysis"
         >
           <TrendingUp className="h-4 w-4" />
         </Button>
@@ -438,14 +437,42 @@ export default function SortableCryptoList({
   };
   
   // Function to open the trends popup
-  const handleOpenTrendsPopup = (symbol: string) => {
-    if (hasAnalysisData(symbol)) {
-      setSelectedTrendsSymbol(symbol);
-      setTrendsPopupOpen(true);
-    } else {
+  const handleOpenTrendsPopup = async (symbol: string) => {
+    setSelectedTrendsSymbol(symbol);
+    setTrendsPopupOpen(true);
+    
+    try {
+      // Get the API key from environment variables
+      const apiKey = process.env.NEXT_PUBLIC_COINDESK_API_KEY;
+      
+      if (!apiKey) {
+        console.error("CoinDesk API key not found in environment variables");
+        toast({
+          variant: "destructive",
+          title: "API Key Missing",
+          description: "CoinDesk API key is not configured. Please contact the administrator.",
+        });
+        return;
+      }
+      
+      // Fetch and analyze trend data
+      const response = await fetch(`/api/cryptos/historical?symbol=${symbol}&days=30`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch historical data: ${response.statusText}`);
+      }
+      
+      // Show loading toast
       toast({
-        title: "Analysis Not Available",
-        description: "Trend analysis for this cryptocurrency is not available yet.",
+        title: "Analyzing Trends",
+        description: `Analyzing historical data for ${symbol}...`,
+      });
+    } catch (error) {
+      console.error("Error fetching trend data:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to fetch trend data. Please try again later.",
       });
     }
   };

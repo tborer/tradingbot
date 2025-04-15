@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAnalysis } from "@/contexts/AnalysisContext";
+import { fetchAndAnalyzeTrends } from "@/lib/coinDesk";
 
 interface TrendsPopupProps {
   isOpen: boolean;
@@ -11,9 +12,10 @@ interface TrendsPopupProps {
 }
 
 const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) => {
-  const { getItem } = useAnalysis();
+  const { getItem, updateItem } = useAnalysis();
   const [loading, setLoading] = useState(true);
   const [analysisData, setAnalysisData] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   useEffect(() => {
     if (isOpen && symbol) {
@@ -25,12 +27,65 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
       if (item && item.analysisData) {
         setAnalysisData(item.analysisData);
         setLoading(false);
+        
+        // If we don't have drawdown/drawup analysis yet, fetch it
+        if (!item.analysisData.drawdownDrawup && !isAnalyzing) {
+          performDrawdownDrawupAnalysis(symbol, item.id);
+        }
       } else {
         // If no analysis data is available yet, keep loading state
         setAnalysisData(null);
       }
     }
-  }, [isOpen, symbol, getItem]);
+  }, [isOpen, symbol, getItem, isAnalyzing]);
+  
+  // Function to perform drawdown/drawup analysis
+  const performDrawdownDrawupAnalysis = async (symbol: string, itemId: string) => {
+    setIsAnalyzing(true);
+    
+    try {
+      // Get the API key from environment variables
+      const apiKey = process.env.NEXT_PUBLIC_COINDESK_API_KEY;
+      
+      if (!apiKey) {
+        console.error("CoinDesk API key not found in environment variables");
+        setIsAnalyzing(false);
+        return;
+      }
+      
+      // Fetch and analyze trend data
+      const analysis = await fetchAndAnalyzeTrends(symbol, apiKey, 30);
+      
+      if (analysis) {
+        // Update the analysis data in context
+        const item = getItem(symbol);
+        
+        if (item) {
+          const updatedAnalysisData = {
+            ...item.analysisData,
+            drawdownDrawup: {
+              maxDrawdown: analysis.maxDrawdown,
+              maxDrawup: analysis.maxDrawup,
+              avgDrawdown: analysis.avgDrawdown,
+              avgDrawup: analysis.avgDrawup,
+              frequentDrawdown: analysis.frequentDrawdown,
+              frequentDrawup: analysis.frequentDrawup
+            }
+          };
+          
+          updateItem(itemId, { analysisData: updatedAnalysisData });
+          
+          // Update local state
+          setAnalysisData(updatedAnalysisData);
+          setLoading(false);
+        }
+      }
+    } catch (error) {
+      console.error("Error performing drawdown/drawup analysis:", error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -48,6 +103,68 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
           </div>
         ) : analysisData ? (
           <div className="space-y-4">
+            {/* Drawdown and Drawup Analysis */}
+            <Card>
+              <CardContent className="pt-6">
+                <h3 className="text-lg font-medium mb-2">Drawdown & Drawup Analysis</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Max Drawdown</p>
+                    <p className="text-lg font-medium">
+                      {analysisData.drawdownDrawup?.maxDrawdown 
+                        ? `${analysisData.drawdownDrawup.maxDrawdown.toFixed(2)}%` 
+                        : isAnalyzing ? 'Analyzing...' : 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Max Drawup</p>
+                    <p className="text-lg font-medium">
+                      {analysisData.drawdownDrawup?.maxDrawup 
+                        ? `${analysisData.drawdownDrawup.maxDrawup.toFixed(2)}%` 
+                        : isAnalyzing ? 'Analyzing...' : 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Avg Drawdown</p>
+                    <p className="text-lg font-medium">
+                      {analysisData.drawdownDrawup?.avgDrawdown 
+                        ? `${analysisData.drawdownDrawup.avgDrawdown.toFixed(2)}%` 
+                        : isAnalyzing ? 'Analyzing...' : 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Avg Drawup</p>
+                    <p className="text-lg font-medium">
+                      {analysisData.drawdownDrawup?.avgDrawup 
+                        ? `${analysisData.drawdownDrawup.avgDrawup.toFixed(2)}%` 
+                        : isAnalyzing ? 'Analyzing...' : 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Frequent Drawdown</p>
+                    <p className="text-lg font-medium">
+                      {analysisData.drawdownDrawup?.frequentDrawdown 
+                        ? `${analysisData.drawdownDrawup.frequentDrawdown.toFixed(2)}%` 
+                        : isAnalyzing ? 'Analyzing...' : 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Frequent Drawup</p>
+                    <p className="text-lg font-medium">
+                      {analysisData.drawdownDrawup?.frequentDrawup 
+                        ? `${analysisData.drawdownDrawup.frequentDrawup.toFixed(2)}%` 
+                        : isAnalyzing ? 'Analyzing...' : 'N/A'}
+                    </p>
+                  </div>
+                </div>
+                {isAnalyzing && (
+                  <p className="text-sm text-muted-foreground mt-4 text-center">
+                    Analyzing historical data for {symbol}...
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+            
             {/* Moving Averages */}
             <Card>
               <CardContent className="pt-6">

@@ -1,4 +1,5 @@
 // CoinDesk API utility functions
+import { calculateDrawdownDrawup, extractPriceDataFromCoinDesk, DrawdownDrawupAnalysis } from './trendAnalysis';
 
 /**
  * Interface for CoinDesk API response
@@ -493,4 +494,52 @@ export function formatCoinDeskDataForAnalysis(data: CoinDeskHistoricalResponse |
   // If we couldn't process any of the known formats, log the data structure
   console.warn('Failed to format data:', JSON.stringify(data, null, 2));
   return null;
+}
+
+/**
+ * Fetch historical data and perform drawdown/drawup analysis for a cryptocurrency
+ * @param symbol Cryptocurrency symbol (e.g., BTC)
+ * @param apiKey CoinDesk API key
+ * @param days Number of days of historical data to fetch (default: 30)
+ * @returns Promise with analysis results
+ */
+export async function fetchAndAnalyzeTrends(
+  symbol: string,
+  apiKey: string,
+  days: number = 30
+): Promise<DrawdownDrawupAnalysis | null> {
+  try {
+    // Fetch historical data
+    const historicalData = await fetchCoinDeskHistoricalData(symbol, apiKey, days);
+    
+    if (!historicalData) {
+      console.error(`Failed to fetch historical data for ${symbol}`);
+      return null;
+    }
+    
+    // Format the data for analysis
+    const formattedData = formatCoinDeskDataForAnalysis(historicalData);
+    
+    if (!formattedData) {
+      console.error(`Failed to format historical data for ${symbol}`);
+      return null;
+    }
+    
+    // Extract price data (closing prices)
+    const priceData = extractPriceDataFromCoinDesk(formattedData);
+    
+    if (priceData.length === 0) {
+      console.error(`No price data found for ${symbol}`);
+      return null;
+    }
+    
+    // Calculate drawdown and drawup analysis
+    const analysis = calculateDrawdownDrawup(priceData);
+    
+    console.log(`Completed trend analysis for ${symbol}:`, analysis);
+    return analysis;
+  } catch (error) {
+    console.error(`Error analyzing trends for ${symbol}:`, error);
+    return null;
+  }
 }

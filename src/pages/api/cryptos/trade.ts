@@ -98,9 +98,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ error: 'Crypto not found' });
     }
     
-    // For sell actions, check if user has enough shares
+    // For sell actions, check if user has enough shares in the local database
     if (action === 'sell' && crypto.shares < Number(shares)) {
-      return res.status(400).json({ error: 'Not enough shares to sell' });
+      return res.status(400).json({ error: `Not enough shares to sell. You only have ${crypto.shares.toFixed(8)} shares available.` });
     }
     
     // Get the latest price from the Kraken WebSocket data

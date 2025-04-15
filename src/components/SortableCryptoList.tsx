@@ -534,7 +534,7 @@ export default function SortableCryptoList({
     if (onTrade) {
       setIsSubmitting(true);
       try {
-        // If this is a sell action, first check if we have enough shares
+        // If this is a sell action, first check if we have enough shares in the local database
         if (tradeAction === 'sell') {
           // Find the crypto in our list to check shares
           const crypto = cryptos.find(c => c.id === selectedCrypto?.id);
@@ -572,19 +572,7 @@ export default function SortableCryptoList({
         // Special handling for "Not enough shares to sell" error
         if (error.message && error.message.includes("Not enough shares to sell")) {
           errorTitle = "Insufficient Shares";
-          
-          // Check if the error message includes available shares information
-          if (error.message.includes("Available on Kraken:")) {
-            const availableMatch = error.message.match(/Available on Kraken: ([0-9.]+)/);
-            if (availableMatch && availableMatch[1]) {
-              const availableShares = parseFloat(availableMatch[1]);
-              errorDescription = `You only have ${availableShares.toFixed(8)} shares available on Kraken, but you're trying to sell ${shares} shares. Please refresh your portfolio to sync with Kraken.`;
-            } else {
-              errorDescription = "Your Kraken balance shows fewer shares than you're trying to sell. Please refresh your portfolio to sync with Kraken.";
-            }
-          } else {
-            errorDescription = "You don't have enough shares to complete this sale. Your local balance may be out of sync with Kraken.";
-          }
+          errorDescription = error.message || `You don't have enough shares to complete this sale.`;
         }
         
         toast({

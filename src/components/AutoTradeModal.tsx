@@ -50,7 +50,7 @@ export default function AutoTradeModal({
     enableContinuousTrading: initialSettings.enableContinuousTrading || false,
     oneTimeBuy: initialSettings.oneTimeBuy || false,
     oneTimeSell: initialSettings.oneTimeSell || false,
-    tradeByShares: initialSettings.tradeByShares || true,
+    tradeByShares: initialSettings.tradeByValue === true ? false : true, // Default to shares unless value is explicitly set
     tradeByValue: initialSettings.tradeByValue || false,
     nextAction: initialSettings.nextAction || 'buy',
     sharesAmount: initialSettings.sharesAmount || 0,
@@ -66,7 +66,7 @@ export default function AutoTradeModal({
       enableContinuousTrading: initialSettings.enableContinuousTrading || false,
       oneTimeBuy: initialSettings.oneTimeBuy || false,
       oneTimeSell: initialSettings.oneTimeSell || false,
-      tradeByShares: initialSettings.tradeByShares || true,
+      tradeByShares: initialSettings.tradeByValue === true ? false : true, // Default to shares unless value is explicitly set
       tradeByValue: initialSettings.tradeByValue || false,
       nextAction: initialSettings.nextAction || 'buy',
       sharesAmount: initialSettings.sharesAmount || 0,
@@ -198,7 +198,7 @@ export default function AutoTradeModal({
           <div className="space-y-3">
             <Label>Trade by:</Label>
             <RadioGroup 
-              defaultValue={settings.tradeByShares ? "shares" : "value"}
+              value={settings.tradeByValue ? "value" : "shares"}
               onValueChange={(value) => 
                 setSettings({ 
                   ...settings, 

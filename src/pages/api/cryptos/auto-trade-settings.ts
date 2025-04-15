@@ -62,6 +62,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     
     console.log(`Updating auto-trade settings for crypto ID: ${cryptoId}`);
+    console.log('Auto trade settings payload:', JSON.stringify({
+      buyThresholdPercent: settings.buyThresholdPercent,
+      sellThresholdPercent: settings.sellThresholdPercent,
+      enableContinuousTrading: settings.enableContinuousTrading,
+      oneTimeBuy: settings.oneTimeBuy,
+      oneTimeSell: settings.oneTimeSell,
+      nextAction: settings.nextAction,
+      tradeByShares: settings.tradeByShares,
+      tradeByValue: settings.tradeByValue,
+      sharesAmount: settings.sharesAmount,
+      totalValue: settings.totalValue,
+      orderType: settings.orderType
+    }, null, 2));
     
     // Verify the crypto belongs to the user
     const crypto = await prisma.crypto.findFirst({
@@ -167,6 +180,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       
       console.log(`Successfully saved auto-trade settings for ${crypto.symbol}`);
+      console.log('Saved settings:', JSON.stringify({
+        buyThresholdPercent: autoTradeSettings.buyThresholdPercent,
+        sellThresholdPercent: autoTradeSettings.sellThresholdPercent,
+        enableContinuousTrading: autoTradeSettings.enableContinuousTrading,
+        oneTimeBuy: autoTradeSettings.oneTimeBuy,
+        oneTimeSell: autoTradeSettings.oneTimeSell,
+        nextAction: autoTradeSettings.nextAction,
+        tradeByShares: autoTradeSettings.tradeByShares,
+        tradeByValue: autoTradeSettings.tradeByValue,
+        sharesAmount: autoTradeSettings.sharesAmount,
+        totalValue: autoTradeSettings.totalValue,
+        orderType: autoTradeSettings.orderType
+      }, null, 2));
       return res.status(200).json({
         success: true,
         autoTradeSettings,

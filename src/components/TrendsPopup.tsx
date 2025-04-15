@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAnalysis } from "@/contexts/AnalysisContext";
 import { useToast } from "@/components/ui/use-toast";
+import { ErrorCategory, ErrorSeverity } from '@/lib/errorLogger';
 
 interface TrendsPopupProps {
   isOpen: boolean;
@@ -17,32 +18,14 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
   const [loading, setLoading] = useState(true);
   const [analysisData, setAnalysisData] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (isOpen && symbol) {
-      setLoading(true);
-      
-      // Get the analysis data for this symbol
-      const item = getItem(symbol);
-      
-      if (item && item.analysisData) {
-        setAnalysisData(item.analysisData);
-        setLoading(false);
-        
-        // If we don't have drawdown/drawup analysis yet, fetch it
-        if (!item.analysisData.drawdownDrawup && !isAnalyzing) {
-          performDrawdownDrawupAnalysis(symbol, item.id);
-        }
-      } else {
-        // If no analysis data is available yet, keep loading state
-        setAnalysisData(null);
-      }
-    }
-  }, [isOpen, symbol, getItem, isAnalyzing]);
-  
   // Function to perform drawdown/drawup analysis
-  const performDrawdownDrawupAnalysis = async (symbol: string, itemId: string) => {
+  const performDrawdownDrawupAnalysis = useCallback(async (symbol: string, itemId: string) => {
     setIsAnalyzing(true);
+    setError(null);
+    
+    console.log(`Starting trend analysis for ${symbol} with item ID ${itemId}`);
     
     try {
       // Call the API endpoint for trend analysis
@@ -56,19 +39,25 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
       
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || `API error: ${response.status}`);
+        const errorMessage = errorData.error || `API error: ${response.status}`;
+        console.error(`Trend analysis API error: ${errorMessage}`);
+        throw new Error(errorMessage);
       }
       
       const data = await response.json();
+      console.log(`Received trend analysis data:`, data);
+      
       const analysis = data.analysis;
       
       if (analysis) {
+        console.log(`Processing analysis data for ${symbol}:`, analysis);
+        
         // Update the analysis data in context
         const item = getItem(symbol);
         
         if (item) {
           const updatedAnalysisData = {
-            ...item.analysisData,
+            ...item.analysisData || {},
             drawdownDrawup: {
               maxDrawdown: analysis.maxDrawdown,
               maxDrawup: analysis.maxDrawup,
@@ -79,25 +68,81 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
             }
           };
           
+          console.log(`Updating item ${itemId} with new analysis data:`, updatedAnalysisData);
           updateItem(itemId, { analysisData: updatedAnalysisData });
           
           // Update local state
           setAnalysisData(updatedAnalysisData);
           setLoading(false);
+          
+          // Show success toast
+          toast({
+            title: "Analysis Complete",
+            description: `Trend analysis for ${symbol} completed successfully`,
+          });
+        } else {
+          console.error(`Item for symbol ${symbol} not found after analysis`);
+          throw new Error(`Item for symbol ${symbol} not found`);
         }
+      } else {
+        console.error(`No analysis data returned for ${symbol}`);
+        throw new Error(`No analysis data returned for ${symbol}`);
       }
     } catch (error) {
       console.error("Error performing drawdown/drawup analysis:", error);
+      
+      // Set error state
+      setError(error instanceof Error ? error.message : "Failed to analyze trends");
+      
       // Show error in UI
       toast({
         title: "Analysis Error",
         description: error instanceof Error ? error.message : "Failed to analyze trends",
         variant: "destructive"
       });
+      
+      // Set loading to false to show error state
+      setLoading(false);
     } finally {
       setIsAnalyzing(false);
     }
-  };
+  }, [getItem, updateItem, toast]);
+
+  useEffect(() => {
+    if (isOpen && symbol) {
+      console.log(`TrendsPopup opened for symbol: ${symbol}`);
+      setLoading(true);
+      setError(null);
+      
+      // Get the analysis data for this symbol
+      const item = getItem(symbol);
+      console.log(`Retrieved item for ${symbol}:`, item);
+      
+      if (item) {
+        if (item.analysisData) {
+          console.log(`Analysis data found for ${symbol}:`, item.analysisData);
+          setAnalysisData(item.analysisData);
+          
+          // If we don't have drawdown/drawup analysis yet, fetch it
+          if (!item.analysisData.drawdownDrawup && !isAnalyzing) {
+            console.log(`No drawdown/drawup data found for ${symbol}, fetching...`);
+            performDrawdownDrawupAnalysis(symbol, item.id);
+          } else {
+            console.log(`Using existing drawdown/drawup data for ${symbol}`);
+            setLoading(false);
+          }
+        } else {
+          console.log(`No analysis data found for ${symbol}, initiating analysis...`);
+          // No analysis data available yet, initiate analysis
+          performDrawdownDrawupAnalysis(symbol, item.id);
+        }
+      } else {
+        console.error(`No item found for symbol ${symbol}`);
+        setError(`No data found for ${symbol}`);
+        setLoading(false);
+      }
+    }
+  }, [isOpen, symbol, getItem, isAnalyzing, performDrawdownDrawupAnalysis]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -113,6 +158,27 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-20 w-full" />
           </div>
+        ) : error ? (
+          <div className="text-center py-6">
+            <p className="text-destructive font-medium">Error: {error}</p>
+            <p className="text-sm mt-2 text-muted-foreground">
+              There was a problem analyzing trends for {symbol}.
+              Please try again later.
+            </p>
+            <button 
+              className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+              onClick={() => {
+                const item = getItem(symbol);
+                if (item) {
+                  setLoading(true);
+                  setError(null);
+                  performDrawdownDrawupAnalysis(symbol, item.id);
+                }
+              }}
+            >
+              Retry Analysis
+            </button>
+          </div>
         ) : analysisData ? (
           <div className="space-y-4">
             {/* Drawdown and Drawup Analysis */}
@@ -123,7 +189,7 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
                   <div>
                     <p className="text-sm text-muted-foreground">Max Drawdown</p>
                     <p className="text-lg font-medium">
-                      {analysisData.drawdownDrawup?.maxDrawdown 
+                      {analysisData.drawdownDrawup?.maxDrawdown !== undefined
                         ? `${analysisData.drawdownDrawup.maxDrawdown.toFixed(2)}%` 
                         : isAnalyzing ? 'Analyzing...' : 'N/A'}
                     </p>
@@ -131,7 +197,7 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
                   <div>
                     <p className="text-sm text-muted-foreground">Max Drawup</p>
                     <p className="text-lg font-medium">
-                      {analysisData.drawdownDrawup?.maxDrawup 
+                      {analysisData.drawdownDrawup?.maxDrawup !== undefined
                         ? `${analysisData.drawdownDrawup.maxDrawup.toFixed(2)}%` 
                         : isAnalyzing ? 'Analyzing...' : 'N/A'}
                     </p>
@@ -139,7 +205,7 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
                   <div>
                     <p className="text-sm text-muted-foreground">Avg Drawdown</p>
                     <p className="text-lg font-medium">
-                      {analysisData.drawdownDrawup?.avgDrawdown 
+                      {analysisData.drawdownDrawup?.avgDrawdown !== undefined
                         ? `${analysisData.drawdownDrawup.avgDrawdown.toFixed(2)}%` 
                         : isAnalyzing ? 'Analyzing...' : 'N/A'}
                     </p>
@@ -147,7 +213,7 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
                   <div>
                     <p className="text-sm text-muted-foreground">Avg Drawup</p>
                     <p className="text-lg font-medium">
-                      {analysisData.drawdownDrawup?.avgDrawup 
+                      {analysisData.drawdownDrawup?.avgDrawup !== undefined
                         ? `${analysisData.drawdownDrawup.avgDrawup.toFixed(2)}%` 
                         : isAnalyzing ? 'Analyzing...' : 'N/A'}
                     </p>
@@ -155,7 +221,7 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
                   <div>
                     <p className="text-sm text-muted-foreground">Frequent Drawdown</p>
                     <p className="text-lg font-medium">
-                      {analysisData.drawdownDrawup?.frequentDrawdown 
+                      {analysisData.drawdownDrawup?.frequentDrawdown !== undefined
                         ? `${analysisData.drawdownDrawup.frequentDrawdown.toFixed(2)}%` 
                         : isAnalyzing ? 'Analyzing...' : 'N/A'}
                     </p>
@@ -163,7 +229,7 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
                   <div>
                     <p className="text-sm text-muted-foreground">Frequent Drawup</p>
                     <p className="text-lg font-medium">
-                      {analysisData.drawdownDrawup?.frequentDrawup 
+                      {analysisData.drawdownDrawup?.frequentDrawup !== undefined
                         ? `${analysisData.drawdownDrawup.frequentDrawup.toFixed(2)}%` 
                         : isAnalyzing ? 'Analyzing...' : 'N/A'}
                     </p>
@@ -173,6 +239,19 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
                   <p className="text-sm text-muted-foreground mt-4 text-center">
                     Analyzing historical data for {symbol}...
                   </p>
+                )}
+                {!isAnalyzing && !analysisData.drawdownDrawup && (
+                  <button 
+                    className="mt-4 w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+                    onClick={() => {
+                      const item = getItem(symbol);
+                      if (item) {
+                        performDrawdownDrawupAnalysis(symbol, item.id);
+                      }
+                    }}
+                  >
+                    Analyze Trends
+                  </button>
                 )}
               </CardContent>
             </Card>
@@ -258,7 +337,25 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
         ) : (
           <div className="text-center py-6">
             <p className="text-muted-foreground">No analysis data available for {symbol} yet.</p>
-            <p className="text-sm mt-2">Analysis will be displayed here once it's complete.</p>
+            <p className="text-sm mt-2">Click the button below to start analysis.</p>
+            <button 
+              className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+              onClick={() => {
+                const item = getItem(symbol);
+                if (item) {
+                  setLoading(true);
+                  performDrawdownDrawupAnalysis(symbol, item.id);
+                } else {
+                  toast({
+                    title: "Error",
+                    description: `No data found for ${symbol}`,
+                    variant: "destructive"
+                  });
+                }
+              }}
+            >
+              Start Analysis
+            </button>
           </div>
         )}
       </DialogContent>

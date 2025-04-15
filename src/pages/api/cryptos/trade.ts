@@ -69,10 +69,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(403).json({ error: 'Manual crypto trading is not enabled. Please enable it in settings.' });
     }
     
-    const { cryptoId, action, shares, orderType } = req.body;
+    const { cryptoId, action, shares, orderType, totalValue, purchaseMethod } = req.body;
     
-    if (!cryptoId || !action || !shares) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    // Determine if we're buying by total value
+    const isBuyingByTotalValue = purchaseMethod === 'totalValue' && totalValue && totalValue > 0;
+    
+    // For buy orders, we need either shares or totalValue
+    if (!cryptoId || !action) {
+      return res.status(400).json({ error: 'Missing required fields: cryptoId and action' });
+    }
+    
+    // For buy orders, we need either shares or totalValue
+    if (action === 'buy' && !isBuyingByTotalValue && (!shares || Number(shares) <= 0)) {
+      return res.status(400).json({ error: 'For buy orders, you must provide either valid shares or totalValue' });
+    }
+    
+    // For sell orders, shares is required
+    if (action === 'sell' && (!shares || Number(shares) <= 0)) {
+      return res.status(400).json({ error: 'For sell orders, you must provide valid shares' });
     }
     
     // Default to 'market' if orderType is not provided
@@ -82,8 +96,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Invalid action. Must be "buy" or "sell"' });
     }
     
-    if (isNaN(Number(shares)) || Number(shares) <= 0) {
+    // Validate shares if not buying by total value
+    if (!isBuyingByTotalValue && (isNaN(Number(shares)) || Number(shares) <= 0)) {
       return res.status(400).json({ error: 'Shares must be a positive number' });
+    }
+    
+    // Validate totalValue if buying by total value
+    if (isBuyingByTotalValue && (isNaN(Number(totalValue)) || Number(totalValue) <= 0)) {
+      return res.status(400).json({ error: 'Total value must be a positive number' });
     }
     
     // Get the crypto
@@ -103,10 +123,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: `Not enough shares to sell. You only have ${crypto.shares.toFixed(8)} shares available.` });
     }
     
+    // Calculate shares to trade if buying by total value
+    let sharesToTrade = Number(shares);
+    if (isBuyingByTotalValue && action === 'buy') {
+      sharesToTrade = Number(totalValue) / currentPrice;
+      console.log(`Buying by total value: $${totalValue} at price $${currentPrice} = ${sharesToTrade} shares`);
+    }
+    
     // Get the latest price from the Kraken WebSocket data
     // If we have a lastPrice stored, use that, otherwise fall back to purchasePrice
     const currentPrice = crypto.lastPrice || crypto.purchasePrice;
-    const totalAmount = currentPrice * Number(shares);
+    const totalAmount = currentPrice * sharesToTrade;
     
     console.log(`Using current price for ${action}: $${currentPrice} (lastPrice: ${crypto.lastPrice}, purchasePrice: ${crypto.purchasePrice})`);
     
@@ -129,10 +156,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         body: JSON.stringify({
           cryptoId: crypto.id,
           action,
-          shares: Number(shares),
+          shares: sharesToTrade,
           price: currentPrice,
           orderType: effectiveOrderType,
-          isAutoOrder: req.body.isAutoOrder || false
+          isAutoOrder: req.body.isAutoOrder || false,
+          totalValue: isBuyingByTotalValue ? Number(totalValue) : undefined,
+          purchaseMethod: isBuyingByTotalValue ? 'totalValue' : 'shares'
         })
       }).catch(error => {
         console.error('Network error calling execute-order API:', error);
@@ -169,13 +198,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Log the failed transaction with error details
       // Use the current price for the transaction record
       const transactionPrice = currentPrice;
-      const transactionTotalAmount = Number(shares) * transactionPrice;
+      const transactionTotalAmount = sharesToTrade * transactionPrice;
       
       const transaction = await prisma.cryptoTransaction.create({
         data: {
           cryptoId: crypto.id,
           action: 'error', // Change action to 'error' for failed transactions
-          shares: Number(shares),
+          shares: sharesToTrade,
           price: transactionPrice,
           totalAmount: transactionTotalAmount,
           userId: user.id,
@@ -183,12 +212,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             timestamp: new Date().toISOString(),
             method: 'trade_api_error',
             requestedAction: action, // Store the originally requested action
-            shares: Number(shares),
+            shares: sharesToTrade,
             price: transactionPrice,
             totalAmount: transactionTotalAmount,
             status: 'failed',
             error: error.message || 'Unknown error',
-            message: `Failed to execute ${action} order for ${shares} shares of ${crypto.symbol} at $${transactionPrice}`
+            message: `Failed to execute ${action} order for ${sharesToTrade} shares of ${crypto.symbol} at $${transactionPrice}`
           }, null, 2)
         },
       });

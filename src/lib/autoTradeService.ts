@@ -123,25 +123,37 @@ export async function processAutoCryptoTrades(
         try {
           // Determine shares to trade based on settings
           let sharesToTrade = 0;
+          let purchaseMethod = 'shares';
+          let calculatedTotalValue = 0;
           
           if (tradeByShares && sharesAmount > 0) {
             // Use configured shares amount
             sharesToTrade = sharesAmount;
+            purchaseMethod = 'shares';
             // For sell, make sure we don't try to sell more than we have
             if (action === 'sell') {
               sharesToTrade = Math.min(sharesToTrade, crypto.shares);
             }
           } else if (tradeByValue && totalValue > 0) {
-            // Calculate shares based on total value and current price
-            sharesToTrade = totalValue / priceData.price;
-            // For sell, make sure we don't try to sell more than we have
-            if (action === 'sell') {
+            // For buy orders, we'll pass the total value and let the API calculate shares
+            if (action === 'buy') {
+              calculatedTotalValue = totalValue;
+              purchaseMethod = 'totalValue';
+              // Still calculate shares for logging purposes
+              sharesToTrade = totalValue / priceData.price;
+              console.log(`Auto trade by total value: $${totalValue} at price $${priceData.price} = ${sharesToTrade} shares`);
+            } else {
+              // For sell orders, calculate shares based on total value and current price
+              sharesToTrade = totalValue / priceData.price;
+              purchaseMethod = 'shares';
+              // For sell, make sure we don't try to sell more than we have
               sharesToTrade = Math.min(sharesToTrade, crypto.shares);
             }
           } else {
             // Default to trading 100% of available shares for sell, or use purchase price for buy
             sharesToTrade = action === 'sell' ? crypto.shares : 
               (crypto.purchasePrice > 0 ? 1 / crypto.purchasePrice : 0);
+            purchaseMethod = 'shares';
           }
 
           if (sharesToTrade <= 0) {
@@ -165,10 +177,12 @@ export async function processAutoCryptoTrades(
             body: JSON.stringify({
               cryptoId: crypto.id,
               action,
-              shares: sharesToTrade,
+              shares: purchaseMethod === 'shares' ? sharesToTrade : undefined,
               price: priceData.price,
               orderType: orderType,
-              isAutoOrder: true
+              isAutoOrder: true,
+              totalValue: purchaseMethod === 'totalValue' ? calculatedTotalValue : undefined,
+              purchaseMethod
             })
           });
 
@@ -323,25 +337,37 @@ export async function checkCryptoForAutoTrade(
       try {
         // Determine shares to trade based on settings
         let sharesToTrade = 0;
+        let purchaseMethod = 'shares';
+        let calculatedTotalValue = 0;
         
         if (tradeByShares && sharesAmount > 0) {
           // Use configured shares amount
           sharesToTrade = sharesAmount;
+          purchaseMethod = 'shares';
           // For sell, make sure we don't try to sell more than we have
           if (action === 'sell') {
             sharesToTrade = Math.min(sharesToTrade, crypto.shares);
           }
         } else if (tradeByValue && totalValue > 0) {
-          // Calculate shares based on total value and current price
-          sharesToTrade = totalValue / price;
-          // For sell, make sure we don't try to sell more than we have
-          if (action === 'sell') {
+          // For buy orders, we'll pass the total value and let the API calculate shares
+          if (action === 'buy') {
+            calculatedTotalValue = totalValue;
+            purchaseMethod = 'totalValue';
+            // Still calculate shares for logging purposes
+            sharesToTrade = totalValue / price;
+            console.log(`Auto trade by total value: $${totalValue} at price $${price} = ${sharesToTrade} shares`);
+          } else {
+            // For sell orders, calculate shares based on total value and current price
+            sharesToTrade = totalValue / price;
+            purchaseMethod = 'shares';
+            // For sell, make sure we don't try to sell more than we have
             sharesToTrade = Math.min(sharesToTrade, crypto.shares);
           }
         } else {
           // Default to trading 100% of available shares for sell, or use purchase price for buy
           sharesToTrade = action === 'sell' ? crypto.shares : 
             (crypto.purchasePrice > 0 ? 1 / crypto.purchasePrice : 0);
+          purchaseMethod = 'shares';
         }
 
         if (sharesToTrade <= 0) {
@@ -364,10 +390,12 @@ export async function checkCryptoForAutoTrade(
           body: JSON.stringify({
             cryptoId: crypto.id,
             action,
-            shares: sharesToTrade,
+            shares: purchaseMethod === 'shares' ? sharesToTrade : undefined,
             price,
             orderType: orderType,
-            isAutoOrder: true
+            isAutoOrder: true,
+            totalValue: purchaseMethod === 'totalValue' ? calculatedTotalValue : undefined,
+            purchaseMethod
           })
         });
 

@@ -107,11 +107,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    const { cryptoId, action, shares, price, orderType } = req.body;
+    const { cryptoId, action, shares, price, orderType, totalValue, purchaseMethod } = req.body;
+    
+    // Determine if we're buying by total value or by shares
+    const isBuyingByTotalValue = purchaseMethod === 'totalValue' && totalValue && totalValue > 0;
+    
+    // Calculate shares if buying by total value
+    let calculatedShares = shares;
+    if (isBuyingByTotalValue && action === 'buy') {
+      calculatedShares = totalValue / price;
+      console.log(`Buying by total value: $${totalValue} at price $${price} = ${calculatedShares} shares`);
+    }
 
-    if (!cryptoId || !action || !shares || !price) {
+    if (!cryptoId || !action || !price) {
       return res.status(400).json({ 
-        error: 'Missing required parameters: cryptoId, action, shares, price' 
+        error: 'Missing required parameters: cryptoId, action, price' 
+      });
+    }
+    
+    // Ensure we have either shares or totalValue for buy orders
+    if (action === 'buy' && !isBuyingByTotalValue && (!shares || shares <= 0)) {
+      return res.status(400).json({ 
+        error: 'For buy orders, you must provide either valid shares or totalValue' 
+      });
+    }
+    
+    // For sell orders, shares is required
+    if (action === 'sell' && (!shares || shares <= 0)) {
+      return res.status(400).json({ 
+        error: 'For sell orders, you must provide valid shares' 
       });
     }
     
@@ -139,6 +163,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (action === 'sell' && crypto.shares < Number(shares)) {
       return res.status(400).json({ error: `Not enough shares to sell. You only have ${crypto.shares.toFixed(8)} shares available.` });
     }
+    
+    // Use calculated shares if buying by total value
+    const sharesToTrade = isBuyingByTotalValue && action === 'buy' ? calculatedShares : Number(shares);
 
     // Prepare Kraken order request
     const nonce = generateNonce();
@@ -149,7 +176,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       nonce,
       ordertype: effectiveOrderType,
       type: action as 'buy' | 'sell',
-      volume: shares.toString(),
+      volume: sharesToTrade.toString(),
       pair,
       price: price.toString(),
       cl_ord_id: orderId
@@ -169,9 +196,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const hmac = createHmac('sha512', secret).update(path + hash, 'binary').digest('base64');
 
     // Execute the order
-    console.log(`Executing ${action} order for ${shares} shares of ${crypto.symbol} at $${price}`);
+    console.log(`Executing ${action} order for ${sharesToTrade} shares of ${crypto.symbol} at $${price}`);
     console.log('Kraken API endpoint:', apiEndpoint);
-    console.log('Kraken API request data:', { pair, ordertype: effectiveOrderType, type: action, volume: shares.toString() });
+    console.log('Kraken API request data:', { pair, ordertype: effectiveOrderType, type: action, volume: sharesToTrade.toString() });
     
     let response;
     try {
@@ -210,12 +237,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.error('Kraken API error:', krakenResponse.error);
       
       // Calculate total amount
-      const totalAmount = shares * price;
+      const totalAmount = sharesToTrade * price;
       
       // Check for specific error types to provide better error messages
       const errorString = krakenResponse.error.join(', ');
       let errorType = 'unknown';
-      let userFriendlyMessage = `Failed to execute ${action} order for ${shares} shares of ${crypto.symbol} at $${price}`;
+      let userFriendlyMessage = `Failed to execute ${action} order for ${sharesToTrade} shares of ${crypto.symbol} at $${price}`;
       
       // Identify common Kraken API errors
       if (errorString.includes('Invalid API key')) {
@@ -244,7 +271,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         data: {
           cryptoId: crypto.id,
           action: 'error', // Change action to 'error' for failed transactions
-          shares,
+          shares: sharesToTrade,
           price: transactionPrice,
           totalAmount: transactionTotalAmount,
           userId: user.id,
@@ -263,7 +290,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             orderId,
             pair,
             requestedAction: action, // Store the originally requested action
-            shares,
+            shares: sharesToTrade,
             price: transactionPrice,
             totalAmount: transactionTotalAmount,
             status: 'failed',
@@ -298,19 +325,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     
     // Calculate total amount
-    const totalAmount = shares * price;
+    const totalAmount = sharesToTrade * price;
 
     // Record the transaction with API request and response data for troubleshooting
     // For sell transactions, we use the current price (selling price)
     // For buy transactions, we use the purchase price
     const transactionPrice = price; // Use the current price for both buy and sell
-    const transactionTotalAmount = shares * transactionPrice;
+    const transactionTotalAmount = sharesToTrade * transactionPrice;
     
     const transaction = await prisma.cryptoTransaction.create({
       data: {
         cryptoId: crypto.id,
         action,
-        shares,
+        shares: sharesToTrade,
         price: transactionPrice,
         totalAmount: transactionTotalAmount,
         userId: user.id,
@@ -329,19 +356,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           orderId,
           pair,
           action,
-          shares,
+          shares: sharesToTrade,
           price: transactionPrice,
           totalAmount: transactionTotalAmount,
           status: 'success',
-          message: `Successfully executed ${action} order for ${shares} shares of ${crypto.symbol} at $${transactionPrice}`
+          message: `Successfully executed ${action} order for ${sharesToTrade} shares of ${crypto.symbol} at $${transactionPrice}`
         }, null, 2)
       }
     });
 
     // Update crypto shares
     const updatedShares = action === 'buy' 
-      ? crypto.shares + shares 
-      : crypto.shares - shares;
+      ? crypto.shares + sharesToTrade 
+      : crypto.shares - sharesToTrade;
 
     // If this is an auto order, flip the nextAction in the settings
     if (req.body.isAutoOrder) {
@@ -399,7 +426,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       success: true,
       transaction,
       krakenOrderId: krakenResponse.result.txid[0],
-      message: `Successfully ${action === 'buy' ? 'bought' : 'sold'} ${shares} shares of ${crypto.symbol} at $${price}`
+      message: `Successfully ${action === 'buy' ? 'bought' : 'sold'} ${sharesToTrade} shares of ${crypto.symbol} at $${price}`
     });
   } catch (error) {
     console.error('Execute Order API error:', error);
@@ -423,15 +450,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         if (crypto) {
           // Use the current price for the transaction record
+          // Determine shares to use for error transaction
+          let errorShares = shares || 0;
+          if (isBuyingByTotalValue && action === 'buy' && totalValue && price) {
+            errorShares = totalValue / price;
+          }
+          
           const transactionPrice = price || 0;
-          const transactionTotalAmount = (shares || 0) * transactionPrice;
+          const transactionTotalAmount = errorShares * transactionPrice;
           
           // Create a transaction record for the error
           const transaction = await prisma.cryptoTransaction.create({
             data: {
               cryptoId,
               action: 'error',
-              shares: shares || 0,
+              shares: errorShares,
               price: transactionPrice,
               totalAmount: transactionTotalAmount,
               userId: user.id,

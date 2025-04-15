@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
 import { checkCryptoForAutoTrade } from '@/lib/autoTradeService';
+import { logAutoTradeEvent, AutoTradeLogType } from '@/lib/autoTradeLogger';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -22,7 +23,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     const { cryptoId, price } = req.body;
     
+    // Log the API request
+    await logAutoTradeEvent(
+      user.id,
+      AutoTradeLogType.INFO,
+      `Auto trade API called for crypto ID ${cryptoId} at price $${price}`,
+      { cryptoId, price, requestMethod: req.method }
+    );
+    
     if (!cryptoId || typeof price !== 'number') {
+      await logAutoTradeEvent(
+        user.id,
+        AutoTradeLogType.ERROR,
+        `Invalid auto trade request: Missing required fields or invalid price`,
+        { cryptoId, price, requestBody: req.body }
+      );
       return res.status(400).json({ error: 'Missing required fields or invalid price' });
     }
     

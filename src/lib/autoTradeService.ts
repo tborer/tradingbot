@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma';
 import { KrakenPrice } from '@/lib/kraken';
 import { shouldBuyCrypto, shouldSellCrypto } from '@/lib/kraken';
+import { logAutoTradeEvaluation, logAutoTradeExecution, AutoTradeLogType, logAutoTradeEvent } from './autoTradeLogger';
 
 interface AutoTradeResult {
   success: boolean;
@@ -30,13 +31,23 @@ export async function processAutoCryptoTrades(
     });
 
     if (!settings) {
+      await logAutoTradeEvent(userId, AutoTradeLogType.ERROR, 'User settings not found', {});
       return [{ success: false, message: 'User settings not found' }];
     }
 
     // Check if auto crypto trading is enabled globally
     if (!settings.enableAutoCryptoTrading) {
+      await logAutoTradeEvent(userId, AutoTradeLogType.INFO, 'Auto crypto trading is disabled in settings', {});
       return [{ success: false, message: 'Auto crypto trading is disabled in settings' }];
     }
+    
+    // Log the start of auto trade processing
+    await logAutoTradeEvent(
+      userId, 
+      AutoTradeLogType.INFO, 
+      `Processing auto trades for ${prices.length} price updates`, 
+      { priceUpdates: prices.map(p => `${p.symbol}: $${p.price}`).join(', ') }
+    );
 
     // Get all cryptos with auto trading enabled
     const cryptos = await prisma.crypto.findMany({
@@ -93,7 +104,7 @@ export async function processAutoCryptoTrades(
         console.log(`Checking buy conditions for ${crypto.symbol}: nextAction=${nextAction}, oneTimeBuy=${oneTimeBuy}`);
         
         // Log detailed information about the crypto and its auto trade settings
-        console.log(`Auto trade settings for ${crypto.symbol}:`, {
+        const autoTradeSettings = {
           autoBuy: crypto.autoBuy,
           autoSell: crypto.autoSell,
           nextAction,
@@ -106,7 +117,21 @@ export async function processAutoCryptoTrades(
           sharesAmount,
           tradeByValue,
           totalValue
-        });
+        };
+        
+        console.log(`Auto trade settings for ${crypto.symbol}:`, autoTradeSettings);
+        
+        // Log auto trade settings to database
+        await logAutoTradeEvent(
+          userId,
+          AutoTradeLogType.INFO,
+          `Auto trade settings for ${crypto.symbol}`,
+          {
+            cryptoId: crypto.id,
+            symbol: crypto.symbol,
+            ...autoTradeSettings
+          }
+        );
         
         // Check if we should buy based on either nextAction or oneTimeBuy flag
         if ((nextAction === 'buy' || oneTimeBuy)) {
@@ -118,7 +143,21 @@ export async function processAutoCryptoTrades(
           console.log(`Price difference for ${crypto.symbol}: $${priceDifference.toFixed(2)} (${percentDifference.toFixed(2)}%)`);
           console.log(`Buy threshold: ${buyThreshold}%`);
           
-          if (shouldBuyCrypto(priceData.price, crypto.purchasePrice, buyThreshold)) {
+          const shouldBuy = shouldBuyCrypto(priceData.price, crypto.purchasePrice, buyThreshold);
+          
+          // Log the evaluation to the database
+          await logAutoTradeEvaluation(
+            userId,
+            crypto.id,
+            crypto.symbol,
+            'buy',
+            priceData.price,
+            crypto.purchasePrice,
+            buyThreshold,
+            shouldBuy
+          );
+          
+          if (shouldBuy) {
             console.log(`Buy condition met for ${crypto.symbol}!`);
             shouldTrade = true;
             action = 'buy';
@@ -127,6 +166,17 @@ export async function processAutoCryptoTrades(
           }
         } else {
           console.log(`Buy action not configured for ${crypto.symbol} (nextAction=${nextAction}, oneTimeBuy=${oneTimeBuy})`);
+          await logAutoTradeEvent(
+            userId,
+            AutoTradeLogType.INFO,
+            `Buy action not configured for ${crypto.symbol}`,
+            {
+              cryptoId: crypto.id,
+              symbol: crypto.symbol,
+              nextAction,
+              oneTimeBuy
+            }
+          );
         }
       } else {
         console.log(`Auto buy not enabled for ${crypto.symbol}`);
@@ -147,7 +197,21 @@ export async function processAutoCryptoTrades(
           console.log(`Sell threshold: ${sellThreshold}%`);
           console.log(`Comparison: ${percentGain.toFixed(2)}% >= ${sellThreshold}%: ${percentGain >= sellThreshold}`);
           
-          if (shouldSellCrypto(priceData.price, crypto.purchasePrice, sellThreshold)) {
+          const shouldSell = shouldSellCrypto(priceData.price, crypto.purchasePrice, sellThreshold);
+          
+          // Log the evaluation to the database
+          await logAutoTradeEvaluation(
+            userId,
+            crypto.id,
+            crypto.symbol,
+            'sell',
+            priceData.price,
+            crypto.purchasePrice,
+            sellThreshold,
+            shouldSell
+          );
+          
+          if (shouldSell) {
             console.log(`Sell condition met for ${crypto.symbol}!`);
             shouldTrade = true;
             action = 'sell';
@@ -156,6 +220,17 @@ export async function processAutoCryptoTrades(
           }
         } else {
           console.log(`Sell action not configured for ${crypto.symbol} (nextAction=${nextAction}, oneTimeSell=${oneTimeSell})`);
+          await logAutoTradeEvent(
+            userId,
+            AutoTradeLogType.INFO,
+            `Sell action not configured for ${crypto.symbol}`,
+            {
+              cryptoId: crypto.id,
+              symbol: crypto.symbol,
+              nextAction,
+              oneTimeSell
+            }
+          );
         }
       } else {
         console.log(`Auto sell not enabled for ${crypto.symbol}`);
@@ -239,7 +314,23 @@ export async function processAutoCryptoTrades(
           const executeOrderResult = await executeOrderResponse.json();
 
           if (!executeOrderResponse.ok) {
-            throw new Error(executeOrderResult.error || 'Failed to execute order via Kraken API');
+            const errorMessage = executeOrderResult.error || 'Failed to execute order via Kraken API';
+            
+            // Log the failed execution
+            await logAutoTradeExecution(
+              userId,
+              crypto.id,
+              crypto.symbol,
+              action,
+              priceData.price,
+              sharesToTrade,
+              false,
+              undefined,
+              undefined,
+              errorMessage
+            );
+            
+            throw new Error(errorMessage);
           }
 
           // If this is a one-time trade, disable the auto flag
@@ -251,7 +342,32 @@ export async function processAutoCryptoTrades(
                 autoSell: action === 'buy' ? crypto.autoSell : false
               }
             });
+            
+            // Log the disabling of auto trade
+            await logAutoTradeEvent(
+              userId,
+              AutoTradeLogType.INFO,
+              `Disabled auto ${action === 'buy' ? 'buy' : 'sell'} for ${crypto.symbol} after one-time trade`,
+              {
+                cryptoId: crypto.id,
+                symbol: crypto.symbol,
+                action
+              }
+            );
           }
+          
+          // Log the successful execution
+          await logAutoTradeExecution(
+            userId,
+            crypto.id,
+            crypto.symbol,
+            action,
+            priceData.price,
+            sharesToTrade,
+            true,
+            executeOrderResult.krakenOrderId,
+            executeOrderResult.transaction?.id
+          );
 
           results.push({
             success: true,
@@ -265,6 +381,21 @@ export async function processAutoCryptoTrades(
           });
         } catch (error) {
           console.error(`Error executing auto ${action} for ${crypto.symbol}:`, error);
+          
+          // Log the execution error
+          await logAutoTradeExecution(
+            userId,
+            crypto.id,
+            crypto.symbol,
+            action,
+            priceData.price,
+            sharesToTrade,
+            false,
+            undefined,
+            undefined,
+            error.message
+          );
+          
           results.push({
             success: false,
             message: `Error executing auto ${action} for ${crypto.symbol}: ${error.message}`,
@@ -283,9 +414,38 @@ export async function processAutoCryptoTrades(
       }
     }
 
+    // Log the summary of results
+    await logAutoTradeEvent(
+      userId,
+      AutoTradeLogType.INFO,
+      `Auto trade processing completed with ${results.length} results`,
+      {
+        resultsCount: results.length,
+        successCount: results.filter(r => r.success).length,
+        failureCount: results.filter(r => !r.success).length,
+        summary: results.map(r => 
+          `${r.symbol || 'unknown'}: ${r.success ? 'SUCCESS' : 'FAILED'} - ${r.message} ${r.action ? `(${r.action})` : ''}`
+        ).join('\n')
+      }
+    );
+    
     return results;
   } catch (error) {
     console.error('Error in processAutoCryptoTrades:', error);
+    
+    // Log the error
+    await logAutoTradeEvent(
+      userId,
+      AutoTradeLogType.ERROR,
+      `Error processing auto trades: ${error.message}`,
+      {
+        error: error.message,
+        stack: error.stack
+      }
+    ).catch(logError => {
+      console.error('Failed to log auto trade error:', logError);
+    });
+    
     return [{ success: false, message: `Error processing auto trades: ${error.message}` }];
   }
 }
@@ -308,13 +468,23 @@ export async function checkCryptoForAutoTrade(
     });
 
     if (!settings) {
+      await logAutoTradeEvent(userId, AutoTradeLogType.ERROR, 'User settings not found', { cryptoId });
       return { success: false, message: 'User settings not found' };
     }
 
     // Check if auto crypto trading is enabled globally
     if (!settings.enableAutoCryptoTrading) {
+      await logAutoTradeEvent(userId, AutoTradeLogType.INFO, 'Auto crypto trading is disabled in settings', { cryptoId });
       return { success: false, message: 'Auto crypto trading is disabled in settings' };
     }
+    
+    // Log the start of auto trade check
+    await logAutoTradeEvent(
+      userId, 
+      AutoTradeLogType.INFO, 
+      `Checking auto trade for crypto ID ${cryptoId} at price $${price}`, 
+      { cryptoId, price }
+    );
 
     // Get the crypto with its auto trade settings
     const crypto = await prisma.crypto.findFirst({

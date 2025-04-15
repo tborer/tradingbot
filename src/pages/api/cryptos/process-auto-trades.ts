@@ -3,6 +3,7 @@ import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
 import { processAutoCryptoTrades } from '@/lib/autoTradeService';
 import { PrismaClientInitializationError, PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { logAutoTradeEvent, AutoTradeLogType } from '@/lib/autoTradeLogger';
 
 // Add timeout for long-running operations
 const PROCESS_TIMEOUT = 25000; // 25 seconds (Vercel functions timeout at 30s)
@@ -26,7 +27,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     const { prices } = req.body;
     
+    // Log the API request
+    await logAutoTradeEvent(
+      user.id,
+      AutoTradeLogType.INFO,
+      `Process auto trades API called with ${prices?.length || 0} price updates`,
+      { 
+        requestMethod: req.method,
+        pricesCount: prices?.length || 0
+      }
+    );
+    
     if (!prices || !Array.isArray(prices)) {
+      await logAutoTradeEvent(
+        user.id,
+        AutoTradeLogType.ERROR,
+        `Invalid process auto trades request: Missing or invalid prices array`,
+        { requestBody: req.body }
+      );
       return res.status(400).json({ error: 'Missing or invalid prices array' });
     }
     
@@ -34,6 +52,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     // Log the prices being processed
     console.log('Price updates received:', prices.map(p => `${p.symbol}: $${p.price}`).join(', '));
+    
+    // Log detailed price updates to the database
+    await logAutoTradeEvent(
+      user.id,
+      AutoTradeLogType.INFO,
+      `Processing ${prices.length} price updates for auto trades`,
+      { 
+        priceUpdates: prices.map(p => ({ symbol: p.symbol, price: p.price, timestamp: p.timestamp }))
+      }
+    );
     
     // Get user settings to check if auto trading is enabled
     const settings = await prisma.settings.findUnique({
@@ -91,12 +119,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       `${r.symbol || 'unknown'}: ${r.success ? 'SUCCESS' : 'FAILED'} - ${r.message} ${r.action ? `(${r.action})` : ''}`
     ).join('\n'));
     
+    // Log the API response
+    await logAutoTradeEvent(
+      user.id,
+      AutoTradeLogType.INFO,
+      `Auto trade processing completed with ${results.length} results`,
+      {
+        resultsCount: results.length,
+        successCount: results.filter(r => r.success).length,
+        failureCount: results.filter(r => !r.success).length,
+        apiResponse: true
+      }
+    );
+    
     return res.status(200).json({ 
       success: true,
       results
     });
   } catch (error) {
     console.error('API error in process-auto-trades:', error);
+    
+    // Log the error
+    try {
+      await logAutoTradeEvent(
+        user?.id || 'system',
+        AutoTradeLogType.ERROR,
+        `Error in process-auto-trades API: ${error.message}`,
+        {
+          error: error.message,
+          stack: error.stack,
+          code: error.code || 'UNKNOWN_ERROR'
+        }
+      );
+    } catch (logError) {
+      console.error('Failed to log auto trade API error:', logError);
+    }
     
     // Handle timeout errors
     if (error.message && error.message.includes('Operation timed out')) {

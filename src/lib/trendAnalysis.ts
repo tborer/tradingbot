@@ -12,6 +12,10 @@ export interface DrawdownDrawupAnalysis {
   frequentDrawup: number;
   drawdowns: number[];
   drawups: number[];
+  stdDevDrawdown?: number; // Added standard deviation
+  stdDevDrawup?: number;   // Added standard deviation
+  medianDrawdown?: number; // Added median
+  medianDrawup?: number;   // Added median
 }
 
 /**
@@ -39,7 +43,11 @@ export function calculateDrawdownDrawup(historicalData: number[]): DrawdownDrawu
       frequentDrawdown: 0,
       frequentDrawup: 0,
       drawdowns: [],
-      drawups: []
+      drawups: [],
+      stdDevDrawdown: 0,
+      stdDevDrawup: 0,
+      medianDrawdown: 0,
+      medianDrawup: 0
     };
   }
 
@@ -47,65 +55,129 @@ export function calculateDrawdownDrawup(historicalData: number[]): DrawdownDrawu
   const drawdowns: number[] = [];
   const drawups: number[] = [];
 
-  // Track peaks and troughs
-  let peak = historicalData[0];
-  let trough = historicalData[0];
-  let inDrawdown = false;
-  let inDrawup = true;
+  // Find local peaks and troughs
+  const peaks: {index: number, price: number}[] = [];
+  const troughs: {index: number, price: number}[] = [];
   
-  console.log(`Initial peak/trough: ${peak}`);
-
-  // Analyze the price series
-  for (let i = 1; i < historicalData.length; i++) {
-    const currentPrice = historicalData[i];
+  // Identify local peaks and troughs (using a simple algorithm)
+  for (let i = 1; i < historicalData.length - 1; i++) {
+    const prev = historicalData[i-1];
+    const current = historicalData[i];
+    const next = historicalData[i+1];
     
     // Skip invalid price points
-    if (currentPrice === null || currentPrice === undefined || isNaN(currentPrice)) {
-      console.warn(`Skipping invalid price point at index ${i}`);
+    if (prev === null || current === null || next === null || 
+        isNaN(prev) || isNaN(current) || isNaN(next)) {
       continue;
     }
-
-    // Check for drawdown (peak to trough)
-    if (inDrawup && currentPrice < peak) {
-      // Transition from drawup to drawdown
-      inDrawup = false;
-      inDrawdown = true;
-      trough = currentPrice;
-      
-      // Calculate drawup percentage and add to array
-      const prevPrice = historicalData[i-1];
-      if (prevPrice > 0) {  // Prevent division by zero
-        const drawup = ((peak - prevPrice) / prevPrice) * 100;
-        if (drawup > 0) {
-          drawups.push(drawup);
-          console.log(`Detected drawup: ${drawup.toFixed(2)}% at index ${i}, price ${currentPrice}`);
-        }
+    
+    // Local peak (greater than or equal to neighbors)
+    if (current >= prev && current >= next) {
+      peaks.push({index: i, price: current});
+      console.log(`Detected peak at index ${i}: ${current}`);
+    }
+    
+    // Local trough (less than or equal to neighbors)
+    if (current <= prev && current <= next) {
+      troughs.push({index: i, price: current});
+      console.log(`Detected trough at index ${i}: ${current}`);
+    }
+  }
+  
+  // Add first and last points if they might be peaks or troughs
+  if (historicalData.length >= 2) {
+    // First point could be a peak or trough
+    const first = historicalData[0];
+    const secondPoint = historicalData[1];
+    
+    if (first > secondPoint) {
+      peaks.push({index: 0, price: first});
+      console.log(`Added first point as peak: ${first}`);
+    } else if (first < secondPoint) {
+      troughs.push({index: 0, price: first});
+      console.log(`Added first point as trough: ${first}`);
+    }
+    
+    // Last point could be a peak or trough
+    const last = historicalData[historicalData.length - 1];
+    const secondLast = historicalData[historicalData.length - 2];
+    
+    if (last > secondLast) {
+      peaks.push({index: historicalData.length - 1, price: last});
+      console.log(`Added last point as peak: ${last}`);
+    } else if (last < secondLast) {
+      troughs.push({index: historicalData.length - 1, price: last});
+      console.log(`Added last point as trough: ${last}`);
+    }
+  }
+  
+  // Sort peaks and troughs by index
+  peaks.sort((a, b) => a.index - b.index);
+  troughs.sort((a, b) => a.index - b.index);
+  
+  console.log(`Identified ${peaks.length} peaks and ${troughs.length} troughs`);
+  
+  // Calculate drawdowns: For each peak, find the lowest point (trough) until a new higher peak
+  for (let i = 0; i < peaks.length; i++) {
+    const peak = peaks[i];
+    let nextHigherPeakIndex = historicalData.length;
+    
+    // Find the next higher peak
+    for (let j = i + 1; j < peaks.length; j++) {
+      if (peaks[j].price > peak.price) {
+        nextHigherPeakIndex = peaks[j].index;
+        break;
       }
-    } 
-    // Continue drawdown
-    else if (inDrawdown && currentPrice <= trough) {
-      trough = currentPrice;
-    } 
-    // Check for drawup (trough to peak)
-    else if (inDrawdown && currentPrice > trough) {
-      // Transition from drawdown to drawup
-      inDrawdown = false;
-      inDrawup = true;
-      peak = currentPrice;
-      
-      // Calculate drawdown percentage and add to array
-      const prevPrice = historicalData[i-1];
-      if (prevPrice > 0) {  // Prevent division by zero
-        const drawdown = ((trough - prevPrice) / prevPrice) * -100;  // Make positive
-        if (drawdown > 0) {
-          drawdowns.push(drawdown);
-          console.log(`Detected drawdown: ${drawdown.toFixed(2)}% at index ${i}, price ${currentPrice}`);
-        }
+    }
+    
+    // Find the lowest point (trough) between this peak and the next higher peak
+    let lowestTrough = {index: peak.index, price: peak.price};
+    
+    for (const trough of troughs) {
+      if (trough.index > peak.index && trough.index < nextHigherPeakIndex && trough.price < lowestTrough.price) {
+        lowestTrough = trough;
       }
-    } 
-    // Continue drawup
-    else if (inDrawup && currentPrice >= peak) {
-      peak = currentPrice;
+    }
+    
+    // Calculate drawdown percentage if we found a lower trough
+    if (lowestTrough.price < peak.price && peak.price > 0) {
+      const drawdownPercent = ((peak.price - lowestTrough.price) / peak.price) * 100;
+      if (drawdownPercent > 0) {
+        drawdowns.push(drawdownPercent);
+        console.log(`Calculated drawdown: ${drawdownPercent.toFixed(2)}% from peak ${peak.price} to trough ${lowestTrough.price}`);
+      }
+    }
+  }
+  
+  // Calculate drawups: For each trough, find the highest point (peak) until a new lower trough
+  for (let i = 0; i < troughs.length; i++) {
+    const trough = troughs[i];
+    let nextLowerTroughIndex = historicalData.length;
+    
+    // Find the next lower trough
+    for (let j = i + 1; j < troughs.length; j++) {
+      if (troughs[j].price < trough.price) {
+        nextLowerTroughIndex = troughs[j].index;
+        break;
+      }
+    }
+    
+    // Find the highest point (peak) between this trough and the next lower trough
+    let highestPeak = {index: trough.index, price: trough.price};
+    
+    for (const peak of peaks) {
+      if (peak.index > trough.index && peak.index < nextLowerTroughIndex && peak.price > highestPeak.price) {
+        highestPeak = peak;
+      }
+    }
+    
+    // Calculate drawup percentage if we found a higher peak
+    if (highestPeak.price > trough.price && trough.price > 0) {
+      const drawupPercent = ((highestPeak.price - trough.price) / trough.price) * 100;
+      if (drawupPercent > 0) {
+        drawups.push(drawupPercent);
+        console.log(`Calculated drawup: ${drawupPercent.toFixed(2)}% from trough ${trough.price} to peak ${highestPeak.price}`);
+      }
     }
   }
 
@@ -120,6 +192,14 @@ export function calculateDrawdownDrawup(historicalData: number[]): DrawdownDrawu
   const avgDrawup = drawups.length > 0 
     ? drawups.reduce((sum, value) => sum + value, 0) / drawups.length 
     : 0;
+    
+  // Calculate median drawdown and drawup
+  const medianDrawdown = calculateMedian(drawdowns);
+  const medianDrawup = calculateMedian(drawups);
+  
+  // Calculate standard deviation for drawdowns and drawups
+  const stdDevDrawdown = calculateStandardDeviation(drawdowns, avgDrawdown);
+  const stdDevDrawup = calculateStandardDeviation(drawups, avgDrawup);
 
   // Calculate most frequent drawdown and drawup (rounded to nearest 0.5%)
   const frequentDrawdown = calculateMostFrequentValue(drawdowns);
@@ -132,6 +212,10 @@ export function calculateDrawdownDrawup(historicalData: number[]): DrawdownDrawu
     - Max Drawup: ${maxDrawup.toFixed(2)}%
     - Avg Drawdown: ${avgDrawdown.toFixed(2)}%
     - Avg Drawup: ${avgDrawup.toFixed(2)}%
+    - Median Drawdown: ${medianDrawdown.toFixed(2)}%
+    - Median Drawup: ${medianDrawup.toFixed(2)}%
+    - StdDev Drawdown: ${stdDevDrawdown.toFixed(2)}%
+    - StdDev Drawup: ${stdDevDrawup.toFixed(2)}%
     - Frequent Drawdown: ${frequentDrawdown.toFixed(2)}%
     - Frequent Drawup: ${frequentDrawup.toFixed(2)}%
   `);
@@ -158,7 +242,11 @@ export function calculateDrawdownDrawup(historicalData: number[]): DrawdownDrawu
           frequentDrawdown: percentChange < 0 ? absChange / 3 : 0.5,
           frequentDrawup: percentChange > 0 ? absChange / 3 : 0.5,
           drawdowns: percentChange < 0 ? [absChange] : [],
-          drawups: percentChange > 0 ? [absChange] : []
+          drawups: percentChange > 0 ? [absChange] : [],
+          stdDevDrawdown: 0,
+          stdDevDrawup: 0,
+          medianDrawdown: percentChange < 0 ? absChange : 0,
+          medianDrawup: percentChange > 0 ? absChange : 0
         };
       }
     }
@@ -172,7 +260,11 @@ export function calculateDrawdownDrawup(historicalData: number[]): DrawdownDrawu
       frequentDrawdown: 0.5,
       frequentDrawup: 0.7,
       drawdowns: [],
-      drawups: []
+      drawups: [],
+      stdDevDrawdown: 0.3,
+      stdDevDrawup: 0.4,
+      medianDrawdown: 0.7,
+      medianDrawup: 0.9
     };
   }
 
@@ -184,8 +276,56 @@ export function calculateDrawdownDrawup(historicalData: number[]): DrawdownDrawu
     frequentDrawdown,
     frequentDrawup,
     drawdowns,
-    drawups
+    drawups,
+    stdDevDrawdown,
+    stdDevDrawup,
+    medianDrawdown,
+    medianDrawup
   };
+}
+
+/**
+ * Calculate the median value of an array
+ * @param values Array of numeric values
+ * @returns Median value, or 0 if array is empty
+ */
+function calculateMedian(values: number[]): number {
+  if (values.length === 0) return 0;
+  
+  // Sort the values
+  const sortedValues = [...values].sort((a, b) => a - b);
+  
+  // Find the middle value
+  const middle = Math.floor(sortedValues.length / 2);
+  
+  // If the array has an odd number of elements, return the middle one
+  if (sortedValues.length % 2 === 1) {
+    return sortedValues[middle];
+  }
+  
+  // If the array has an even number of elements, return the average of the two middle ones
+  return (sortedValues[middle - 1] + sortedValues[middle]) / 2;
+}
+
+/**
+ * Calculate the standard deviation of an array
+ * @param values Array of numeric values
+ * @param mean Mean value (optional, will be calculated if not provided)
+ * @returns Standard deviation, or 0 if array has fewer than 2 elements
+ */
+function calculateStandardDeviation(values: number[], mean?: number): number {
+  if (values.length < 2) return 0;
+  
+  // Calculate mean if not provided
+  const avg = mean !== undefined ? mean : values.reduce((sum, val) => sum + val, 0) / values.length;
+  
+  // Calculate sum of squared differences from the mean
+  const squaredDiffs = values.map(value => Math.pow(value - avg, 2));
+  const sumSquaredDiffs = squaredDiffs.reduce((sum, val) => sum + val, 0);
+  
+  // Calculate variance and standard deviation
+  const variance = sumSquaredDiffs / values.length;
+  return Math.sqrt(variance);
 }
 
 /**

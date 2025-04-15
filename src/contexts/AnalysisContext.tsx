@@ -24,6 +24,10 @@ interface AnalysisItem {
       avgDrawup?: number;
       frequentDrawdown?: number;
       frequentDrawup?: number;
+      stdDevDrawdown?: number;
+      stdDevDrawup?: number;
+      medianDrawdown?: number;
+      medianDrawup?: number;
     };
   };
 }

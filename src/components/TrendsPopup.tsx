@@ -65,7 +65,11 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
               avgDrawdown: analysis.avgDrawdown,
               avgDrawup: analysis.avgDrawup,
               frequentDrawdown: analysis.frequentDrawdown,
-              frequentDrawup: analysis.frequentDrawup
+              frequentDrawup: analysis.frequentDrawup,
+              stdDevDrawdown: analysis.stdDevDrawdown,
+              stdDevDrawup: analysis.stdDevDrawup,
+              medianDrawdown: analysis.medianDrawdown,
+              medianDrawup: analysis.medianDrawup
             }
           };
           
@@ -217,6 +221,38 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
                       <p className="text-lg font-medium">
                         {analysisData.drawdownDrawup?.avgDrawup !== undefined
                           ? `${analysisData.drawdownDrawup.avgDrawup.toFixed(2)}%` 
+                          : isAnalyzing ? 'Analyzing...' : 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Median Drawdown</p>
+                      <p className="text-lg font-medium">
+                        {analysisData.drawdownDrawup?.medianDrawdown !== undefined
+                          ? `${analysisData.drawdownDrawup.medianDrawdown.toFixed(2)}%` 
+                          : isAnalyzing ? 'Analyzing...' : 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Median Drawup</p>
+                      <p className="text-lg font-medium">
+                        {analysisData.drawdownDrawup?.medianDrawup !== undefined
+                          ? `${analysisData.drawdownDrawup.medianDrawup.toFixed(2)}%` 
+                          : isAnalyzing ? 'Analyzing...' : 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">StdDev Drawdown</p>
+                      <p className="text-lg font-medium">
+                        {analysisData.drawdownDrawup?.stdDevDrawdown !== undefined
+                          ? `${analysisData.drawdownDrawup.stdDevDrawdown.toFixed(2)}%` 
+                          : isAnalyzing ? 'Analyzing...' : 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">StdDev Drawup</p>
+                      <p className="text-lg font-medium">
+                        {analysisData.drawdownDrawup?.stdDevDrawup !== undefined
+                          ? `${analysisData.drawdownDrawup.stdDevDrawup.toFixed(2)}%` 
                           : isAnalyzing ? 'Analyzing...' : 'N/A'}
                       </p>
                     </div>

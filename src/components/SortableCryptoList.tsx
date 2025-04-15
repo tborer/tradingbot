@@ -18,7 +18,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Trash2, GripVertical, ShoppingCart, DollarSign, PlusCircle } from "lucide-react";
+import { Trash2, GripVertical, ShoppingCart, DollarSign, PlusCircle, TrendingUp } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { CryptoWithPrice } from "@/types/stock";
@@ -27,8 +27,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import AutoTradeModal, { AutoTradeSettings } from "@/components/AutoTradeModal";
+import TrendsPopup from "@/components/TrendsPopup";
 import { Settings } from "@/icons/Settings";
 import { formatDecimal } from "@/util/number";
+import { useAnalysis } from "@/contexts/AnalysisContext";
 
 interface SortableCryptoItemProps {
   crypto: CryptoWithPrice;
@@ -39,6 +41,8 @@ interface SortableCryptoItemProps {
   onUpdateShares: (id: string, shares: number) => Promise<void>;
   onOpenAutoTradeModal: (id: string, symbol: string) => void;
   onAddToResearch: (symbol: string) => void;
+  onOpenTrendsPopup: (symbol: string) => void;
+  hasAnalysisData: (symbol: string) => boolean;
 }
 
 function SortableCryptoItem({ 
@@ -49,7 +53,9 @@ function SortableCryptoItem({
   onRowClick,
   onUpdateShares,
   onOpenAutoTradeModal,
-  onAddToResearch
+  onAddToResearch,
+  onOpenTrendsPopup,
+  hasAnalysisData
 }: SortableCryptoItemProps) {
   const { 
     attributes, 
@@ -213,6 +219,22 @@ function SortableCryptoItem({
           data-no-row-click
           onClick={(e) => {
             e.stopPropagation();
+            onOpenTrendsPopup(crypto.symbol);
+          }}
+          disabled={!hasAnalysisData(crypto.symbol)}
+          className={hasAnalysisData(crypto.symbol) ? "text-blue-500 hover:text-blue-700" : "text-gray-400"}
+          title={hasAnalysisData(crypto.symbol) ? "View trend analysis" : "Analysis not available yet"}
+        >
+          <TrendingUp className="h-4 w-4" />
+        </Button>
+      </TableCell>
+      <TableCell>
+        <Button
+          variant="ghost"
+          size="icon"
+          data-no-row-click
+          onClick={(e) => {
+            e.stopPropagation();
             onDelete(crypto.id, crypto.symbol);
           }}
         >
@@ -245,6 +267,7 @@ export default function SortableCryptoList({
   onAddToResearch
 }: SortableCryptoListProps) {
   const { toast } = useToast();
+  const { items: analysisItems } = useAnalysis();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [tradeDialogOpen, setTradeDialogOpen] = useState(false);
   const [tradeAction, setTradeAction] = useState<'buy' | 'sell'>('buy');
@@ -254,6 +277,8 @@ export default function SortableCryptoList({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [autoTradeModalOpen, setAutoTradeModalOpen] = useState(false);
   const [selectedAutoTradeStock, setSelectedAutoTradeStock] = useState<{ id: string; symbol: string } | null>(null);
+  const [trendsPopupOpen, setTrendsPopupOpen] = useState(false);
+  const [selectedTrendsSymbol, setSelectedTrendsSymbol] = useState<string>('');
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -400,6 +425,29 @@ export default function SortableCryptoList({
     
     setSelectedAutoTradeStock({ id, symbol });
     setAutoTradeModalOpen(true);
+  };
+  
+  // Function to check if a crypto has analysis data available
+  const hasAnalysisData = (symbol: string) => {
+    const item = analysisItems.find(item => 
+      item.symbol.toLowerCase() === symbol.toLowerCase() && 
+      item.type === 'crypto' &&
+      item.analysisData
+    );
+    return !!item;
+  };
+  
+  // Function to open the trends popup
+  const handleOpenTrendsPopup = (symbol: string) => {
+    if (hasAnalysisData(symbol)) {
+      setSelectedTrendsSymbol(symbol);
+      setTrendsPopupOpen(true);
+    } else {
+      toast({
+        title: "Analysis Not Available",
+        description: "Trend analysis for this cryptocurrency is not available yet.",
+      });
+    }
   };
   
   const handleSaveAutoTradeSettings = async (settings: AutoTradeSettings) => {
@@ -566,6 +614,7 @@ export default function SortableCryptoList({
                 <TableHead>Change</TableHead>
                 <TableHead>Action</TableHead>
                 <TableHead>Plan</TableHead>
+                <TableHead>Trends</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -585,6 +634,8 @@ export default function SortableCryptoList({
                     onUpdateShares={onUpdateShares || (async () => {})}
                     onOpenAutoTradeModal={handleOpenAutoTradeModal}
                     onAddToResearch={onAddToResearch || (() => {})}
+                    onOpenTrendsPopup={handleOpenTrendsPopup}
+                    hasAnalysisData={hasAnalysisData}
                   />
                 ))}
               </SortableContext>
@@ -674,6 +725,12 @@ export default function SortableCryptoList({
         itemName={selectedAutoTradeStock?.symbol || ""}
         itemType="crypto"
         initialSettings={currentAutoTradeSettings}
+      />
+      
+      <TrendsPopup
+        isOpen={trendsPopupOpen}
+        onClose={() => setTrendsPopupOpen(false)}
+        symbol={selectedTrendsSymbol}
       />
     </>
   );

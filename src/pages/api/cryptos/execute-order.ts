@@ -236,13 +236,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       
       // Record the failed transaction with detailed error information
+      // Use the current price for the transaction record
+      const transactionPrice = price;
+      const transactionTotalAmount = shares * transactionPrice;
+      
       const transaction = await prisma.cryptoTransaction.create({
         data: {
           cryptoId: crypto.id,
           action: 'error', // Change action to 'error' for failed transactions
           shares,
-          price,
-          totalAmount,
+          price: transactionPrice,
+          totalAmount: transactionTotalAmount,
           userId: user.id,
           apiRequest: JSON.stringify({
             endpoint: apiEndpoint,
@@ -260,8 +264,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             pair,
             requestedAction: action, // Store the originally requested action
             shares,
-            price,
-            totalAmount,
+            price: transactionPrice,
+            totalAmount: transactionTotalAmount,
             status: 'failed',
             errorType,
             error: krakenResponse.error.join(', '),
@@ -297,13 +301,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const totalAmount = shares * price;
 
     // Record the transaction with API request and response data for troubleshooting
+    // For sell transactions, we use the current price (selling price)
+    // For buy transactions, we use the purchase price
+    const transactionPrice = price; // Use the current price for both buy and sell
+    const transactionTotalAmount = shares * transactionPrice;
+    
     const transaction = await prisma.cryptoTransaction.create({
       data: {
         cryptoId: crypto.id,
         action,
         shares,
-        price,
-        totalAmount,
+        price: transactionPrice,
+        totalAmount: transactionTotalAmount,
         userId: user.id,
         apiRequest: JSON.stringify({
           endpoint: apiEndpoint,
@@ -321,10 +330,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           pair,
           action,
           shares,
-          price,
-          totalAmount,
+          price: transactionPrice,
+          totalAmount: transactionTotalAmount,
           status: 'success',
-          message: `Successfully executed ${action} order for ${shares} shares of ${crypto.symbol} at $${price}`
+          message: `Successfully executed ${action} order for ${shares} shares of ${crypto.symbol} at $${transactionPrice}`
         }, null, 2)
       }
     });
@@ -365,10 +374,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let newUsdBalance = userData?.usdBalance || 0;
     if (action === 'buy') {
       // Subtract the total amount when buying
-      newUsdBalance -= totalAmount;
+      newUsdBalance -= transactionTotalAmount;
     } else {
       // Add the total amount when selling
-      newUsdBalance += totalAmount;
+      newUsdBalance += transactionTotalAmount;
     }
     
     // Ensure balance doesn't go below zero
@@ -413,7 +422,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }).catch(() => null);
         
         if (crypto) {
-          const totalAmount = (shares || 0) * (price || 0);
+          // Use the current price for the transaction record
+          const transactionPrice = price || 0;
+          const transactionTotalAmount = (shares || 0) * transactionPrice;
           
           // Create a transaction record for the error
           const transaction = await prisma.cryptoTransaction.create({
@@ -421,8 +432,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               cryptoId,
               action: 'error',
               shares: shares || 0,
-              price: price || 0,
-              totalAmount,
+              price: transactionPrice,
+              totalAmount: transactionTotalAmount,
               userId: user.id,
               logInfo: JSON.stringify({
                 timestamp: new Date().toISOString(),

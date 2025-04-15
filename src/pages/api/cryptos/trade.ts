@@ -108,6 +108,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const currentPrice = crypto.lastPrice || crypto.purchasePrice;
     const totalAmount = currentPrice * Number(shares);
     
+    console.log(`Using current price for ${action}: $${currentPrice} (lastPrice: ${crypto.lastPrice}, purchasePrice: ${crypto.purchasePrice})`);
+    
     // Execute the order using the Kraken API
     try {
       // Call the execute-order API endpoint to use the Kraken API
@@ -165,24 +167,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.error('Error executing order via Kraken API:', error);
       
       // Log the failed transaction with error details
+      // Use the current price for the transaction record
+      const transactionPrice = currentPrice;
+      const transactionTotalAmount = Number(shares) * transactionPrice;
+      
       const transaction = await prisma.cryptoTransaction.create({
         data: {
           cryptoId: crypto.id,
           action: 'error', // Change action to 'error' for failed transactions
           shares: Number(shares),
-          price: currentPrice,
-          totalAmount,
+          price: transactionPrice,
+          totalAmount: transactionTotalAmount,
           userId: user.id,
           logInfo: JSON.stringify({
             timestamp: new Date().toISOString(),
             method: 'trade_api_error',
             requestedAction: action, // Store the originally requested action
             shares: Number(shares),
-            price: currentPrice,
-            totalAmount,
+            price: transactionPrice,
+            totalAmount: transactionTotalAmount,
             status: 'failed',
             error: error.message || 'Unknown error',
-            message: `Failed to execute ${action} order for ${shares} shares of ${crypto.symbol} at $${currentPrice}`
+            message: `Failed to execute ${action} order for ${shares} shares of ${crypto.symbol} at $${transactionPrice}`
           }, null, 2)
         },
       });

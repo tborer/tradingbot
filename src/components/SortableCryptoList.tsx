@@ -534,53 +534,23 @@ export default function SortableCryptoList({
     if (onTrade) {
       setIsSubmitting(true);
       try {
-        // Make sure we're using the correct API endpoint path
-        const response = await fetch('/api/cryptos/trade', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            cryptoId: selectedCrypto.id,
-            action: tradeAction,
-            shares: Number(shares),
-            orderType: orderType
-          }),
-        });
-        
-        const responseData = await response.json();
-        
-        if (!response.ok) {
-          // Extract detailed error information
-          let errorMessage = responseData.error || 'Failed to execute trade';
-          
-          // If there are Kraken API specific errors, display them
-          if (responseData.details && responseData.details.error) {
-            if (Array.isArray(responseData.details.error)) {
-              errorMessage = responseData.details.error.join(', ');
-            } else {
-              errorMessage = responseData.details.error;
-            }
-          }
-          
-          // Even if the API call failed, we might have a transaction record for the failed attempt
-          if (responseData.transaction) {
+        // If this is a sell action, first check if we have enough shares
+        if (tradeAction === 'sell') {
+          // Find the crypto in our list to check shares
+          const crypto = cryptos.find(c => c.id === selectedCrypto?.id);
+          if (crypto && Number(shares) > crypto.shares) {
             toast({
               variant: "destructive",
-              title: `Failed to ${tradeAction} ${selectedCrypto?.symbol}`,
-              description: `${errorMessage}. The failed transaction has been recorded in your history.`,
+              title: "Not Enough Shares",
+              description: `You only have ${crypto.shares.toFixed(8)} shares of ${selectedCrypto?.symbol} available to sell.`,
             });
-          } else {
-            throw new Error(errorMessage);
+            setIsSubmitting(false);
+            return;
           }
-          
-          // Close the dialog and refresh to show the failed transaction
-          setTradeDialogOpen(false);
-          setTimeout(() => {
-            window.location.reload();
-          }, 1500);
-          return;
         }
+
+        // Execute the trade using the onTrade callback
+        await onTrade(selectedCrypto.id, selectedCrypto.symbol, tradeAction, Number(shares));
         
         setTradeDialogOpen(false);
         toast({
@@ -594,19 +564,37 @@ export default function SortableCryptoList({
         }, 1500);
       } catch (error) {
         console.error(`Error ${tradeAction}ing crypto:`, error);
+        
+        // Check for specific error messages
+        let errorTitle = `Failed to ${tradeAction} ${selectedCrypto?.symbol}`;
+        let errorDescription = error.message || `An error occurred. Check transaction history for details.`;
+        
+        // Special handling for "Not enough shares to sell" error
+        if (error.message && error.message.includes("Not enough shares to sell")) {
+          errorTitle = "Insufficient Shares";
+          
+          // Check if the error message includes available shares information
+          if (error.message.includes("Available on Kraken:")) {
+            const availableMatch = error.message.match(/Available on Kraken: ([0-9.]+)/);
+            if (availableMatch && availableMatch[1]) {
+              const availableShares = parseFloat(availableMatch[1]);
+              errorDescription = `You only have ${availableShares.toFixed(8)} shares available on Kraken, but you're trying to sell ${shares} shares. Please refresh your portfolio to sync with Kraken.`;
+            } else {
+              errorDescription = "Your Kraken balance shows fewer shares than you're trying to sell. Please refresh your portfolio to sync with Kraken.";
+            }
+          } else {
+            errorDescription = "You don't have enough shares to complete this sale. Your local balance may be out of sync with Kraken.";
+          }
+        }
+        
         toast({
           variant: "destructive",
-          title: `Failed to ${tradeAction} ${selectedCrypto?.symbol}`,
-          description: error.message || `An error occurred. Check transaction history for details.`,
+          title: errorTitle,
+          description: errorDescription,
         });
         
         // Close the dialog after error
         setTradeDialogOpen(false);
-        
-        // Refresh the page to show the failed transaction in history
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
       } finally {
         setIsSubmitting(false);
       }

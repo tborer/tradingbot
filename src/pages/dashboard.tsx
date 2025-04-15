@@ -1067,6 +1067,54 @@ export default function Dashboard() {
       
       console.log(`Executing ${action} for ${symbol}, ${shares} shares at $${price}`);
 
+      // For sell actions, verify that the user has enough shares before proceeding
+      if (action === 'sell') {
+        // First check if we have enough shares in our local state
+        if (crypto.shares < shares) {
+          console.error(`Not enough shares to sell: have ${crypto.shares}, trying to sell ${shares}`);
+          throw new Error("Not enough shares to sell");
+        }
+        
+        // If using Kraken API, we should also check the actual balance on Kraken
+        if (settings?.krakenApiKey && settings?.krakenApiSign) {
+          try {
+            // Fetch the latest balance from Kraken to ensure we have enough shares
+            const balanceResponse = await fetch("/api/cryptos/balance");
+            if (balanceResponse.ok) {
+              const balanceData = await balanceResponse.json();
+              
+              // Find the balance for this specific crypto
+              const cryptoBalance = balanceData.find((b: any) => 
+                b.asset.toUpperCase() === symbol.toUpperCase()
+              );
+              
+              if (cryptoBalance) {
+                const availableShares = parseFloat(cryptoBalance.available || '0');
+                console.log(`Kraken balance check: ${symbol} available: ${availableShares}, attempting to sell: ${shares}`);
+                
+                if (availableShares < shares) {
+                  console.error(`Not enough shares on Kraken: have ${availableShares}, trying to sell ${shares}`);
+                  
+                  // If the local database shows more shares than Kraken, we should sync them
+                  if (crypto.shares !== availableShares) {
+                    console.log(`Syncing local database (${crypto.shares}) with Kraken balance (${availableShares})`);
+                    await handleUpdateCryptoShares(id, availableShares);
+                  }
+                  
+                  throw new Error(`Not enough shares to sell. Available on Kraken: ${availableShares}`);
+                }
+              } else {
+                console.warn(`Could not find ${symbol} in Kraken balance data`);
+              }
+            }
+          } catch (balanceError) {
+            console.error("Error checking Kraken balance:", balanceError);
+            // Continue with the trade attempt even if balance check fails
+            // The Kraken API will reject the trade if there are insufficient funds
+          }
+        }
+      }
+
       // Check if Kraken API credentials are configured
       if (settings?.krakenApiKey && settings?.krakenApiSign) {
         console.log("Using Kraken API for trading");

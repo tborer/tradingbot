@@ -508,38 +508,66 @@ export async function fetchAndAnalyzeTrends(
   apiKey: string,
   days: number = 30
 ): Promise<DrawdownDrawupAnalysis | null> {
+  const analysisId = `analysis-${symbol}-${Date.now()}`;
+  console.log(`[${analysisId}] Starting trend analysis for ${symbol} over ${days} days`);
+  
   try {
     // Fetch historical data
+    console.log(`[${analysisId}] Fetching historical data from CoinDesk API`);
     const historicalData = await fetchCoinDeskHistoricalData(symbol, apiKey, days);
     
     if (!historicalData) {
-      console.error(`Failed to fetch historical data for ${symbol}`);
+      console.error(`[${analysisId}] Failed to fetch historical data for ${symbol}`);
       return null;
     }
     
     // Format the data for analysis
+    console.log(`[${analysisId}] Formatting historical data for analysis`);
     const formattedData = formatCoinDeskDataForAnalysis(historicalData);
     
     if (!formattedData) {
-      console.error(`Failed to format historical data for ${symbol}`);
+      console.error(`[${analysisId}] Failed to format historical data for ${symbol}`);
       return null;
     }
     
     // Extract price data (closing prices)
+    console.log(`[${analysisId}] Extracting price data from formatted data`);
     const priceData = extractPriceDataFromCoinDesk(formattedData);
     
     if (priceData.length === 0) {
-      console.error(`No price data found for ${symbol}`);
+      console.error(`[${analysisId}] No price data found for ${symbol}`);
       return null;
     }
     
+    console.log(`[${analysisId}] Extracted ${priceData.length} price points for analysis`);
+    
     // Calculate drawdown and drawup analysis
+    console.log(`[${analysisId}] Calculating drawdown and drawup analysis`);
     const analysis = calculateDrawdownDrawup(priceData);
     
-    console.log(`Completed trend analysis for ${symbol}:`, analysis);
+    console.log(`[${analysisId}] Completed trend analysis for ${symbol}:`, {
+      maxDrawdown: analysis.maxDrawdown,
+      maxDrawup: analysis.maxDrawup,
+      avgDrawdown: analysis.avgDrawdown,
+      avgDrawup: analysis.avgDrawup,
+      frequentDrawdown: analysis.frequentDrawdown,
+      frequentDrawup: analysis.frequentDrawup,
+      dataPoints: priceData.length
+    });
+    
     return analysis;
   } catch (error) {
-    console.error(`Error analyzing trends for ${symbol}:`, error);
+    console.error(`[${analysisId}] Error analyzing trends for ${symbol}:`, error);
+    
+    // Log detailed error information
+    if (error instanceof Error) {
+      console.error(`[${analysisId}] Error details:`, {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+    }
+    
     return null;
   }
 }

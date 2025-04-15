@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAnalysis } from "@/contexts/AnalysisContext";
-import { fetchAndAnalyzeTrends } from "@/lib/coinDesk";
+import { useToast } from "@/components/ui/use-toast";
 
 interface TrendsPopupProps {
   isOpen: boolean;
@@ -12,6 +12,7 @@ interface TrendsPopupProps {
 }
 
 const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) => {
+  const { toast } = useToast();
   const { getItem, updateItem } = useAnalysis();
   const [loading, setLoading] = useState(true);
   const [analysisData, setAnalysisData] = useState<any>(null);
@@ -44,17 +45,22 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
     setIsAnalyzing(true);
     
     try {
-      // Get the API key from environment variables
-      const apiKey = process.env.NEXT_PUBLIC_COINDESK_API_KEY;
+      // Call the API endpoint for trend analysis
+      const response = await fetch('/api/cryptos/trend-analysis', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ symbol }),
+      });
       
-      if (!apiKey) {
-        console.error("CoinDesk API key not found in environment variables");
-        setIsAnalyzing(false);
-        return;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `API error: ${response.status}`);
       }
       
-      // Fetch and analyze trend data
-      const analysis = await fetchAndAnalyzeTrends(symbol, apiKey, 30);
+      const data = await response.json();
+      const analysis = data.analysis;
       
       if (analysis) {
         // Update the analysis data in context
@@ -82,6 +88,12 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
       }
     } catch (error) {
       console.error("Error performing drawdown/drawup analysis:", error);
+      // Show error in UI
+      toast({
+        title: "Analysis Error",
+        description: error instanceof Error ? error.message : "Failed to analyze trends",
+        variant: "destructive"
+      });
     } finally {
       setIsAnalyzing(false);
     }

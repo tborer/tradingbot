@@ -85,6 +85,8 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
         if (item.symbol) {
           // Extract the symbol (remove the /USD part)
           const rawSymbol = item.symbol.split('/')[0];
+          
+          // Convert XBT to BTC for consistency
           const symbol = rawSymbol === 'XBT' ? 'BTC' : rawSymbol;
           
           // According to the specified format, we have direct access to these fields
@@ -135,6 +137,8 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
             if (item.symbol && item.last !== undefined) {
               // Extract the symbol (remove the /USD part)
               const rawSymbol = item.symbol.split('/')[0];
+              
+              // Convert XBT to BTC for consistency
               const symbol = rawSymbol === 'XBT' ? 'BTC' : rawSymbol;
               
               // Use the 'last' field as the current price
@@ -255,6 +259,8 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
       
       // Extract the symbol (remove the /USD part)
       const rawSymbol = parsed.symbol.split('/')[0];
+      
+      // Convert XBT to BTC for consistency
       const symbol = rawSymbol === 'XBT' ? 'BTC' : rawSymbol;
       
       // Try to extract price from different possible fields
@@ -299,6 +305,7 @@ export const formatKrakenSymbol = (krakenSymbol: string): string => {
   
   // Kraken uses XBT for Bitcoin, we want to use BTC
   if (baseCurrency === 'XBT') {
+    console.log('Converting XBT to BTC for consistency');
     return 'BTC';
   }
   
@@ -310,6 +317,7 @@ export const formatKrakenSymbol = (krakenSymbol: string): string => {
 export const formatToKrakenSymbol = (symbol: string): string => {
   // Kraken uses XBT for Bitcoin
   if (symbol === 'BTC') {
+    console.log('Converting BTC to XBT/USD for Kraken API');
     return 'XBT/USD';
   }
   

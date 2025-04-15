@@ -1204,7 +1204,7 @@ export default function Dashboard() {
 
   // Add crypto to Research tab
   const { addItem } = useAnalysis();
-  const handleAddCryptoToResearch = (symbol: string) => {
+  const handleAddCryptoToResearch = async (symbol: string) => {
     try {
       // Find the crypto in the list
       const crypto = cryptos.find(c => c.symbol.toUpperCase() === symbol.toUpperCase());
@@ -1213,26 +1213,64 @@ export default function Dashboard() {
         throw new Error(`Crypto ${symbol} not found in your portfolio`);
       }
       
-      // Add to analysis context
-      addItem({
-        symbol: crypto.symbol,
-        currentPrice: crypto.currentPrice,
-        purchasePrice: crypto.purchasePrice,
-        type: 'crypto',
-        historicalData: null, // This will be fetched by the Research component
-        dataSource: 'dashboard'
-      });
-      
-      // Switch to the Research tab
-      const researchTab = document.querySelector('[value="research"]') as HTMLElement;
-      if (researchTab) {
-        researchTab.click();
-      }
-      
+      // Fetch historical data first
       toast({
-        title: "Added to Research",
-        description: `${symbol} has been added to the Research tab.`,
+        title: "Fetching Data",
+        description: `Fetching historical data for ${symbol}...`,
       });
+      
+      try {
+        const response = await fetch(`/api/cryptos/historical?symbol=${symbol}`);
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Add to analysis context with the historical data
+          addItem({
+            symbol: crypto.symbol,
+            currentPrice: crypto.currentPrice,
+            purchasePrice: crypto.purchasePrice,
+            type: 'crypto',
+            historicalData: data.data, // Include the fetched historical data
+            dataSource: data.source || 'dashboard'
+          });
+          
+          // Switch to the Research tab
+          const researchTab = document.querySelector('[value="research"]') as HTMLElement;
+          if (researchTab) {
+            researchTab.click();
+          }
+          
+          toast({
+            title: "Added to Research",
+            description: `${symbol} has been added to the Research tab.`,
+          });
+        } else {
+          throw new Error(`Failed to fetch historical data for ${symbol}`);
+        }
+      } catch (fetchError) {
+        console.error(`Error fetching historical data for ${symbol}:`, fetchError);
+        
+        // Fall back to adding without historical data
+        addItem({
+          symbol: crypto.symbol,
+          currentPrice: crypto.currentPrice,
+          purchasePrice: crypto.purchasePrice,
+          type: 'crypto',
+          historicalData: null, // This will be fetched by the Research component as fallback
+          dataSource: 'dashboard'
+        });
+        
+        // Switch to the Research tab
+        const researchTab = document.querySelector('[value="research"]') as HTMLElement;
+        if (researchTab) {
+          researchTab.click();
+        }
+        
+        toast({
+          title: "Added to Research",
+          description: `${symbol} has been added to the Research tab. Some analysis may be delayed.`,
+        });
+      }
     } catch (error) {
       console.error("Error adding crypto to research:", error);
       toast({

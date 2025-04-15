@@ -37,25 +37,48 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     // Check if auto trading is enabled
     if (!settings.enableAutoCryptoTrading) {
+      console.log(`Auto trading is disabled in settings for user ${user.id}`);
       return res.status(400).json({ error: 'Auto trading is disabled in settings' });
     }
+    
+    console.log(`Auto trading is enabled for user ${user.id}, checking crypto ${cryptoId}`);
     
     // Check if the crypto belongs to the user
     const crypto = await prisma.crypto.findFirst({
       where: {
         id: cryptoId,
         userId: user.id
+      },
+      include: {
+        autoTradeSettings: true
       }
     });
     
     if (!crypto) {
+      console.log(`Crypto ${cryptoId} not found for user ${user.id}`);
       return res.status(404).json({ error: 'Crypto not found' });
+    }
+    
+    console.log(`Found crypto ${crypto.symbol} (ID: ${cryptoId}) for user ${user.id}`);
+    console.log(`Auto trade settings: autoBuy=${crypto.autoBuy}, autoSell=${crypto.autoSell}`);
+    
+    if (crypto.autoTradeSettings) {
+      console.log(`Auto trade configuration: nextAction=${crypto.autoTradeSettings.nextAction}, buyThreshold=${crypto.autoTradeSettings.buyThresholdPercent}%, sellThreshold=${crypto.autoTradeSettings.sellThresholdPercent}%`);
     }
     
     // Check if auto trading is enabled for this crypto
     if (!crypto.autoBuy && !crypto.autoSell) {
+      console.log(`Auto trading is not enabled for ${crypto.symbol}`);
       return res.status(400).json({ error: 'Auto trading is not enabled for this crypto' });
     }
+    
+    console.log(`Auto trading is enabled for ${crypto.symbol}, checking if we should trade at price $${price}`);
+    console.log(`Current purchase price: $${crypto.purchasePrice}`);
+    
+    // Calculate percentage change
+    const percentChange = ((price - crypto.purchasePrice) / crypto.purchasePrice) * 100;
+    console.log(`Current percentage change: ${percentChange.toFixed(2)}%`);
+    
     
     // Check if we should auto trade based on current price
     const result = await checkCryptoForAutoTrade(cryptoId, price, user.id);

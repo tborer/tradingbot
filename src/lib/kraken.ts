@@ -345,8 +345,22 @@ export const shouldSellCrypto = (
   purchasePrice: number, 
   thresholdPercent: number
 ): boolean => {
+  // Handle edge cases
+  if (purchasePrice <= 0) {
+    console.log(`Invalid purchase price (${purchasePrice}) for sell check`);
+    return false;
+  }
+  
+  if (currentPrice <= 0) {
+    console.log(`Invalid current price (${currentPrice}) for sell check`);
+    return false;
+  }
+  
   const percentGain = ((currentPrice - purchasePrice) / purchasePrice) * 100;
-  return percentGain >= thresholdPercent;
+  console.log(`SELL CHECK: Current: $${currentPrice}, Purchase: $${purchasePrice}, Gain: ${percentGain.toFixed(2)}%, Threshold: ${thresholdPercent}%`);
+  const shouldSell = percentGain >= thresholdPercent;
+  console.log(`Should sell? ${shouldSell ? 'YES' : 'NO'}`);
+  return shouldSell;
 };
 
 // Check if a crypto should be bought based on current price and threshold
@@ -355,8 +369,22 @@ export const shouldBuyCrypto = (
   purchasePrice: number, 
   thresholdPercent: number
 ): boolean => {
+  // Handle edge cases
+  if (purchasePrice <= 0) {
+    console.log(`Invalid purchase price (${purchasePrice}) for buy check`);
+    return false;
+  }
+  
+  if (currentPrice <= 0) {
+    console.log(`Invalid current price (${currentPrice}) for buy check`);
+    return false;
+  }
+  
   const percentDrop = ((purchasePrice - currentPrice) / purchasePrice) * 100;
-  return percentDrop >= thresholdPercent;
+  console.log(`BUY CHECK: Current: $${currentPrice}, Purchase: $${purchasePrice}, Drop: ${percentDrop.toFixed(2)}%, Threshold: ${thresholdPercent}%`);
+  const shouldBuy = percentDrop >= thresholdPercent;
+  console.log(`Should buy? ${shouldBuy ? 'YES' : 'NO'}`);
+  return shouldBuy;
 };
 
 // Kraken Order API Types

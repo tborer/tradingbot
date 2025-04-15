@@ -30,6 +30,48 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Missing or invalid prices array' });
     }
     
+    console.log(`Processing auto trades for user ${user.id} with ${prices.length} price updates`);
+    
+    // Log the prices being processed
+    console.log('Price updates received:', prices.map(p => `${p.symbol}: $${p.price}`).join(', '));
+    
+    // Get user settings to check if auto trading is enabled
+    const settings = await prisma.settings.findUnique({
+      where: { userId: user.id }
+    });
+    
+    if (!settings || !settings.enableAutoCryptoTrading) {
+      console.log(`Auto trading is disabled for user ${user.id}`);
+      return res.status(200).json({ 
+        success: false,
+        message: 'Auto trading is disabled in user settings',
+        results: []
+      });
+    }
+    
+    console.log(`Auto trading is enabled for user ${user.id}`);
+    
+    // Get cryptos with auto trading enabled
+    const cryptos = await prisma.crypto.findMany({
+      where: {
+        userId: user.id,
+        OR: [
+          { autoBuy: true },
+          { autoSell: true }
+        ]
+      },
+      include: {
+        autoTradeSettings: true
+      }
+    });
+    
+    console.log(`Found ${cryptos.length} cryptos with auto trading enabled`);
+    if (cryptos.length > 0) {
+      console.log('Auto-tradable cryptos:', cryptos.map(c => 
+        `${c.symbol} (buy: ${c.autoBuy}, sell: ${c.autoSell}, nextAction: ${c.autoTradeSettings?.nextAction || 'none'})`
+      ).join(', '));
+    }
+    
     // Process auto trades using the server-side function with a timeout
     // Create a promise that resolves with the results or rejects after timeout
     const processWithTimeout = Promise.race([
@@ -43,6 +85,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     // Wait for either the process to complete or the timeout
     const results = await processWithTimeout as Awaited<ReturnType<typeof processAutoCryptoTrades>>;
+    
+    console.log(`Auto trade processing completed with ${results.length} results`);
+    console.log('Results:', results.map(r => 
+      `${r.symbol || 'unknown'}: ${r.success ? 'SUCCESS' : 'FAILED'} - ${r.message} ${r.action ? `(${r.action})` : ''}`
+    ).join('\n'));
     
     return res.status(200).json({ 
       success: true,

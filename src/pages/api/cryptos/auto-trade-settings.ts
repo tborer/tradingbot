@@ -135,14 +135,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       
       // Update the crypto's auto buy/sell flags based on settings
+      const autoBuy = settings.nextAction === 'buy' || settings.oneTimeBuy;
+      const autoSell = settings.nextAction === 'sell' || settings.oneTimeSell;
+      
+      console.log(`Updating auto trade flags for ${crypto.symbol}: autoBuy=${autoBuy}, autoSell=${autoSell}`);
+      console.log(`Settings that determined these flags: nextAction=${settings.nextAction}, oneTimeBuy=${settings.oneTimeBuy}, oneTimeSell=${settings.oneTimeSell}`);
+      
       await prisma.crypto.update({
         where: { id: crypto.id },
         data: {
-          autoBuy: settings.nextAction === 'buy' || settings.oneTimeBuy,
-          autoSell: settings.nextAction === 'sell' || settings.oneTimeSell,
+          autoBuy,
+          autoSell,
           updatedAt: new Date(),
         }
       });
+      
+      // Log the updated crypto for verification
+      const updatedCrypto = await prisma.crypto.findUnique({
+        where: { id: crypto.id },
+        include: { autoTradeSettings: true }
+      });
+      
+      console.log(`Updated crypto ${updatedCrypto.symbol}: autoBuy=${updatedCrypto.autoBuy}, autoSell=${updatedCrypto.autoSell}`);
+      if (updatedCrypto.autoTradeSettings) {
+        console.log(`Updated auto trade settings: nextAction=${updatedCrypto.autoTradeSettings.nextAction}, buyThreshold=${updatedCrypto.autoTradeSettings.buyThresholdPercent}%, sellThreshold=${updatedCrypto.autoTradeSettings.sellThresholdPercent}%`);
+      }
       
       console.log(`Successfully saved auto-trade settings for ${crypto.symbol}`);
       return res.status(200).json({

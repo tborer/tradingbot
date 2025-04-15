@@ -298,12 +298,12 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
 };
 
 // Format Kraken symbol to match our application's format
-// Kraken uses XBT/USD, we want BTC
+// Kraken may use XBT/USD or BTC/USD, we want BTC
 export const formatKrakenSymbol = (krakenSymbol: string): string => {
   // Remove the quote currency (e.g., /USD)
   const baseCurrency = krakenSymbol.split('/')[0];
   
-  // Kraken uses XBT for Bitcoin, we want to use BTC
+  // Kraken may use XBT for Bitcoin, we want to use BTC
   if (baseCurrency === 'XBT') {
     console.log('Converting XBT to BTC for consistency');
     return 'BTC';
@@ -313,12 +313,12 @@ export const formatKrakenSymbol = (krakenSymbol: string): string => {
 };
 
 // Format our symbol to Kraken's format
-// We use BTC, Kraken uses XBT/USD
+// We use BTC, Kraken now accepts BTC/USD
 export const formatToKrakenSymbol = (symbol: string): string => {
-  // Kraken uses XBT for Bitcoin
+  // Use BTC/USD directly as requested
   if (symbol === 'BTC') {
-    console.log('Converting BTC to XBT/USD for Kraken API');
-    return 'XBT/USD';
+    console.log('Using BTC/USD for Kraken API subscription');
+    return 'BTC/USD';
   }
   
   // For other symbols, add /USD
@@ -382,9 +382,9 @@ export interface KrakenOrderResponse {
 
 // Convert our symbol to Kraken trading pair format
 export const getKrakenTradingPair = (symbol: string): string => {
-  // Kraken uses XBT for Bitcoin
+  // Use BTC directly for Bitcoin
   if (symbol === 'BTC') {
-    return 'XBTUSD';
+    return 'BTCUSD';
   }
   
   // For other symbols, add USD

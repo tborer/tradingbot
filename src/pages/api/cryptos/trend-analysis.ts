@@ -1,6 +1,13 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@/util/supabase/api';
-import { fetchAndAnalyzeTrends } from '@/lib/coinDesk';
+import { 
+  fetchCoinDeskHistoricalData, 
+  formatCoinDeskDataForAnalysis 
+} from '@/lib/coinDesk';
+import { 
+  calculateDrawdownDrawup,
+  extractPriceDataFromCoinDesk
+} from '@/lib/trendAnalysis';
 import { 
   ErrorCategory, 
   ErrorSeverity, 
@@ -196,13 +203,150 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Fetch and analyze trend data
     console.log(`[${requestId}] Fetching and analyzing trend data for ${symbol}`);
-    const analysis = await fetchAndAnalyzeTrends(symbol, apiKey, 30);
-
-    if (!analysis) {
+    
+    // Create a logging function for API requests
+    const logApiRequest = async (url: string, method: string, requestBody: any, response?: any, status?: number, error?: string, duration?: number) => {
+      try {
+        await prisma.apiLog.create({
+          data: {
+            requestId: `${requestId}-coindesk-api`,
+            endpoint: url,
+            method: method,
+            requestBody: JSON.stringify(requestBody),
+            responseBody: response ? JSON.stringify(response) : null,
+            status: error ? 'ERROR' : 'SUCCESS',
+            statusCode: status || (error ? 500 : 200),
+            errorMessage: error || null,
+            startTime: new Date(Date.now() - (duration || 0)),
+            endTime: new Date(),
+            duration: duration || 0,
+            userId: user.id,
+            metadata: JSON.stringify({
+              parentRequestId: requestId,
+              symbol,
+              timestamp: new Date().toISOString()
+            })
+          }
+        });
+      } catch (logError) {
+        console.error(`[${requestId}] Failed to log CoinDesk API request:`, logError);
+      }
+    };
+    
+    // Fetch historical data from CoinDesk API
+    console.log(`[${requestId}] Fetching historical data from CoinDesk API for ${symbol}`);
+    const historicalData = await fetchCoinDeskHistoricalData(symbol, apiKey, 30, logApiRequest);
+    
+    if (!historicalData) {
       const errorDetails = createAndLogError(
         ErrorCategory.API,
         ErrorSeverity.ERROR,
         4004,
+        `Failed to fetch historical data for ${symbol} from CoinDesk API`,
+        { requestId, symbol }
+      );
+      
+      // Update log entry with error
+      if (logEntryId) {
+        try {
+          await prisma.apiLog.update({
+            where: { id: logEntryId },
+            data: {
+              status: 'ERROR',
+              statusCode: 500,
+              responseBody: JSON.stringify({ error: 'Failed to fetch historical data', code: errorDetails.code }),
+              errorMessage: `Failed to fetch historical data for ${symbol}`,
+              endTime: new Date(),
+              duration: Date.now() - startTime
+            }
+          });
+        } catch (dbError) {
+          console.error(`[${requestId}] Failed to update API log entry:`, dbError);
+        }
+      }
+      
+      return res.status(500).json({ error: 'Failed to fetch historical data', code: errorDetails.code });
+    }
+    
+    // Format the data for analysis
+    console.log(`[${requestId}] Formatting historical data for analysis`);
+    const formattedData = formatCoinDeskDataForAnalysis(historicalData);
+    
+    if (!formattedData) {
+      const errorDetails = createAndLogError(
+        ErrorCategory.API,
+        ErrorSeverity.ERROR,
+        4005,
+        `Failed to format historical data for ${symbol}`,
+        { requestId, symbol }
+      );
+      
+      // Update log entry with error
+      if (logEntryId) {
+        try {
+          await prisma.apiLog.update({
+            where: { id: logEntryId },
+            data: {
+              status: 'ERROR',
+              statusCode: 500,
+              responseBody: JSON.stringify({ error: 'Failed to format historical data', code: errorDetails.code }),
+              errorMessage: `Failed to format historical data for ${symbol}`,
+              endTime: new Date(),
+              duration: Date.now() - startTime
+            }
+          });
+        } catch (dbError) {
+          console.error(`[${requestId}] Failed to update API log entry:`, dbError);
+        }
+      }
+      
+      return res.status(500).json({ error: 'Failed to format historical data', code: errorDetails.code });
+    }
+    
+    // Extract price data (closing prices)
+    console.log(`[${requestId}] Extracting price data from formatted data`);
+    const priceData = extractPriceDataFromCoinDesk(formattedData);
+    
+    if (priceData.length === 0) {
+      const errorDetails = createAndLogError(
+        ErrorCategory.API,
+        ErrorSeverity.ERROR,
+        4006,
+        `No price data found for ${symbol}`,
+        { requestId, symbol }
+      );
+      
+      // Update log entry with error
+      if (logEntryId) {
+        try {
+          await prisma.apiLog.update({
+            where: { id: logEntryId },
+            data: {
+              status: 'ERROR',
+              statusCode: 500,
+              responseBody: JSON.stringify({ error: 'No price data found', code: errorDetails.code }),
+              errorMessage: `No price data found for ${symbol}`,
+              endTime: new Date(),
+              duration: Date.now() - startTime
+            }
+          });
+        } catch (dbError) {
+          console.error(`[${requestId}] Failed to update API log entry:`, dbError);
+        }
+      }
+      
+      return res.status(500).json({ error: 'No price data found', code: errorDetails.code });
+    }
+    
+    // Calculate drawdown and drawup analysis
+    console.log(`[${requestId}] Calculating drawdown and drawup analysis for ${priceData.length} price points`);
+    const analysis = calculateDrawdownDrawup(priceData);
+    
+    if (!analysis) {
+      const errorDetails = createAndLogError(
+        ErrorCategory.API,
+        ErrorSeverity.ERROR,
+        4007,
         `Failed to analyze trends for ${symbol}`,
         { requestId, symbol }
       );

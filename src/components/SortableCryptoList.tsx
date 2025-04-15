@@ -18,7 +18,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Trash2, GripVertical, ShoppingCart, DollarSign } from "lucide-react";
+import { Trash2, GripVertical, ShoppingCart, DollarSign, PlusCircle } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { CryptoWithPrice } from "@/types/stock";
@@ -38,6 +38,7 @@ interface SortableCryptoItemProps {
   onRowClick: (id: string, symbol: string) => void;
   onUpdateShares: (id: string, shares: number) => Promise<void>;
   onOpenAutoTradeModal: (id: string, symbol: string) => void;
+  onAddToResearch: (symbol: string) => void;
 }
 
 function SortableCryptoItem({ 
@@ -47,7 +48,8 @@ function SortableCryptoItem({
   onToggleAutoBuy, 
   onRowClick,
   onUpdateShares,
-  onOpenAutoTradeModal
+  onOpenAutoTradeModal,
+  onAddToResearch
 }: SortableCryptoItemProps) {
   const { 
     attributes, 
@@ -198,6 +200,19 @@ function SortableCryptoItem({
           data-no-row-click
           onClick={(e) => {
             e.stopPropagation();
+            onAddToResearch(crypto.symbol);
+          }}
+        >
+          <PlusCircle className="h-4 w-4" />
+        </Button>
+      </TableCell>
+      <TableCell>
+        <Button
+          variant="ghost"
+          size="icon"
+          data-no-row-click
+          onClick={(e) => {
+            e.stopPropagation();
             onDelete(crypto.id, crypto.symbol);
           }}
         >
@@ -216,6 +231,7 @@ interface SortableCryptoListProps {
   onToggleAutoBuy?: (id: string, value: boolean) => Promise<void>;
   onTrade?: (id: string, symbol: string, action: 'buy' | 'sell', shares: number) => Promise<void>;
   onUpdateShares?: (id: string, shares: number) => Promise<void>;
+  onAddToResearch?: (symbol: string) => void;
 }
 
 export default function SortableCryptoList({ 
@@ -225,7 +241,8 @@ export default function SortableCryptoList({
   onToggleAutoSell,
   onToggleAutoBuy,
   onTrade,
-  onUpdateShares
+  onUpdateShares,
+  onAddToResearch
 }: SortableCryptoListProps) {
   const { toast } = useToast();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -548,6 +565,7 @@ export default function SortableCryptoList({
                 <TableHead>Current Price</TableHead>
                 <TableHead>Change</TableHead>
                 <TableHead>Action</TableHead>
+                <TableHead>Plan</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -566,6 +584,7 @@ export default function SortableCryptoList({
                     onRowClick={handleRowClick}
                     onUpdateShares={onUpdateShares || (async () => {})}
                     onOpenAutoTradeModal={handleOpenAutoTradeModal}
+                    onAddToResearch={onAddToResearch || (() => {})}
                   />
                 ))}
               </SortableContext>

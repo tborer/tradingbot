@@ -29,6 +29,7 @@ import Research from "@/components/Research";
 import UserManagement from "@/components/UserManagement";
 import { Stock, StockWithPrice as StockWithCurrentPrice, Settings, Crypto, CryptoWithPrice } from "@/types/stock";
 import { useKrakenWebSocket } from "@/contexts/KrakenWebSocketContext";
+import { useAnalysis } from "@/contexts/AnalysisContext";
 
 export default function Dashboard() {
   const { signOut, user } = useAuth();
@@ -1201,6 +1202,47 @@ export default function Dashboard() {
     }
   };
 
+  // Add crypto to Research tab
+  const { addItem } = useAnalysis();
+  const handleAddCryptoToResearch = (symbol: string) => {
+    try {
+      // Find the crypto in the list
+      const crypto = cryptos.find(c => c.symbol.toUpperCase() === symbol.toUpperCase());
+      
+      if (!crypto) {
+        throw new Error(`Crypto ${symbol} not found in your portfolio`);
+      }
+      
+      // Add to analysis context
+      addItem({
+        symbol: crypto.symbol,
+        currentPrice: crypto.currentPrice,
+        purchasePrice: crypto.purchasePrice,
+        type: 'crypto',
+        historicalData: null, // This will be fetched by the Research component
+        dataSource: 'dashboard'
+      });
+      
+      // Switch to the Research tab
+      const researchTab = document.querySelector('[value="research"]') as HTMLElement;
+      if (researchTab) {
+        researchTab.click();
+      }
+      
+      toast({
+        title: "Added to Research",
+        description: `${symbol} has been added to the Research tab.`,
+      });
+    } catch (error) {
+      console.error("Error adding crypto to research:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to add crypto to research.",
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -1411,6 +1453,7 @@ export default function Dashboard() {
                   onToggleAutoBuy={handleToggleCryptoAutoBuy}
                   onTrade={handleCryptoTrade}
                   onUpdateShares={handleUpdateCryptoShares}
+                  onAddToResearch={handleAddCryptoToResearch}
                 />
               </CardContent>
             </Card>

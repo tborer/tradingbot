@@ -25,6 +25,8 @@ export interface AutoTradeLogData {
 
 /**
  * Logs auto trade events to the database for tracking and debugging
+ * Only creates transaction records for important events (SUCCESS, ERROR)
+ * or events related to actual trade attempts
  */
 export async function logAutoTradeEvent(
   userId: string,
@@ -44,20 +46,33 @@ export async function logAutoTradeEvent(
       ...data
     };
     
-    // Create a transaction record for the log
-    await prisma.cryptoTransaction.create({
-      data: {
-        cryptoId: data.cryptoId || 'system',
-        action: 'auto_trade_log',
-        shares: data.shares || 0,
-        price: data.price || 0,
-        totalAmount: data.totalValue || (data.shares && data.price ? data.shares * data.price : 0),
-        userId,
-        logInfo: JSON.stringify(logData, null, 2)
-      }
-    });
+    // Determine if this event should be recorded in the transaction history
+    const shouldCreateTransactionRecord = 
+      // Always log errors
+      type === AutoTradeLogType.ERROR || 
+      // Always log successful events
+      type === AutoTradeLogType.SUCCESS ||
+      // Log events related to actual trade execution
+      message.includes('executed auto') ||
+      // Log events related to failed trade attempts
+      message.includes('Failed to execute');
     
-    // Also log to console for server-side visibility
+    // Only create transaction records for important events
+    if (shouldCreateTransactionRecord) {
+      await prisma.cryptoTransaction.create({
+        data: {
+          cryptoId: data.cryptoId || 'system',
+          action: 'auto_trade_log',
+          shares: data.shares || 0,
+          price: data.price || 0,
+          totalAmount: data.totalValue || (data.shares && data.price ? data.shares * data.price : 0),
+          userId,
+          logInfo: JSON.stringify(logData, null, 2)
+        }
+      });
+    }
+    
+    // Always log to console for server-side visibility
     console.log(`[AUTO TRADE ${type}] ${message}`, logData);
   } catch (error) {
     // If logging fails, at least log to console
@@ -88,21 +103,37 @@ export async function logAutoTradeEvaluation(
     ? `Auto trade condition MET for ${symbol}: ${action.toUpperCase()} at $${currentPrice.toFixed(2)} (${Math.abs(percentChange).toFixed(2)}% ${action === 'buy' ? 'drop' : 'gain'})`
     : `Auto trade condition NOT MET for ${symbol}: ${action.toUpperCase()} at $${currentPrice.toFixed(2)} (${Math.abs(percentChange).toFixed(2)}% ${action === 'buy' ? 'drop' : 'gain'})`;
   
-  await logAutoTradeEvent(
-    userId,
-    shouldTrade ? AutoTradeLogType.SUCCESS : AutoTradeLogType.INFO,
-    message,
-    {
-      cryptoId,
-      symbol,
-      action,
-      price: currentPrice,
-      purchasePrice,
-      thresholdPercent,
-      percentChange,
-      conditionMet: shouldTrade
-    }
-  );
+  // Always log to console for debugging
+  console.log(`[AUTO TRADE ${shouldTrade ? 'SUCCESS' : 'INFO'}] ${message}`, {
+    cryptoId,
+    symbol,
+    action,
+    price: currentPrice,
+    purchasePrice,
+    thresholdPercent,
+    percentChange,
+    conditionMet: shouldTrade
+  });
+  
+  // Only create transaction records for successful conditions
+  // This prevents cluttering the transaction history with "condition not met" messages
+  if (shouldTrade) {
+    await logAutoTradeEvent(
+      userId,
+      AutoTradeLogType.SUCCESS,
+      message,
+      {
+        cryptoId,
+        symbol,
+        action,
+        price: currentPrice,
+        purchasePrice,
+        thresholdPercent,
+        percentChange,
+        conditionMet: shouldTrade
+      }
+    );
+  }
 }
 
 /**

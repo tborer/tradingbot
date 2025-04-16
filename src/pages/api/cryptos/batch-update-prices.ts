@@ -593,6 +593,109 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       );
       
+      // Get user settings to check if auto trading is enabled
+      const settings = await prisma.settings.findUnique({
+        where: { userId: user.id }
+      });
+      
+      // Trigger auto trade evaluation for the updated cryptos if auto trading is enabled
+      if (settings?.enableAutoCryptoTrading) {
+        try {
+          console.log(`[${requestId}] Triggering auto trade evaluation for ${updatedCount} cryptos`);
+          
+          // Create price objects in the format expected by processAutoCryptoTrades
+          const priceObjects = updateData.map(data => ({
+            symbol: data.symbol,
+            price: data.lastPrice,
+            timestamp: Date.now()
+          }));
+          
+          // Log that we're triggering auto trades
+          createAndLogError(
+            ErrorCategory.API,
+            ErrorSeverity.INFO,
+            4020,
+            `Triggering auto trade evaluation after price update`,
+            { 
+              requestId,
+              userId: user.id,
+              timestamp: Date.now(),
+              updateCount: updatedCount,
+              symbols: updateData.map(d => d.symbol)
+            }
+          );
+          
+          // Import the auto trade service function
+          const { processAutoCryptoTrades } = require('@/lib/autoTradeService');
+          
+          // Process auto trades asynchronously without waiting for the result
+          // This prevents the price update API from being slowed down
+          processAutoCryptoTrades(priceObjects, user.id)
+            .then(results => {
+              const successfulTrades = results.filter(r => r.success && r.action);
+              
+              if (successfulTrades.length > 0) {
+                console.log(`[${requestId}] Successfully executed ${successfulTrades.length} auto trades:`, 
+                  successfulTrades.map(t => `${t.action} ${t.symbol}`).join(', '));
+                
+                createAndLogError(
+                  ErrorCategory.API,
+                  ErrorSeverity.INFO,
+                  4021,
+                  `Successfully executed auto trades after price update`,
+                  { 
+                    requestId,
+                    userId: user.id,
+                    timestamp: Date.now(),
+                    successCount: successfulTrades.length,
+                    trades: successfulTrades.map(t => ({ 
+                      symbol: t.symbol, 
+                      action: t.action, 
+                      shares: t.shares,
+                      price: t.price
+                    }))
+                  }
+                );
+              } else {
+                console.log(`[${requestId}] No auto trades executed after price update`);
+              }
+            })
+            .catch(error => {
+              console.error(`[${requestId}] Error processing auto trades:`, error);
+              
+              createAndLogError(
+                ErrorCategory.API,
+                ErrorSeverity.ERROR,
+                4022,
+                `Error processing auto trades after price update`,
+                { 
+                  requestId,
+                  userId: user.id,
+                  timestamp: Date.now(),
+                  error: error.message,
+                  stack: error.stack
+                }
+              );
+            });
+        } catch (error) {
+          console.error(`[${requestId}] Error triggering auto trades:`, error);
+          
+          createAndLogError(
+            ErrorCategory.API,
+            ErrorSeverity.ERROR,
+            4023,
+            `Error triggering auto trades after price update`,
+            { 
+              requestId,
+              userId: user.id,
+              timestamp: Date.now(),
+              error: error.message,
+              stack: error.stack
+            }
+          );
+        }
+      }
+      
       // Calculate request duration
       const requestDuration = Date.now() - requestStartTime;
       

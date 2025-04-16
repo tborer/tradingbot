@@ -105,6 +105,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     console.log(`Successfully updated lastPrice for ${symbol} to ${lastPrice}`);
     
+    // Check if auto trading is enabled for this user
+    const settings = await prisma.settings.findUnique({
+      where: { userId: user.id }
+    });
+    
+    // If auto trading is enabled, trigger auto trade evaluation
+    if (settings?.enableAutoCryptoTrading) {
+      try {
+        console.log(`Triggering auto trade evaluation for ${symbol} at price ${lastPrice}`);
+        
+        // Import the auto trade service function
+        const { checkCryptoForAutoTrade } = require('@/lib/autoTradeService');
+        
+        // Process auto trade asynchronously without waiting for the result
+        // This prevents the price update API from being slowed down
+        checkCryptoForAutoTrade(crypto.id, Number(lastPrice), user.id)
+          .then(result => {
+            if (result.success && result.action) {
+              console.log(`Successfully executed auto ${result.action} for ${symbol}:`, result);
+            } else {
+              console.log(`No auto trade executed for ${symbol}:`, result.message);
+            }
+          })
+          .catch(error => {
+            console.error(`Error processing auto trade for ${symbol}:`, error);
+          });
+      } catch (error) {
+        console.error(`Error triggering auto trade for ${symbol}:`, error);
+      }
+    }
+    
     return res.status(200).json({ 
       message: `Successfully updated lastPrice for ${symbol}`,
       symbol,

@@ -354,6 +354,31 @@ export async function processAutoCryptoTrades(
                 action
               }
             );
+          } else {
+            // For continuous trading, flip the next action after successful transaction
+            const newNextAction = action === 'buy' ? 'sell' : 'buy';
+            
+            console.log(`Flipping next action for ${crypto.symbol} from ${action} to ${newNextAction} after successful transaction`);
+            
+            if (crypto.autoTradeSettings) {
+              await prisma.cryptoAutoTradeSettings.update({
+                where: { id: crypto.autoTradeSettings.id },
+                data: { nextAction: newNextAction }
+              });
+              
+              // Log the action flip
+              await logAutoTradeEvent(
+                userId,
+                AutoTradeLogType.INFO,
+                `Flipped next action for ${crypto.symbol} from ${action} to ${newNextAction}`,
+                {
+                  cryptoId: crypto.id,
+                  symbol: crypto.symbol,
+                  previousAction: action,
+                  newAction: newNextAction
+                }
+              );
+            }
           }
           
           // Log the successful execution
@@ -684,9 +709,13 @@ export async function checkCryptoForAutoTrade(
               autoSell: action === 'buy' ? crypto.autoSell : false
             }
           });
+          
+          console.log(`Disabled auto ${action === 'buy' ? 'buy' : 'sell'} for ${crypto.symbol} after one-time trade`);
         } else {
           // Flip the next action for continuous trading
           const newNextAction = action === 'buy' ? 'sell' : 'buy';
+          
+          console.log(`Flipping next action for ${crypto.symbol} from ${action} to ${newNextAction} after successful transaction`);
           
           if (crypto.autoTradeSettings) {
             await prisma.cryptoAutoTradeSettings.update({
@@ -705,6 +734,8 @@ export async function checkCryptoForAutoTrade(
               }
             });
           }
+          
+          console.log(`Updated next action for ${crypto.symbol} to ${newNextAction}`);
         }
 
         return {

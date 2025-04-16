@@ -76,6 +76,19 @@ export default function AutoTradeModal({
   }, [initialSettings, itemName]);
 
   const handleSave = async () => {
+    // Validate that either shares amount or total value is set
+    const hasValidTradeAmount = (settings.tradeByShares && settings.sharesAmount > 0) || 
+                               (settings.tradeByValue && settings.totalValue > 0);
+    
+    if (!hasValidTradeAmount) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Settings",
+        description: "Either shares amount or total value must be greater than zero.",
+      });
+      return;
+    }
+    
     setIsSubmitting(true);
     try {
       await onSave(settings);
@@ -86,10 +99,17 @@ export default function AutoTradeModal({
       onClose();
     } catch (error) {
       console.error("Error saving auto trade settings:", error);
+      
+      // Check if the error has a specific message from the API
+      let errorMessage = "Failed to save auto trade settings. Please try again.";
+      if (error.response && error.response.data && error.response.data.error) {
+        errorMessage = error.response.data.error;
+      }
+      
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to save auto trade settings. Please try again.",
+        description: errorMessage,
       });
     } finally {
       setIsSubmitting(false);
@@ -196,7 +216,7 @@ export default function AutoTradeModal({
           </div>
           
           <div className="space-y-3">
-            <Label>Trade by:</Label>
+            <Label>Trade by: <span className="text-red-500">*</span></Label>
             <RadioGroup 
               value={settings.tradeByValue ? "value" : "shares"}
               onValueChange={(value) => 
@@ -220,7 +240,7 @@ export default function AutoTradeModal({
                     sharesAmount: parseFloat(e.target.value) || 0 
                   })}
                   placeholder="Enter amount"
-                  className="w-40"
+                  className={`w-40 ${settings.tradeByShares && settings.sharesAmount <= 0 ? 'border-red-500' : ''}`}
                 />
               </div>
               <div className="flex items-center space-x-2">
@@ -236,12 +256,18 @@ export default function AutoTradeModal({
                     totalValue: parseFloat(e.target.value) || 0 
                   })}
                   placeholder="Enter value"
-                  className="w-40"
+                  className={`w-40 ${settings.tradeByValue && settings.totalValue <= 0 ? 'border-red-500' : ''}`}
                 />
               </div>
             </RadioGroup>
             <p className="text-sm text-muted-foreground">
-              Specify how much to trade when the threshold is reached.
+              <span className="font-medium text-red-500">Required:</span> Specify how much to trade when the threshold is reached.
+              {((settings.tradeByShares && settings.sharesAmount <= 0) || 
+                (settings.tradeByValue && settings.totalValue <= 0)) && (
+                <span className="block mt-1 text-red-500">
+                  Please enter a value greater than zero.
+                </span>
+              )}
             </p>
           </div>
           

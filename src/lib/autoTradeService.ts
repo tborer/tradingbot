@@ -94,6 +94,35 @@ export async function processAutoCryptoTrades(
       const sharesAmount = crypto.autoTradeSettings?.sharesAmount || 0;
       const totalValue = crypto.autoTradeSettings?.totalValue || 0;
       const orderType = crypto.autoTradeSettings?.orderType || 'market';
+      
+      // Validate that either shares amount or total value is properly set
+      const hasValidTradeAmount = (tradeByShares && sharesAmount > 0) || (tradeByValue && totalValue > 0);
+      
+      if (!hasValidTradeAmount) {
+        console.log(`Auto trade skipped for ${crypto.symbol}: No valid trade amount configured. sharesAmount=${sharesAmount}, totalValue=${totalValue}`);
+        await logAutoTradeEvent(
+          userId,
+          AutoTradeLogType.WARNING,
+          `Auto trade skipped for ${crypto.symbol}: No valid trade amount configured`,
+          {
+            cryptoId: crypto.id,
+            symbol: crypto.symbol,
+            tradeByShares,
+            sharesAmount,
+            tradeByValue,
+            totalValue,
+            message: "Either shares amount or total value must be greater than zero"
+          }
+        );
+        
+        results.push({
+          success: false,
+          message: `Auto trade skipped for ${crypto.symbol}: No valid trade amount configured`,
+          cryptoId: crypto.id,
+          symbol: crypto.symbol
+        });
+        continue;
+      }
 
       // Determine if we should buy or sell
       let shouldTrade = false;
@@ -542,6 +571,34 @@ export async function checkCryptoForAutoTrade(
     const sharesAmount = crypto.autoTradeSettings?.sharesAmount || 0;
     const totalValue = crypto.autoTradeSettings?.totalValue || 0;
     const orderType = crypto.autoTradeSettings?.orderType || 'market';
+    
+    // Validate that either shares amount or total value is properly set
+    const hasValidTradeAmount = (tradeByShares && sharesAmount > 0) || (tradeByValue && totalValue > 0);
+    
+    if (!hasValidTradeAmount) {
+      console.log(`Auto trade skipped for ${crypto.symbol}: No valid trade amount configured. sharesAmount=${sharesAmount}, totalValue=${totalValue}`);
+      await logAutoTradeEvent(
+        userId,
+        AutoTradeLogType.WARNING,
+        `Auto trade skipped for ${crypto.symbol}: No valid trade amount configured`,
+        {
+          cryptoId: crypto.id,
+          symbol: crypto.symbol,
+          tradeByShares,
+          sharesAmount,
+          tradeByValue,
+          totalValue,
+          message: "Either shares amount or total value must be greater than zero"
+        }
+      );
+      
+      return {
+        success: false,
+        message: `Auto trade skipped for ${crypto.symbol}: No valid trade amount configured`,
+        cryptoId: crypto.id,
+        symbol: crypto.symbol
+      };
+    }
 
     // Determine if we should buy or sell
     let shouldTrade = false;

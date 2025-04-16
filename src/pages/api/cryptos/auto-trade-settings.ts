@@ -104,6 +104,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Next action must be "buy" or "sell"' });
     }
     
+    // Validate that either shares amount or total value is set
+    const hasValidTradeAmount = (settings.tradeByShares && settings.sharesAmount > 0) || 
+                               (settings.tradeByValue && settings.totalValue > 0);
+    
+    if (!hasValidTradeAmount) {
+      console.log('No valid trade amount configured. Either shares amount or total value must be greater than zero.');
+      console.log(`Current values: tradeByShares=${settings.tradeByShares}, sharesAmount=${settings.sharesAmount}, tradeByValue=${settings.tradeByValue}, totalValue=${settings.totalValue}`);
+      return res.status(400).json({ 
+        error: 'Either shares amount or total value must be greater than zero',
+        details: {
+          tradeByShares: settings.tradeByShares,
+          sharesAmount: settings.sharesAmount,
+          tradeByValue: settings.tradeByValue,
+          totalValue: settings.totalValue
+        }
+      });
+    }
+    
     // Create or update auto trade settings
     let autoTradeSettings;
     

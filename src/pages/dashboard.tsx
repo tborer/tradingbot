@@ -1098,8 +1098,20 @@ export default function Dashboard() {
           throw new Error(responseData.error || `Failed to ${action} crypto using Kraken API`);
         }
         
-        // Update the crypto shares after successful trade
+        // Update the crypto shares after successful trade without page refresh
         fetchCryptos();
+        
+        // Dispatch a custom event to notify the transaction history component to refresh
+        const event = new CustomEvent('crypto-transaction-completed', {
+          detail: {
+            action,
+            symbol,
+            shares,
+            price,
+            responseData
+          }
+        });
+        window.dispatchEvent(event);
         
         return responseData;
       } else {
@@ -1122,8 +1134,19 @@ export default function Dashboard() {
           throw new Error(responseData.error || `Failed to ${action} crypto`);
         }
         
-        // Update the crypto shares after successful trade
+        // Update the crypto shares after successful trade without page refresh
         fetchCryptos();
+        
+        // Dispatch a custom event to notify the transaction history component to refresh
+        const event = new CustomEvent('crypto-transaction-completed', {
+          detail: {
+            action,
+            symbol,
+            shares,
+            responseData
+          }
+        });
+        window.dispatchEvent(event);
         
         return responseData;
       }

@@ -558,10 +558,17 @@ export default function SortableCryptoList({
           description: `Successfully ${tradeAction === 'buy' ? 'bought' : 'sold'} ${shares} shares of ${selectedCrypto.symbol}.`,
         });
         
-        // Refresh the page to show updated transaction history
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
+        // Dispatch a custom event to notify the transaction history component to refresh
+        const event = new CustomEvent('crypto-transaction-completed', {
+          detail: {
+            action: tradeAction,
+            symbol: selectedCrypto.symbol,
+            shares: Number(shares)
+          }
+        });
+        window.dispatchEvent(event);
+        
+        // No page refresh needed - the transaction history will update via the event
       } catch (error) {
         console.error(`Error ${tradeAction}ing crypto:`, error);
         

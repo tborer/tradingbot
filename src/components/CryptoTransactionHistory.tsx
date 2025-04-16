@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { CryptoTransaction } from '@/types/stock';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/use-toast";
@@ -7,54 +7,82 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, Info, ExternalLink } from "lucide-react";
+import { AlertCircle, Info, ExternalLink, RefreshCw } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function CryptoTransactionHistory() {
   const [transactions, setTransactions] = useState<CryptoTransaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const { toast } = useToast();
   const [selectedTransaction, setSelectedTransaction] = useState<CryptoTransaction | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
-  useEffect(() => {
-    const fetchTransactions = async () => {
-      try {
-        console.log('Fetching crypto transactions...');
-        const response = await fetch('/api/crypto-transactions');
+  // Create a reusable function to fetch transactions
+  const fetchTransactions = useCallback(async () => {
+    try {
+      console.log('Fetching crypto transactions...');
+      setRefreshing(true);
+      
+      const response = await fetch('/api/crypto-transactions');
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Error response from API:', errorData);
         
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-          console.error('Error response from API:', errorData);
-          
-          if (response.status === 401) {
-            toast({
-              variant: 'destructive',
-              title: 'Authentication Error',
-              description: 'You must be logged in to view transaction history. Please log in again.',
-            });
-          } else {
-            throw new Error(errorData.error || `Server error: ${response.status}`);
-          }
+        if (response.status === 401) {
+          toast({
+            variant: 'destructive',
+            title: 'Authentication Error',
+            description: 'You must be logged in to view transaction history. Please log in again.',
+          });
         } else {
-          const data = await response.json();
-          console.log(`Loaded ${data.length} transactions`);
-          setTransactions(data);
+          throw new Error(errorData.error || `Server error: ${response.status}`);
         }
-      } catch (error) {
-        console.error('Error fetching crypto transactions:', error);
-        toast({
-          variant: 'destructive',
-          title: 'Error',
-          description: `Failed to load transaction history: ${error.message || 'Unknown error'}`,
-        });
-      } finally {
-        setLoading(false);
+      } else {
+        const data = await response.json();
+        console.log(`Loaded ${data.length} transactions`);
+        setTransactions(data);
       }
-    };
-
-    fetchTransactions();
+    } catch (error) {
+      console.error('Error fetching crypto transactions:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: `Failed to load transaction history: ${error.message || 'Unknown error'}`,
+      });
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, [toast]);
+
+  // Initial fetch on component mount
+  useEffect(() => {
+    fetchTransactions();
+  }, [fetchTransactions]);
+  
+  // Listen for the custom event that signals a transaction has been completed
+  useEffect(() => {
+    const handleTransactionCompleted = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log('Transaction completed event received:', customEvent.detail);
+      
+      // Show a brief loading indicator
+      setRefreshing(true);
+      
+      // Fetch the updated transaction list
+      fetchTransactions();
+    };
+    
+    // Add event listener
+    window.addEventListener('crypto-transaction-completed', handleTransactionCompleted);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('crypto-transaction-completed', handleTransactionCompleted);
+    };
+  }, [fetchTransactions]);
 
   const handleViewDetails = (transaction: CryptoTransaction) => {
     setSelectedTransaction(transaction);
@@ -71,6 +99,20 @@ export default function CryptoTransactionHistory() {
 
   return (
     <>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-sm font-medium">Recent Transactions</h3>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={fetchTransactions} 
+          disabled={refreshing}
+          className="flex items-center gap-1"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </Button>
+      </div>
+      
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
@@ -85,7 +127,7 @@ export default function CryptoTransactionHistory() {
               <TableHead>Details</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody className={refreshing ? 'opacity-50' : ''}>
             {transactions.map((transaction) => {
               // Determine if this is an error transaction
               const isError = transaction.action === 'error' || transaction.logInfo?.includes('"status":"failed"');

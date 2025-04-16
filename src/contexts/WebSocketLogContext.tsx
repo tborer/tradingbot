@@ -28,6 +28,8 @@ interface WebSocketLogContextType {
   setErrorLoggingEnabled: (enabled: boolean) => void;
   errorSampleRate: number;
   setErrorSampleRate: (rate: number) => void;
+  maxLogCount: number;
+  setMaxLogCount: (count: number) => void;
 }
 
 const WebSocketLogContext = createContext<WebSocketLogContextType | undefined>(undefined);
@@ -49,6 +51,7 @@ export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ chil
   const [isLoggingEnabled, setIsLoggingEnabled] = useState<boolean>(true);
   const [isErrorLoggingEnabled, setIsErrorLoggingEnabled] = useState<boolean>(true);
   const [errorSampleRate, setErrorSampleRate] = useState<number>(100); // 100% by default
+  const [maxLogCount, setMaxLogCount] = useState<number>(100); // Default to 100 logs
   const errorCountRef = useRef<number>(0);
 
   // Load logging preferences from localStorage on mount
@@ -67,6 +70,11 @@ export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ chil
     if (savedErrorSampleRate !== null) {
       setErrorSampleRate(parseInt(savedErrorSampleRate, 10));
     }
+    
+    const savedMaxLogCount = localStorage.getItem('websocket-max-log-count');
+    if (savedMaxLogCount !== null) {
+      setMaxLogCount(parseInt(savedMaxLogCount, 10));
+    }
   }, []);
 
   // Save logging preferences to localStorage when they change
@@ -81,6 +89,10 @@ export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ chil
   useEffect(() => {
     localStorage.setItem('websocket-error-sample-rate', errorSampleRate.toString());
   }, [errorSampleRate]);
+  
+  useEffect(() => {
+    localStorage.setItem('websocket-max-log-count', maxLogCount.toString());
+  }, [maxLogCount]);
 
   const setLoggingEnabled = useCallback((enabled: boolean) => {
     setIsLoggingEnabled(enabled);
@@ -174,7 +186,17 @@ export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ chil
       details,
     };
     
-    setLogs((prevLogs) => [newLog, ...prevLogs]);
+    setLogs((prevLogs) => {
+      // Add the new log at the beginning
+      const updatedLogs = [newLog, ...prevLogs];
+      
+      // If we exceed the maximum log count, trim the oldest logs
+      if (updatedLogs.length > maxLogCount) {
+        return updatedLogs.slice(0, maxLogCount);
+      }
+      
+      return updatedLogs;
+    });
     
     // Console logging
     if (level === 'error') {
@@ -186,7 +208,7 @@ export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ chil
     
       consoleMethod(`[${errorCode || `WebSocket ${level}`}]`, message, details || '');
     }
-  }, [isLoggingEnabled, isErrorLoggingEnabled, errorSampleRate]);
+  }, [isLoggingEnabled, isErrorLoggingEnabled, errorSampleRate, maxLogCount]);
 
   // Enhanced error logging function that integrates with the errorLogger utility
   const logError = useCallback((
@@ -261,6 +283,32 @@ export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ chil
     };
     setLogs((prevLogs) => [rateChangedLog, ...prevLogs]);
   }, []);
+  
+  // Function to handle setting max log count with validation
+  const handleSetMaxLogCount = useCallback((count: number) => {
+    // Ensure count is at least 10
+    const validCount = Math.max(10, count);
+    setMaxLogCount(validCount);
+    
+    // Add a system log entry when max log count is changed
+    const countChangedLog: WebSocketLog = {
+      id: crypto.randomUUID(),
+      timestamp: new Date(),
+      level: 'info',
+      message: `WebSocket log retention limit set to ${validCount} logs`,
+      code: 'WS-INFO-0006',
+      details: { timestamp: Date.now(), count: validCount },
+    };
+    
+    // When reducing the log count, we need to trim the logs immediately
+    setLogs((prevLogs) => {
+      const updatedLogs = [countChangedLog, ...prevLogs];
+      if (updatedLogs.length > validCount) {
+        return updatedLogs.slice(0, validCount);
+      }
+      return updatedLogs;
+    });
+  }, []);
 
   return (
     <WebSocketLogContext.Provider value={{ 
@@ -273,7 +321,9 @@ export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ chil
       isErrorLoggingEnabled,
       setErrorLoggingEnabled,
       errorSampleRate,
-      setErrorSampleRate: handleSetErrorSampleRate
+      setErrorSampleRate: handleSetErrorSampleRate,
+      maxLogCount,
+      setMaxLogCount: handleSetMaxLogCount
     }}>
       {children}
     </WebSocketLogContext.Provider>

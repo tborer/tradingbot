@@ -42,7 +42,9 @@ const WebSocketLogger: React.FC = () => {
     isErrorLoggingEnabled,
     setErrorLoggingEnabled,
     errorSampleRate,
-    setErrorSampleRate
+    setErrorSampleRate,
+    maxLogCount,
+    setMaxLogCount
   } = useWebSocketLogs();
   
   // Research API logs
@@ -626,6 +628,23 @@ const WebSocketLogger: React.FC = () => {
                 <Label htmlFor="ignore-heartbeat">Ignore Heartbeat Messages</Label>
               </div>
               
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <Label htmlFor="max-log-count" className="text-sm">Maximum Log Count: {maxLogCount}</Label>
+                </div>
+                <Slider
+                  id="max-log-count"
+                  min={10}
+                  max={1000}
+                  step={10}
+                  value={[maxLogCount]}
+                  onValueChange={(value) => setMaxLogCount(value[0])}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Only the {maxLogCount} most recent logs will be kept to improve performance
+                </p>
+              </div>
+              
               <div className="text-xs text-muted-foreground space-y-2">
                 <p>
                   <strong>Performance Tips:</strong>
@@ -633,6 +652,7 @@ const WebSocketLogger: React.FC = () => {
                 <ul className="list-disc pl-4 space-y-1">
                   <li>Disable error logging when experiencing high-volume errors</li>
                   <li>Use sample rate to capture only a percentage of errors</li>
+                  <li>Reduce maximum log count to improve memory usage</li>
                   <li>Clear logs regularly to improve UI performance</li>
                 </ul>
               </div>
@@ -887,6 +907,9 @@ const WebSocketLogger: React.FC = () => {
                   (Sampling {errorSampleRate}% of errors)
                 </span>
               )}
+              <span className="ml-2">
+                (Keeping max {maxLogCount} logs)
+              </span>
             </div>
           )
         ) : activeSection === 'research' ? (

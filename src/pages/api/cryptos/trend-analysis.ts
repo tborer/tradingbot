@@ -142,6 +142,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       return res.status(400).json({ error: 'Symbol is required', code: errorDetails.code });
     }
+    
+    // Normalize the symbol to uppercase
+    const normalizedSymbol = symbol.toUpperCase();
+    console.log(`[${requestId}] Normalized symbol from ${symbol} to ${normalizedSymbol}`);
+    
 
     console.log(`[${requestId}] Processing trend analysis for symbol: ${symbol}`);
 
@@ -168,15 +173,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log(`[${requestId}] Fetching and analyzing trend data for ${symbol}`);
     
     // Fetch historical data from CryptoHistoricalData table
-    console.log(`[${requestId}] Fetching historical data from CryptoHistoricalData table for ${symbol}`);
+    console.log(`[${requestId}] Fetching historical data from CryptoHistoricalData table for ${normalizedSymbol}`);
     
     // Get the last 30 days of data (or as many as available)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    const historicalRecords = await prisma.cryptoHistoricalData.findMany({
+    // First, check if we have any records for this symbol
+    const recordCount = await prisma.cryptoHistoricalData.count({
       where: {
-        symbol: symbol.toUpperCase(),
+        symbol: normalizedSymbol
+      }
+    });
+    
+    console.log(`[${requestId}] Found ${recordCount} total historical records for ${normalizedSymbol}`);
+    
+    // Try to get data from the last 30 days first
+    let historicalRecords = await prisma.cryptoHistoricalData.findMany({
+      where: {
+        symbol: normalizedSymbol,
         timestamp: {
           gte: thirtyDaysAgo
         }
@@ -187,6 +202,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       take: 1000 // Limit to 1000 records to prevent performance issues
     });
     
+    // If no records in the last 30 days but we have some records, get the most recent ones
+    if (historicalRecords.length === 0 && recordCount > 0) {
+      console.log(`[${requestId}] No records in last 30 days, fetching most recent ${Math.min(1000, recordCount)} records instead`);
+      
+      historicalRecords = await prisma.cryptoHistoricalData.findMany({
+        where: {
+          symbol: normalizedSymbol
+        },
+        orderBy: {
+          timestamp: 'desc' // Get most recent first
+        },
+        take: 1000 // Limit to 1000 records
+      });
+      
+      // Sort back to ascending order for analysis
+      historicalRecords.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      
+      console.log(`[${requestId}] Retrieved ${historicalRecords.length} historical records, date range: ${
+        historicalRecords.length > 0 
+          ? `${historicalRecords[0].timestamp.toISOString()} to ${historicalRecords[historicalRecords.length-1].timestamp.toISOString()}`
+          : 'N/A'
+      }`);
+    }
+    
     console.log(`[${requestId}] Retrieved ${historicalRecords.length} historical records for ${symbol}`);
     
     if (!historicalRecords || historicalRecords.length === 0) {
@@ -194,8 +233,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ErrorCategory.API,
         ErrorSeverity.WARNING,
         4004,
-        `No historical data found for ${symbol} in CryptoHistoricalData table`,
-        { requestId, symbol }
+        `No historical data found for ${normalizedSymbol} in CryptoHistoricalData table`,
+        { requestId, symbol: normalizedSymbol, recordCount }
       );
       
       // Update log entry with error
@@ -206,8 +245,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             data: {
               status: 'ERROR',
               statusCode: 404,
-              responseBody: JSON.stringify({ error: 'No historical data available', code: errorDetails.code }),
-              errorMessage: `No historical data found for ${symbol}`,
+              responseBody: JSON.stringify({ 
+                error: 'No historical data available', 
+                code: errorDetails.code,
+                totalRecords: recordCount,
+                symbol: normalizedSymbol
+              }),
+              errorMessage: `No historical data found for ${normalizedSymbol} in the specified time range`,
               endTime: new Date(),
               duration: Date.now() - startTime
             }
@@ -219,22 +263,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       return res.status(404).json({ 
         error: 'No historical data available', 
-        message: `No historical data found for ${symbol}. Please upload historical data first.`,
+        message: `No historical data found for ${normalizedSymbol} in the last 30 days. Please upload historical data first.`,
+        totalRecords: recordCount,
         code: errorDetails.code 
       });
     }
     
     // Extract price data (closing prices) from the historical records
-    console.log(`[${requestId}] Extracting price data from historical records`);
+    console.log(`[${requestId}] Extracting price data from ${historicalRecords.length} historical records`);
     const priceData = historicalRecords.map(record => record.close);
+    
+    // Log a sample of the price data for debugging
+    if (priceData.length > 0) {
+      const sampleStart = priceData.slice(0, Math.min(3, priceData.length));
+      const sampleEnd = priceData.slice(Math.max(0, priceData.length - 3));
+      console.log(`[${requestId}] Price data sample - Start: ${JSON.stringify(sampleStart)}, End: ${JSON.stringify(sampleEnd)}`);
+    }
     
     if (priceData.length === 0) {
       const errorDetails = createAndLogError(
         ErrorCategory.API,
         ErrorSeverity.ERROR,
         4006,
-        `No price data found for ${symbol}`,
-        { requestId, symbol }
+        `No price data found for ${normalizedSymbol}`,
+        { requestId, symbol: normalizedSymbol }
       );
       
       // Update log entry with error

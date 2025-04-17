@@ -26,7 +26,9 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
     setIsAnalyzing(true);
     setError(null);
     
-    console.log(`Starting trend analysis for ${symbol} with item ID ${itemId}`);
+    // Normalize the symbol to uppercase for consistency
+    const normalizedSymbol = symbol.toUpperCase();
+    console.log(`Starting trend analysis for ${normalizedSymbol} (original: ${symbol}) with item ID ${itemId}`);
     
     try {
       // Call the API endpoint for trend analysis
@@ -35,20 +37,28 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ symbol }),
+        body: JSON.stringify({ symbol: normalizedSymbol }),
       });
       
       if (!response.ok) {
         const errorData = await response.json();
-        const errorMessage = errorData.message || errorData.error || `API error: ${response.status}`;
-        console.error(`Trend analysis API error: ${errorMessage}`);
+        console.error(`Trend analysis API error:`, errorData);
         
         // Special handling for 404 (no historical data available)
         if (response.status === 404) {
-          throw new Error('No historical data available for this cryptocurrency. Please upload historical data first.');
+          // Check if we have more detailed information
+          if (errorData.totalRecords !== undefined) {
+            if (errorData.totalRecords > 0) {
+              throw new Error(`Historical data exists for ${normalizedSymbol} (${errorData.totalRecords} records), but none in the last 30 days. Please upload more recent data.`);
+            } else {
+              throw new Error(`No historical data available for ${normalizedSymbol}. Please upload historical data first.`);
+            }
+          } else {
+            throw new Error(errorData.message || 'No historical data available for this cryptocurrency. Please upload historical data first.');
+          }
         }
         
-        throw new Error(errorMessage);
+        throw new Error(errorData.message || errorData.error || `API error: ${response.status}`);
       }
       
       const data = await response.json();

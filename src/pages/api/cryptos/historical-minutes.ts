@@ -17,10 +17,201 @@ const logWithTimestamp = (message: string, data?: any) => {
   }
 };
 
+// Define interface for manual data record
+interface ManualDataRecord {
+  symbol: string;
+  timestamp: Date;
+  unit: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+  quoteVolume?: number;
+  instrument?: string;
+  market?: string;
+}
+
+// Function to handle manual data uploads
+async function handleManualDataUpload(req: NextApiRequest, res: NextApiResponse, requestStartTime: number) {
+  try {
+    logWithTimestamp(`Processing manual data upload`);
+    
+    // Get the authenticated user
+    const supabase = createClient(req, res);
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      logWithTimestamp(`Authentication error`, authError);
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    logWithTimestamp(`User authenticated: ${user.id}`);
+    
+    // Validate request body
+    const { records, symbol } = req.body;
+    
+    if (!records || !Array.isArray(records) || records.length === 0) {
+      logWithTimestamp(`Invalid request body: missing or empty records array`);
+      return res.status(400).json({ error: 'Records array is required' });
+    }
+    
+    if (!symbol || typeof symbol !== 'string') {
+      logWithTimestamp(`Invalid request body: missing symbol`);
+      return res.status(400).json({ error: 'Symbol is required' });
+    }
+    
+    logWithTimestamp(`Processing ${records.length} manual records for ${symbol}`);
+    
+    // Process and save the data in batches
+    const BATCH_SIZE = 50;
+    const savedRecords = [];
+    const errors = [];
+    const totalBatches = Math.ceil(records.length / BATCH_SIZE);
+    const batchStartTime = Date.now();
+    
+    // Process data in batches to avoid timeouts
+    for (let i = 0; i < records.length; i += BATCH_SIZE) {
+      const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+      const batch = records.slice(i, i + BATCH_SIZE);
+      const batchSize = batch.length;
+      
+      logWithTimestamp(`Processing batch ${batchNumber} of ${totalBatches} (${batchSize} records)`);
+      
+      try {
+        // Prepare batch operations
+        const operations = batch.map((record: ManualDataRecord) => {
+          return prisma.cryptoHistoricalData.upsert({
+            where: {
+              symbol_timestamp: {
+                symbol: record.symbol.toUpperCase(),
+                timestamp: new Date(record.timestamp),
+              },
+            },
+            update: {
+              open: record.open,
+              high: record.high,
+              low: record.low,
+              close: record.close,
+              volume: record.volume || 0,
+              quoteVolume: record.quoteVolume || 0,
+              instrument: record.instrument,
+              market: record.market || 'MANUAL',
+            },
+            create: {
+              symbol: record.symbol.toUpperCase(),
+              timestamp: new Date(record.timestamp),
+              unit: record.unit || 'MINUTE',
+              open: record.open,
+              high: record.high,
+              low: record.low,
+              close: record.close,
+              volume: record.volume || 0,
+              quoteVolume: record.quoteVolume || 0,
+              instrument: record.instrument,
+              market: record.market || 'MANUAL',
+            },
+          });
+        });
+        
+        // Execute all operations in the batch
+        const batchDbStartTime = Date.now();
+        const results = await prisma.$transaction(operations);
+        const batchDbDuration = Date.now() - batchDbStartTime;
+        
+        savedRecords.push(...results);
+        
+        logWithTimestamp(`Successfully processed batch ${batchNumber}, saved ${results.length} records in ${batchDbDuration}ms`);
+      } catch (error) {
+        logWithTimestamp(`Error processing batch ${batchNumber} for ${symbol}`, error);
+        
+        // If batch operation fails, try individual records
+        logWithTimestamp(`Falling back to individual processing for batch ${batchNumber}`);
+        
+        for (const record of batch) {
+          try {
+            // Create or update the record in the database
+            const savedRecord = await prisma.cryptoHistoricalData.upsert({
+              where: {
+                symbol_timestamp: {
+                  symbol: record.symbol.toUpperCase(),
+                  timestamp: new Date(record.timestamp),
+                },
+              },
+              update: {
+                open: record.open,
+                high: record.high,
+                low: record.low,
+                close: record.close,
+                volume: record.volume || 0,
+                quoteVolume: record.quoteVolume || 0,
+                instrument: record.instrument,
+                market: record.market || 'MANUAL',
+              },
+              create: {
+                symbol: record.symbol.toUpperCase(),
+                timestamp: new Date(record.timestamp),
+                unit: record.unit || 'MINUTE',
+                open: record.open,
+                high: record.high,
+                low: record.low,
+                close: record.close,
+                volume: record.volume || 0,
+                quoteVolume: record.quoteVolume || 0,
+                instrument: record.instrument,
+                market: record.market || 'MANUAL',
+              },
+            });
+
+            savedRecords.push(savedRecord);
+          } catch (error) {
+            logWithTimestamp(`Error saving individual record for ${symbol}`, error);
+            errors.push({
+              record,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            });
+          }
+        }
+      }
+    }
+    
+    const totalProcessingTime = Date.now() - batchStartTime;
+    logWithTimestamp(`Completed processing all batches in ${totalProcessingTime}ms`);
+    
+    const totalRequestTime = Date.now() - requestStartTime;
+    logWithTimestamp(`Total request processing time: ${totalRequestTime}ms`);
+
+    return res.status(200).json({
+      success: true,
+      message: `Processed ${records.length} manual records for ${symbol}`,
+      savedCount: savedRecords.length,
+      errorCount: errors.length,
+      processingTimeMs: totalProcessingTime,
+      totalTimeMs: totalRequestTime,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  } catch (error) {
+    const totalRequestTime = Date.now() - requestStartTime;
+    logWithTimestamp(`Error processing manual data after ${totalRequestTime}ms`, error);
+    
+    return res.status(500).json({
+      error: 'Failed to process manual data',
+      details: error instanceof Error ? error.message : 'Unknown error',
+      requestDurationMs: totalRequestTime,
+      timestamp: new Date().toISOString()
+    });
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const requestStartTime = Date.now();
-  logWithTimestamp(`Historical minutes API request started`);
+  logWithTimestamp(`Historical minutes API request started with method: ${req.method}`);
   
+  // Handle POST requests for manual data input
+  if (req.method === 'POST') {
+    return handleManualDataUpload(req, res, requestStartTime);
+  }
+  
+  // Handle GET requests for API data fetching
   if (req.method !== 'GET') {
     logWithTimestamp(`Method not allowed: ${req.method}`);
     return res.status(405).json({ error: 'Method not allowed' });

@@ -9,6 +9,8 @@ import { Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 
 interface Crypto {
   id: string;
@@ -26,6 +28,10 @@ const DataUploads: React.FC = () => {
   const [dataLimit, setDataLimit] = useState<string>("200");
   const [timestampAdjustment, setTimestampAdjustment] = useState<string>("0");
   const [processingDetails, setProcessingDetails] = useState<Record<string, { total: number; saved: number; errors: number }>>({});
+  const [activeTab, setActiveTab] = useState<string>("coindesk-api");
+  const [jsonInput, setJsonInput] = useState<string>("");
+  const [jsonParsingStatus, setJsonParsingStatus] = useState<string>("idle"); // idle, parsing, success, error
+  const [selectedSymbol, setSelectedSymbol] = useState<string>("");
 
   // Fetch available cryptos
   useEffect(() => {
@@ -229,6 +235,117 @@ const DataUploads: React.FC = () => {
 
     setIsProcessing(false);
   };
+  
+  const handleProcessJsonData = async () => {
+    if (!selectedSymbol) {
+      toast({
+        variant: 'destructive',
+        title: 'No Symbol Selected',
+        description: 'Please select a cryptocurrency symbol for this data.',
+      });
+      return;
+    }
+    
+    if (!jsonInput.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'No Data Provided',
+        description: 'Please paste JSON data to process.',
+      });
+      return;
+    }
+    
+    setJsonParsingStatus('parsing');
+    
+    try {
+      // Parse the JSON input
+      let parsedData;
+      try {
+        parsedData = JSON.parse(jsonInput);
+      } catch (error) {
+        throw new Error('Invalid JSON format. Please check your input and try again.');
+      }
+      
+      // Validate the data structure
+      if (!parsedData || !parsedData.Data || !Array.isArray(parsedData.Data) || parsedData.Data.length === 0) {
+        throw new Error('Invalid data format. Expected a JSON object with a "Data" array.');
+      }
+      
+      // Process the data
+      const records = parsedData.Data;
+      const processStartTime = Date.now();
+      
+      // Prepare the data for saving
+      const formattedRecords = records.map(record => {
+        // Ensure required fields exist
+        if (!record.TIMESTAMP || !record.OPEN || !record.HIGH || !record.LOW || !record.CLOSE) {
+          throw new Error('Invalid record format. Each record must include TIMESTAMP, OPEN, HIGH, LOW, and CLOSE fields.');
+        }
+        
+        // Convert UNIX timestamp to Date
+        const timestamp = new Date(record.TIMESTAMP * 1000);
+        
+        return {
+          symbol: selectedSymbol.toUpperCase(),
+          timestamp,
+          unit: record.UNIT || 'MINUTE',
+          open: record.OPEN,
+          high: record.HIGH,
+          low: record.LOW,
+          close: record.CLOSE,
+          volume: record.VOLUME || 0,
+          quoteVolume: record.QUOTE_VOLUME || 0,
+          instrument: record.INSTRUMENT || `${selectedSymbol.toUpperCase()}-USD`,
+          market: record.MARKET || 'MANUAL',
+        };
+      });
+      
+      // Save the data to the database
+      const response = await fetch('/api/cryptos/historical-minutes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          records: formattedRecords,
+          symbol: selectedSymbol.toUpperCase(),
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        console.error('Error saving manual data:', errorData);
+        throw new Error(errorData?.error || 'Failed to save data to the database.');
+      }
+      
+      const result = await response.json();
+      const processingTime = Date.now() - processStartTime;
+      
+      setJsonParsingStatus('success');
+      
+      toast({
+        title: 'Data Processed',
+        description: `Successfully processed and saved ${result.savedCount || formattedRecords.length} records for ${selectedSymbol} (${(processingTime/1000).toFixed(1)}s).`,
+      });
+      
+      // Clear the input after successful processing
+      setJsonInput('');
+      
+    } catch (error) {
+      console.error('Error processing JSON data:', error);
+      setJsonParsingStatus('error');
+      
+      toast({
+        variant: 'destructive',
+        title: 'Error Processing Data',
+        description: error instanceof Error ? error.message : 'An unknown error occurred.',
+      });
+    } finally {
+      setTimeout(() => {
+        setJsonParsingStatus('idle');
+      }, 3000);
+    }
+  };
 
   if (loading) {
     return <div>Loading data...</div>;
@@ -254,131 +371,227 @@ const DataUploads: React.FC = () => {
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Select Cryptocurrencies</DialogTitle>
+              <DialogTitle>Get Historical Data</DialogTitle>
               <DialogDescription>
-                Choose which cryptocurrencies you want to fetch historical data for.
+                Choose how you want to retrieve historical cryptocurrency data.
               </DialogDescription>
             </DialogHeader>
             
-            {/* Data fetching options */}
-            <div className="mb-4">
-              <div className="space-y-2">
-                <Label htmlFor="dataLimit">Data Limit (records)</Label>
-                <Input
-                  id="dataLimit"
-                  type="number"
-                  value={dataLimit}
-                  onChange={(e) => setDataLimit(e.target.value)}
-                  min="1"
-                  max="2000"
-                  placeholder="200"
-                />
-                <p className="text-xs text-muted-foreground">Max: 2000 records</p>
-              </div>
-            </div>
-            
-            <div className="space-y-2 mb-4">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center">
-                      <Label htmlFor="timestampAdjustment" className="mr-2">Timestamp Adjustment (minutes)</Label>
-                      <div className="text-muted-foreground text-sm">ⓘ</div>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="max-w-xs">
-                      Enter a value in minutes to adjust the current timestamp. For example, enter 60 to go back 1 hour, 
-                      1440 to go back 1 day, etc. This value is converted to seconds and subtracted from the current timestamp.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <Input
-                id="timestampAdjustment"
-                type="number"
-                value={timestampAdjustment}
-                onChange={(e) => setTimestampAdjustment(e.target.value)}
-                min="0"
-                placeholder="0"
-              />
-              <div className="text-xs text-muted-foreground space-y-1">
-                <p>
-                  Current timestamp: {Math.floor(Date.now() / 1000)}
-                </p>
-                {parseInt(timestampAdjustment) > 0 && (
-                  <p>
-                    Adjusted timestamp: {Math.floor(Date.now() / 1000) - (parseInt(timestampAdjustment) * 60)}
-                    {Math.floor(Date.now() / 1000) - (parseInt(timestampAdjustment) * 60) < 1279324800 && 
-                      " (will be capped at 1279324800)"}
-                  </p>
-                )}
-                <p>
-                  Earliest valid timestamp: 1279324800 (July 17, 2010)
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-2 mb-4">
-              <Checkbox 
-                id="selectAll" 
-                checked={selectedCryptos.length === cryptos.length && cryptos.length > 0}
-                onCheckedChange={handleSelectAll}
-              />
-              <Label htmlFor="selectAll">Select All</Label>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4 py-4 max-h-[300px] overflow-y-auto">
-              {cryptos.map((crypto) => (
-                <div key={crypto.id} className="flex items-center space-x-2">
-                  <Checkbox 
-                    id={`crypto-${crypto.id}`} 
-                    checked={selectedCryptos.includes(crypto.symbol)}
-                    onCheckedChange={() => handleCheckboxChange(crypto.symbol)}
+            <Tabs defaultValue="coindesk-api" value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="coindesk-api">CoinDesk API</TabsTrigger>
+                <TabsTrigger value="manual-input">Manual Text Input</TabsTrigger>
+              </TabsList>
+              
+              {/* CoinDesk API Tab */}
+              <TabsContent value="coindesk-api" className="space-y-4 mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="dataLimit">Data Limit (records)</Label>
+                  <Input
+                    id="dataLimit"
+                    type="number"
+                    value={dataLimit}
+                    onChange={(e) => setDataLimit(e.target.value)}
+                    min="1"
+                    max="2000"
+                    placeholder="200"
                   />
-                  <Label htmlFor={`crypto-${crypto.id}`} className="flex items-center">
-                    {crypto.symbol}
-                    {processingStatus[crypto.symbol] === 'processing' && (
-                      <Loader2 className="ml-2 h-4 w-4 animate-spin" />
-                    )}
-                    {processingStatus[crypto.symbol] === 'success' && (
-                      <div className="ml-2 flex items-center">
-                        <span className="text-green-500">✓</span>
-                        {processingDetails[crypto.symbol] && (
-                          <span className="ml-1 text-xs text-muted-foreground">
-                            ({processingDetails[crypto.symbol].saved}/{processingDetails[crypto.symbol].total})
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {processingStatus[crypto.symbol] === 'error' && (
-                      <span className="ml-2 text-red-500">✗</span>
-                    )}
-                  </Label>
+                  <p className="text-xs text-muted-foreground">Max: 2000 records</p>
                 </div>
-              ))}
-            </div>
+                
+                <div className="space-y-2">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center">
+                          <Label htmlFor="timestampAdjustment" className="mr-2">Timestamp Adjustment (minutes)</Label>
+                          <div className="text-muted-foreground text-sm">ⓘ</div>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="max-w-xs">
+                          Enter a value in minutes to adjust the current timestamp. For example, enter 60 to go back 1 hour, 
+                          1440 to go back 1 day, etc. This value is converted to seconds and subtracted from the current timestamp.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <Input
+                    id="timestampAdjustment"
+                    type="number"
+                    value={timestampAdjustment}
+                    onChange={(e) => setTimestampAdjustment(e.target.value)}
+                    min="0"
+                    placeholder="0"
+                  />
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <p>
+                      Current timestamp: {Math.floor(Date.now() / 1000)}
+                    </p>
+                    {parseInt(timestampAdjustment) > 0 && (
+                      <p>
+                        Adjusted timestamp: {Math.floor(Date.now() / 1000) - (parseInt(timestampAdjustment) * 60)}
+                        {Math.floor(Date.now() / 1000) - (parseInt(timestampAdjustment) * 60) < 1279324800 && 
+                          " (will be capped at 1279324800)"}
+                      </p>
+                    )}
+                    <p>
+                      Earliest valid timestamp: 1279324800 (July 17, 2010)
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="selectAll" 
+                    checked={selectedCryptos.length === cryptos.length && cryptos.length > 0}
+                    onCheckedChange={handleSelectAll}
+                  />
+                  <Label htmlFor="selectAll">Select All</Label>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 py-2 max-h-[200px] overflow-y-auto">
+                  {cryptos.map((crypto) => (
+                    <div key={crypto.id} className="flex items-center space-x-2">
+                      <Checkbox 
+                        id={`crypto-${crypto.id}`} 
+                        checked={selectedCryptos.includes(crypto.symbol)}
+                        onCheckedChange={() => handleCheckboxChange(crypto.symbol)}
+                      />
+                      <Label htmlFor={`crypto-${crypto.id}`} className="flex items-center">
+                        {crypto.symbol}
+                        {processingStatus[crypto.symbol] === 'processing' && (
+                          <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                        )}
+                        {processingStatus[crypto.symbol] === 'success' && (
+                          <div className="ml-2 flex items-center">
+                            <span className="text-green-500">✓</span>
+                            {processingDetails[crypto.symbol] && (
+                              <span className="ml-1 text-xs text-muted-foreground">
+                                ({processingDetails[crypto.symbol].saved}/{processingDetails[crypto.symbol].total})
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {processingStatus[crypto.symbol] === 'error' && (
+                          <span className="ml-2 text-red-500">✗</span>
+                        )}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+                
+                <Button 
+                  className="w-full"
+                  onClick={handleGetData}
+                  disabled={selectedCryptos.length === 0 || isProcessing}
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    'Get Data from API'
+                  )}
+                </Button>
+              </TabsContent>
+              
+              {/* Manual Text Input Tab */}
+              <TabsContent value="manual-input" className="space-y-4 mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="symbolSelect">Select Cryptocurrency</Label>
+                  <Select value={selectedSymbol} onValueChange={setSelectedSymbol}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a cryptocurrency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {cryptos.map((crypto) => (
+                        <SelectItem key={crypto.id} value={crypto.symbol}>
+                          {crypto.symbol}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Label htmlFor="jsonInput">JSON Data</Label>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="text-muted-foreground text-sm cursor-help">Format Help ⓘ</div>
+                        </TooltipTrigger>
+                        <TooltipContent side="left" className="max-w-sm">
+                          <p className="text-sm">
+                            Paste JSON data in the following format:
+                          </p>
+                          <pre className="text-xs mt-2 bg-secondary p-2 rounded">
+{`{
+  "Data": [
+    {
+      "TIMESTAMP": 1627776000,
+      "OPEN": 42000.5,
+      "HIGH": 42100.3,
+      "LOW": 41900.8,
+      "CLOSE": 42050.2,
+      "VOLUME": 100.5
+    },
+    ...
+  ]
+}`}
+                          </pre>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <Textarea 
+                    id="jsonInput"
+                    placeholder="Paste JSON data here..."
+                    value={jsonInput}
+                    onChange={(e) => setJsonInput(e.target.value)}
+                    className="min-h-[200px] font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Paste the JSON response from the CoinDesk API or other compatible data source.
+                  </p>
+                </div>
+                
+                <Button 
+                  className="w-full"
+                  onClick={handleProcessJsonData}
+                  disabled={!selectedSymbol || !jsonInput.trim() || jsonParsingStatus === 'parsing'}
+                >
+                  {jsonParsingStatus === 'parsing' ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Processing...
+                    </>
+                  ) : jsonParsingStatus === 'success' ? (
+                    <>
+                      <span className="text-green-500 mr-2">✓</span>
+                      Processed Successfully
+                    </>
+                  ) : jsonParsingStatus === 'error' ? (
+                    <>
+                      <span className="text-red-500 mr-2">✗</span>
+                      Error Processing
+                    </>
+                  ) : (
+                    'Process JSON Data'
+                  )}
+                </Button>
+              </TabsContent>
+            </Tabs>
             
             <DialogFooter>
               <Button 
                 variant="outline" 
                 onClick={() => setIsDialogOpen(false)}
-                disabled={isProcessing}
+                disabled={isProcessing || jsonParsingStatus === 'parsing'}
               >
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleGetData}
-                disabled={selectedCryptos.length === 0 || isProcessing}
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  'Get Data'
-                )}
+                Close
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -141,6 +141,6 @@ model CryptoHistoricalData {
   market       String?
   createdAt    DateTime @default(now())
   
-  @@unique([symbol, timestamp])
+  @@unique([symbol, timestamp], name: "symbol_timestamp")
   @@index([symbol, timestamp])
 }

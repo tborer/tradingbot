@@ -13,22 +13,39 @@ interface TrendsPopupProps {
   symbol: string;
 }
 
+interface DrawdownDrawupData {
+  maxDrawdown: number;
+  maxDrawup: number;
+  avgDrawdown: number;
+  avgDrawup: number;
+  frequentDrawdown: number;
+  frequentDrawup: number;
+  stdDevDrawdown: number;
+  stdDevDrawup: number;
+  medianDrawdown: number;
+  medianDrawup: number;
+}
+
+interface AnalysisData {
+  drawdownDrawup?: DrawdownDrawupData;
+}
+
 const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) => {
   const { toast } = useToast();
   const { getItem, updateItem } = useAnalysis();
   const [loading, setLoading] = useState(true);
-  const [analysisData, setAnalysisData] = useState<any>(null);
+  const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Function to perform drawdown/drawup analysis
-  const performDrawdownDrawupAnalysis = useCallback(async (symbol: string, itemId: string) => {
+  const performDrawdownDrawupAnalysis = useCallback(async (symbol: string) => {
     setIsAnalyzing(true);
     setError(null);
     
     // Normalize the symbol to uppercase for consistency
     const normalizedSymbol = symbol.toUpperCase();
-    console.log(`Starting trend analysis for ${normalizedSymbol} (original: ${symbol}) with item ID ${itemId}`);
+    console.log(`Starting trend analysis for ${normalizedSymbol} (original: ${symbol})`);
     
     try {
       // Call the API endpoint for trend analysis
@@ -69,42 +86,43 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
       if (analysis) {
         console.log(`Processing analysis data for ${symbol}:`, analysis);
         
-        // Update the analysis data in context
-        const item = getItem(symbol);
+        // Create analysis data object
+        const newAnalysisData: AnalysisData = {
+          drawdownDrawup: {
+            maxDrawdown: analysis.maxDrawdown,
+            maxDrawup: analysis.maxDrawup,
+            avgDrawdown: analysis.avgDrawdown,
+            avgDrawup: analysis.avgDrawup,
+            frequentDrawdown: analysis.frequentDrawdown,
+            frequentDrawup: analysis.frequentDrawup,
+            stdDevDrawdown: analysis.stdDevDrawdown,
+            stdDevDrawup: analysis.stdDevDrawup,
+            medianDrawdown: analysis.medianDrawdown,
+            medianDrawup: analysis.medianDrawup
+          }
+        };
         
+        // Update local state
+        setAnalysisData(newAnalysisData);
+        setLoading(false);
+        
+        // Also update the analysis context if the item exists there
+        const item = getItem(symbol);
         if (item) {
           const updatedAnalysisData = {
             ...item.analysisData || {},
-            drawdownDrawup: {
-              maxDrawdown: analysis.maxDrawdown,
-              maxDrawup: analysis.maxDrawup,
-              avgDrawdown: analysis.avgDrawdown,
-              avgDrawup: analysis.avgDrawup,
-              frequentDrawdown: analysis.frequentDrawdown,
-              frequentDrawup: analysis.frequentDrawup,
-              stdDevDrawdown: analysis.stdDevDrawdown,
-              stdDevDrawup: analysis.stdDevDrawup,
-              medianDrawdown: analysis.medianDrawdown,
-              medianDrawup: analysis.medianDrawup
-            }
+            drawdownDrawup: newAnalysisData.drawdownDrawup
           };
           
-          console.log(`Updating item ${itemId} with new analysis data:`, updatedAnalysisData);
-          updateItem(itemId, { analysisData: updatedAnalysisData });
-          
-          // Update local state
-          setAnalysisData(updatedAnalysisData);
-          setLoading(false);
-          
-          // Show success toast
-          toast({
-            title: "Analysis Complete",
-            description: `Trend analysis for ${symbol} completed successfully`,
-          });
-        } else {
-          console.error(`Item for symbol ${symbol} not found after analysis`);
-          throw new Error(`Item for symbol ${symbol} not found`);
+          console.log(`Updating item in analysis context with new data:`, updatedAnalysisData);
+          updateItem(item.id, { analysisData: updatedAnalysisData });
         }
+        
+        // Show success toast
+        toast({
+          title: "Analysis Complete",
+          description: `Trend analysis for ${symbol} completed successfully`,
+        });
       } else {
         console.error(`No analysis data returned for ${symbol}`);
         throw new Error(`No analysis data returned for ${symbol}`);
@@ -135,35 +153,20 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
       setLoading(true);
       setError(null);
       
-      // Get the analysis data for this symbol
+      // First check if we have data in the analysis context
       const item = getItem(symbol);
-      console.log(`Retrieved item for ${symbol}:`, item);
       
-      if (item) {
-        if (item.analysisData) {
-          console.log(`Analysis data found for ${symbol}:`, item.analysisData);
-          setAnalysisData(item.analysisData);
-          
-          // If we don't have drawdown/drawup analysis yet, fetch it
-          if (!item.analysisData.drawdownDrawup && !isAnalyzing) {
-            console.log(`No drawdown/drawup data found for ${symbol}, fetching...`);
-            performDrawdownDrawupAnalysis(symbol, item.id);
-          } else {
-            console.log(`Using existing drawdown/drawup data for ${symbol}`);
-            setLoading(false);
-          }
-        } else {
-          console.log(`No analysis data found for ${symbol}, initiating analysis...`);
-          // No analysis data available yet, initiate analysis
-          performDrawdownDrawupAnalysis(symbol, item.id);
-        }
-      } else {
-        console.error(`No item found for symbol ${symbol}`);
-        setError(`No data found for ${symbol}`);
+      if (item && item.analysisData && item.analysisData.drawdownDrawup) {
+        console.log(`Analysis data found in context for ${symbol}:`, item.analysisData);
+        setAnalysisData(item.analysisData);
         setLoading(false);
+      } else {
+        // No data in context, perform analysis directly from historical data
+        console.log(`No analysis data found in context for ${symbol}, initiating analysis...`);
+        performDrawdownDrawupAnalysis(symbol);
       }
     }
-  }, [isOpen, symbol, getItem, isAnalyzing, performDrawdownDrawupAnalysis]);
+  }, [isOpen, symbol, getItem, performDrawdownDrawupAnalysis]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -190,12 +193,9 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
               <button 
                 className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
                 onClick={() => {
-                  const item = getItem(symbol);
-                  if (item) {
-                    setLoading(true);
-                    setError(null);
-                    performDrawdownDrawupAnalysis(symbol, item.id);
-                  }
+                  setLoading(true);
+                  setError(null);
+                  performDrawdownDrawupAnalysis(symbol);
                 }}
               >
                 Retry Analysis
@@ -298,10 +298,7 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
                     <button 
                       className="mt-4 w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
                       onClick={() => {
-                        const item = getItem(symbol);
-                        if (item) {
-                          performDrawdownDrawupAnalysis(symbol, item.id);
-                        }
+                        performDrawdownDrawupAnalysis(symbol);
                       }}
                     >
                       Analyze Trends
@@ -317,17 +314,8 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
               <button 
                 className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
                 onClick={() => {
-                  const item = getItem(symbol);
-                  if (item) {
-                    setLoading(true);
-                    performDrawdownDrawupAnalysis(symbol, item.id);
-                  } else {
-                    toast({
-                      title: "Error",
-                      description: `No data found for ${symbol}`,
-                      variant: "destructive"
-                    });
-                  }
+                  setLoading(true);
+                  performDrawdownDrawupAnalysis(symbol);
                 }}
               >
                 Start Analysis

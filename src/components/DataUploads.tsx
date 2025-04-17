@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -33,6 +33,7 @@ const DataUploads: React.FC = () => {
   const [jsonInput, setJsonInput] = useState<string>("");
   const [jsonParsingStatus, setJsonParsingStatus] = useState<string>("idle"); // idle, parsing, success, error
   const [selectedSymbol, setSelectedSymbol] = useState<string>("");
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Fetch available cryptos
   useEffect(() => {
@@ -118,6 +119,29 @@ const DataUploads: React.FC = () => {
     }, null, 2);
   };
 
+  const handleKillRequest = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      
+      toast({
+        title: "Request Cancelled",
+        description: "The data collection request has been cancelled.",
+      });
+      
+      setIsProcessing(false);
+      
+      // Update status for all processing cryptos to show they were cancelled
+      const updatedStatus = { ...processingStatus };
+      Object.keys(updatedStatus).forEach(symbol => {
+        if (updatedStatus[symbol] === 'processing') {
+          updatedStatus[symbol] = 'cancelled';
+        }
+      });
+      setProcessingStatus(updatedStatus);
+    }
+  };
+
   const handleGetData = async () => {
     if (selectedCryptos.length === 0) {
       toast({
@@ -127,6 +151,10 @@ const DataUploads: React.FC = () => {
       });
       return;
     }
+
+    // Create a new AbortController for this request session
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
 
     setIsProcessing(true);
     setProcessingStatus({});
@@ -221,7 +249,12 @@ const DataUploads: React.FC = () => {
           
           console.log(`Fetching batch ${batchCount} for ${symbol} with timestamp: ${currentTimestamp || 'current'}`);
           
-          const response = await fetch(url.toString());
+          // Check if the request has been aborted
+          if (signal.aborted) {
+            throw new Error('Request was cancelled');
+          }
+          
+          const response = await fetch(url.toString(), { signal });
           
           if (!response.ok) {
             // Handle different error status codes differently
@@ -242,8 +275,13 @@ const DataUploads: React.FC = () => {
                 // Update the limit for future requests
                 url.searchParams.set('limit', reducedLimit.toString());
                 
+                // Check if the request has been aborted before retry
+                if (signal.aborted) {
+                  throw new Error('Request was cancelled');
+                }
+                
                 // Try the request again with the reduced limit
-                const retryResponse = await fetch(url.toString());
+                const retryResponse = await fetch(url.toString(), { signal });
                 
                 if (!retryResponse.ok) {
                   // If retry also fails, throw error
@@ -446,16 +484,28 @@ const DataUploads: React.FC = () => {
         });
       } catch (error) {
         console.error(`Error fetching data for ${symbol}:`, error);
-        setProcessingStatus(prev => ({ ...prev, [symbol]: 'error' }));
         
-        // Provide more detailed error message
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-        
-        toast({
-          variant: 'destructive',
-          title: 'Error',
-          description: errorMessage,
-        });
+        // Check if this was an abort error
+        if (error.name === 'AbortError' || error.message === 'Request was cancelled') {
+          setProcessingStatus(prev => ({ ...prev, [symbol]: 'cancelled' }));
+          
+          toast({
+            variant: 'warning',
+            title: 'Request Cancelled',
+            description: `Data collection for ${symbol} was cancelled.`,
+          });
+        } else {
+          setProcessingStatus(prev => ({ ...prev, [symbol]: 'error' }));
+          
+          // Provide more detailed error message
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+          
+          toast({
+            variant: 'destructive',
+            title: 'Error',
+            description: errorMessage,
+          });
+        }
       }
     }
 
@@ -823,25 +873,40 @@ const DataUploads: React.FC = () => {
                         {processingStatus[crypto.symbol] === 'error' && (
                           <span className="ml-2 text-red-500">✗</span>
                         )}
+                        {processingStatus[crypto.symbol] === 'cancelled' && (
+                          <span className="ml-2 text-amber-500">⊘</span>
+                        )}
                       </Label>
                     </div>
                   ))}
                 </div>
                 
-                <Button 
-                  className="w-full"
-                  onClick={handleGetData}
-                  disabled={selectedCryptos.length === 0 || isProcessing}
-                >
-                  {isProcessing ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    'Get Data from API'
+                <div className="w-full flex space-x-2">
+                  <Button 
+                    className="flex-1"
+                    onClick={handleGetData}
+                    disabled={selectedCryptos.length === 0 || isProcessing}
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      'Get Data from API'
+                    )}
+                  </Button>
+                  
+                  {isProcessing && (
+                    <Button 
+                      variant="destructive"
+                      onClick={handleKillRequest}
+                      className="whitespace-nowrap"
+                    >
+                      Cancel Request
+                    </Button>
                   )}
-                </Button>
+                </div>
               </TabsContent>
               
               {/* Manual Text Input Tab */}

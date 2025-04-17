@@ -2,8 +2,8 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
 
-// Define a smaller batch size to prevent timeouts
-const DEFAULT_LIMIT = 500; // Reduced from 2000
+// Define batch size to prevent timeouts
+const DEFAULT_LIMIT = 2000; // Updated from 500
 const BATCH_SIZE = 50; // Number of records to process in a single database operation
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -11,7 +11,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { symbol, limit, days } = req.query;
+  const { symbol, limit, days, to_ts } = req.query;
 
   if (!symbol || typeof symbol !== 'string') {
     return res.status(400).json({ error: 'Symbol is required' });
@@ -25,6 +25,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (days && !isNaN(Number(days))) {
     startDate = new Date();
     startDate.setDate(startDate.getDate() - Number(days));
+  }
+  
+  // Parse to_ts parameter if provided
+  let toTimestamp: number | undefined;
+  if (to_ts && !isNaN(Number(to_ts))) {
+    toTimestamp = Number(to_ts);
+    console.log(`Using custom timestamp: ${toTimestamp}`);
   }
 
   try {
@@ -66,6 +73,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Convert to Unix timestamp (seconds)
       const startTimestamp = Math.floor(startDate.getTime() / 1000);
       params["start_time"] = startTimestamp.toString();
+    }
+    
+    // Add to_ts parameter if provided
+    if (toTimestamp) {
+      params["to_ts"] = toTimestamp.toString();
+      console.log(`Adding to_ts parameter: ${toTimestamp}`);
     }
     
     // Create URL with parameters using URLSearchParams

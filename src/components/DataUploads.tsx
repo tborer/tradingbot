@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface Crypto {
   id: string;
@@ -24,6 +25,7 @@ const DataUploads: React.FC = () => {
   const [processingStatus, setProcessingStatus] = useState<Record<string, string>>({});
   const [dataLimit, setDataLimit] = useState<string>("200");
   const [timeRange, setTimeRange] = useState<string>("7");
+  const [timestampAdjustment, setTimestampAdjustment] = useState<string>("0");
   const [processingDetails, setProcessingDetails] = useState<Record<string, { total: number; saved: number; errors: number }>>({});
 
   // Fetch available cryptos
@@ -90,6 +92,7 @@ const DataUploads: React.FC = () => {
     // Validate inputs
     const limit = parseInt(dataLimit);
     const days = parseInt(timeRange);
+    const adjustment = parseInt(timestampAdjustment);
     
     if (isNaN(limit) || limit <= 0) {
       toast({
@@ -111,6 +114,23 @@ const DataUploads: React.FC = () => {
       return;
     }
 
+    if (isNaN(adjustment)) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid Timestamp Adjustment',
+        description: 'Please enter a valid number for the timestamp adjustment.',
+      });
+      setIsProcessing(false);
+      return;
+    }
+
+    // Calculate adjusted timestamp if needed
+    let toTimestamp;
+    if (adjustment > 0) {
+      // Get current timestamp in seconds and subtract the adjustment
+      toTimestamp = Math.floor(Date.now() / 1000) - adjustment;
+    }
+
     // Process each selected crypto
     for (const symbol of selectedCryptos) {
       try {
@@ -121,6 +141,11 @@ const DataUploads: React.FC = () => {
         url.searchParams.append('symbol', symbol);
         url.searchParams.append('limit', limit.toString());
         url.searchParams.append('days', days.toString());
+        
+        // Add to_ts parameter if timestamp adjustment is provided
+        if (toTimestamp) {
+          url.searchParams.append('to_ts', toTimestamp.toString());
+        }
         
         const response = await fetch(url.toString());
         
@@ -201,10 +226,10 @@ const DataUploads: React.FC = () => {
                   value={dataLimit}
                   onChange={(e) => setDataLimit(e.target.value)}
                   min="1"
-                  max="500"
+                  max="2000"
                   placeholder="200"
                 />
-                <p className="text-xs text-muted-foreground">Max: 500 records</p>
+                <p className="text-xs text-muted-foreground">Max: 2000 records</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="timeRange">Time Range (days)</Label>
@@ -221,6 +246,37 @@ const DataUploads: React.FC = () => {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            
+            <div className="space-y-2 mb-4">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center">
+                      <Label htmlFor="timestampAdjustment" className="mr-2">Timestamp Adjustment (minutes)</Label>
+                      <div className="text-muted-foreground text-sm">ⓘ</div>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="max-w-xs">
+                      Enter a value to adjust the current timestamp. For example, enter 60 to go back 1 hour, 
+                      1440 to go back 1 day, etc. This value is subtracted from the current timestamp.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <Input
+                id="timestampAdjustment"
+                type="number"
+                value={timestampAdjustment}
+                onChange={(e) => setTimestampAdjustment(e.target.value)}
+                min="0"
+                placeholder="0"
+              />
+              <p className="text-xs text-muted-foreground">
+                Current timestamp: {Math.floor(Date.now() / 1000)}
+                {parseInt(timestampAdjustment) > 0 && ` → Adjusted: ${Math.floor(Date.now() / 1000) - parseInt(timestampAdjustment)}`}
+              </p>
             </div>
             
             <div className="flex items-center space-x-2 mb-4">

@@ -469,6 +469,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       logWithTimestamp(`Received ${data.Data.length} records for ${symbol}`);
+      
+      // Process and save the data in batches
+      const savedRecords = [];
+      const errors = [];
+      const recordsToProcess = data.Data;
+      
+      logWithTimestamp(`Processing ${recordsToProcess.length} records in batches of ${BATCH_SIZE}`);
+      
+      const totalBatches = Math.ceil(recordsToProcess.length / BATCH_SIZE);
+      const batchStartTime = Date.now();
     } catch (fetchError) {
       if (fetchError instanceof Error && fetchError.name === 'AbortError') {
         logWithTimestamp(`Request timeout after ${REQUEST_TIMEOUT/1000} seconds`);
@@ -480,15 +490,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw fetchError; // Re-throw to be caught by the outer try-catch
     }
 
-    // Process and save the data in batches
-    const savedRecords = [];
-    const errors = [];
-    const recordsToProcess = data.Data;
-    
-    logWithTimestamp(`Processing ${recordsToProcess.length} records in batches of ${BATCH_SIZE}`);
-    
-    const totalBatches = Math.ceil(recordsToProcess.length / BATCH_SIZE);
-    const batchStartTime = Date.now();
+    // This section was moved up to avoid the "data is not defined" error
     
     // Process data in batches to avoid timeouts
     for (let i = 0; i < recordsToProcess.length; i += BATCH_SIZE) {

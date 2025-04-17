@@ -268,9 +268,16 @@ const DataUploads: React.FC = () => {
           
           const data = await response.json();
           
+          // Validate data structure
+          if (!data) {
+            throw new Error(`Invalid response data for ${symbol} (batch ${batchCount}): Response is empty`);
+          }
+          
           // Update total counts
           const batchSavedCount = data.savedCount || 0;
-          const batchTotalCount = data.message ? parseInt(data.message.match(/Processed (\d+) records/)?.[1] || '0') : 0;
+          const batchTotalCount = data.message && typeof data.message === 'string' 
+            ? parseInt(data.message.match(/Processed (\d+) records/)?.[1] || '0') 
+            : 0;
           
           totalSavedRecords += batchSavedCount;
           totalProcessedRecords += batchTotalCount;
@@ -297,8 +304,23 @@ const DataUploads: React.FC = () => {
           if (!collectFullDay) {
             continueDataCollection = false;
           } else {
-            // Find the earliest timestamp in the data
-            if (data.Data && Array.isArray(data.Data)) {
+            // Check if we have the earliest timestamp directly from the API response
+            if (data.earliestTimestamp) {
+              // Use the earliest timestamp provided by the API
+              const batchEarliestTimestamp = data.earliestTimestamp;
+              
+              // Update the earliest timestamp we've seen
+              if (batchEarliestTimestamp < earliestTimestampSeen) {
+                earliestTimestampSeen = batchEarliestTimestamp;
+              }
+              
+              // Use the earliest timestamp for the next batch
+              currentTimestamp = batchEarliestTimestamp;
+              
+              console.log(`Using earliest timestamp from API response: ${batchEarliestTimestamp} (${new Date(batchEarliestTimestamp * 1000).toLocaleString()})`);
+            } 
+            // Fallback to finding the earliest timestamp in the data if available
+            else if (data.Data && Array.isArray(data.Data)) {
               // Find the earliest timestamp in this batch
               let batchEarliestTimestamp = Number.MAX_SAFE_INTEGER;
               

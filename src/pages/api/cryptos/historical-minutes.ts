@@ -32,16 +32,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Format the instrument based on the symbol
     const instrument = `${symbol.toUpperCase()}-USD`;
     
-    // Construct the API URL
-    const apiUrl = `/index/cc/v1/historical/minutes?market=cadli&instrument=${instrument}&limit=2000&aggregate=1&fill=true&apply_mapping=true&response_format=JSON`;
+    console.log(`Preparing to fetch historical data for ${symbol} from CoinDesk API`);
     
-    console.log(`Fetching historical data for ${symbol} from CoinDesk API: ${apiUrl}`);
+    // Construct the full URL with API key as a query parameter (as used in coinDesk.ts)
+    const baseUrl = 'https://data-api.coindesk.com/index/cc/v1/historical/minutes';
+    const params: Record<string, string> = {
+      "market": "cadli",
+      "instrument": instrument,
+      "api_key": coinDeskApiKey, // API key as query parameter instead of header
+      "limit": "2000",
+      "aggregate": "1",
+      "fill": "true",
+      "apply_mapping": "true",
+      "response_format": "JSON"
+    };
     
-    // Make the API request
-    const response = await fetch(`https://api.coindesk.com${apiUrl}`, {
+    // Create URL with parameters using URLSearchParams
+    const url = new URL(baseUrl);
+    url.search = new URLSearchParams(params).toString();
+    
+    console.log(`Fetching historical data for ${symbol} from CoinDesk API: ${url.toString()}`);
+    
+    // Make the API request with the correct headers
+    const response = await fetch(url.toString(), {
+      method: 'GET',
       headers: {
-        'X-CoinDesk-API-Key': coinDeskApiKey,
-      },
+        "Content-type": "application/json; charset=UTF-8"
+      }
     });
 
     if (!response.ok) {
@@ -123,9 +140,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   } catch (error) {
     console.error('Error processing historical data:', error);
+    
+    // Provide more detailed error information
+    let errorDetails = 'Unknown error';
+    let errorMessage = 'Failed to process historical data';
+    
+    if (error instanceof Error) {
+      errorDetails = error.message;
+      
+      // Check for network-related errors
+      if (error.message === 'fetch failed' && 'cause' in error) {
+        const cause = error.cause as any;
+        if (cause && cause.code) {
+          errorDetails = `Network error: ${cause.code} - ${cause.hostname || ''}`;
+          errorMessage = 'Failed to connect to CoinDesk API';
+        }
+      }
+    }
+    
     return res.status(500).json({
-      error: 'Failed to process historical data',
-      details: error instanceof Error ? error.message : 'Unknown error',
+      error: errorMessage,
+      details: errorDetails,
     });
   }
 }

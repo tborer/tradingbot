@@ -79,6 +79,43 @@ const DataUploads: React.FC = () => {
       setSelectedCryptos(cryptos.map(crypto => crypto.symbol));
     }
   };
+  
+  const getSampleJsonData = () => {
+    const now = Math.floor(Date.now() / 1000);
+    const oneMinuteInSeconds = 60;
+    
+    return JSON.stringify({
+      "Data": [
+        {
+          "TIMESTAMP": now - (oneMinuteInSeconds * 5),
+          "OPEN": 42000.5,
+          "HIGH": 42100.3,
+          "LOW": 41900.8,
+          "CLOSE": 42050.2,
+          "VOLUME": 100.5,
+          "UNIT": "MINUTE"
+        },
+        {
+          "TIMESTAMP": now - (oneMinuteInSeconds * 4),
+          "OPEN": 42050.2,
+          "HIGH": 42150.0,
+          "LOW": 42000.0,
+          "CLOSE": 42125.5,
+          "VOLUME": 95.2,
+          "UNIT": "MINUTE"
+        },
+        {
+          "TIMESTAMP": now - (oneMinuteInSeconds * 3),
+          "OPEN": 42125.5,
+          "HIGH": 42200.1,
+          "LOW": 42100.0,
+          "CLOSE": 42180.3,
+          "VOLUME": 105.8,
+          "UNIT": "MINUTE"
+        }
+      ]
+    }, null, 2);
+  };
 
   const handleGetData = async () => {
     if (selectedCryptos.length === 0) {
@@ -267,8 +304,21 @@ const DataUploads: React.FC = () => {
       }
       
       // Validate the data structure
-      if (!parsedData || !parsedData.Data || !Array.isArray(parsedData.Data) || parsedData.Data.length === 0) {
-        throw new Error('Invalid data format. Expected a JSON object with a "Data" array.');
+      if (!parsedData) {
+        throw new Error('Invalid JSON data: parsed result is null or undefined.');
+      }
+      
+      // Check if Data property exists and is an array
+      if (!parsedData.Data) {
+        throw new Error('Invalid data format: Missing "Data" property in JSON.');
+      }
+      
+      if (!Array.isArray(parsedData.Data)) {
+        throw new Error('Invalid data format: "Data" property must be an array.');
+      }
+      
+      if (parsedData.Data.length === 0) {
+        throw new Error('Invalid data format: "Data" array is empty.');
       }
       
       // Process the data
@@ -276,29 +326,60 @@ const DataUploads: React.FC = () => {
       const processStartTime = Date.now();
       
       // Prepare the data for saving
-      const formattedRecords = records.map(record => {
+      const formattedRecords = records.map((record, index) => {
+        // Skip null or undefined records
+        if (!record) {
+          console.warn(`Skipping null or undefined record at index ${index}`);
+          return null;
+        }
+        
         // Ensure required fields exist
-        if (!record.TIMESTAMP || !record.OPEN || !record.HIGH || !record.LOW || !record.CLOSE) {
-          throw new Error('Invalid record format. Each record must include TIMESTAMP, OPEN, HIGH, LOW, and CLOSE fields.');
+        if (record.TIMESTAMP === undefined || record.TIMESTAMP === null) {
+          throw new Error(`Missing TIMESTAMP field in record at index ${index}`);
+        }
+        
+        if (record.OPEN === undefined || record.OPEN === null) {
+          throw new Error(`Missing OPEN field in record at index ${index}`);
+        }
+        
+        if (record.HIGH === undefined || record.HIGH === null) {
+          throw new Error(`Missing HIGH field in record at index ${index}`);
+        }
+        
+        if (record.LOW === undefined || record.LOW === null) {
+          throw new Error(`Missing LOW field in record at index ${index}`);
+        }
+        
+        if (record.CLOSE === undefined || record.CLOSE === null) {
+          throw new Error(`Missing CLOSE field in record at index ${index}`);
         }
         
         // Convert UNIX timestamp to Date
         const timestamp = new Date(record.TIMESTAMP * 1000);
         
+        // Validate timestamp
+        if (isNaN(timestamp.getTime())) {
+          throw new Error(`Invalid timestamp value at index ${index}: ${record.TIMESTAMP}`);
+        }
+        
         return {
           symbol: selectedSymbol.toUpperCase(),
           timestamp,
           unit: record.UNIT || 'MINUTE',
-          open: record.OPEN,
-          high: record.HIGH,
-          low: record.LOW,
-          close: record.CLOSE,
-          volume: record.VOLUME || 0,
-          quoteVolume: record.QUOTE_VOLUME || 0,
+          open: parseFloat(record.OPEN),
+          high: parseFloat(record.HIGH),
+          low: parseFloat(record.LOW),
+          close: parseFloat(record.CLOSE),
+          volume: record.VOLUME !== undefined ? parseFloat(record.VOLUME) : 0,
+          quoteVolume: record.QUOTE_VOLUME !== undefined ? parseFloat(record.QUOTE_VOLUME) : 0,
           instrument: record.INSTRUMENT || `${selectedSymbol.toUpperCase()}-USD`,
           market: record.MARKET || 'MANUAL',
         };
-      });
+      }).filter(record => record !== null);
+      
+      if (formattedRecords.length === 0) {
+        throw new Error('No valid records found after processing.');
+      }
       
       // Save the data to the database
       const response = await fetch('/api/cryptos/historical-minutes', {
@@ -312,14 +393,66 @@ const DataUploads: React.FC = () => {
         }),
       });
       
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        console.error('Error saving manual data:', errorData);
-        throw new Error(errorData?.error || 'Failed to save data to the database.');
+      // Handle different response statuses
+      if (response.status === 202) {
+        // Partial success - some records were processed but not all
+        const result = await response.json();
+        const processingTime = Date.now() - processStartTime;
+        
+        toast({
+          title: 'Partial Data Processing',
+          description: `Processed ${result.savedCount} of ${result.totalRecords} records for ${selectedSymbol}. The remaining records were not processed due to time constraints.`,
+          variant: 'warning',
+        });
+        
+        // Clear the input after partial success
+        setJsonInput('');
+        setJsonParsingStatus('success');
+        
+        return; // Exit early
+      } else if (!response.ok) {
+        let errorMessage = 'Failed to save data to the database.';
+        
+        try {
+          const errorData = await response.json();
+          console.error('Error saving manual data:', errorData);
+          errorMessage = errorData?.error || errorMessage;
+          
+          if (errorData?.details) {
+            errorMessage += ` Details: ${errorData.details}`;
+          }
+          
+          // If there are invalid records, show more details
+          if (errorData?.invalidRecords && Array.isArray(errorData.invalidRecords) && errorData.invalidRecords.length > 0) {
+            const firstFewErrors = errorData.invalidRecords.slice(0, 3);
+            const errorDetails = firstFewErrors.map(err => `Record ${err.index}: ${err.reason}`).join('; ');
+            errorMessage += ` Invalid records: ${errorDetails}${errorData.invalidRecords.length > 3 ? ` and ${errorData.invalidRecords.length - 3} more...` : ''}`;
+          }
+        } catch (parseError) {
+          // If we can't parse the response as JSON, try to get the text
+          const errorText = await response.text().catch(() => null);
+          if (errorText) {
+            console.error('Error response text:', errorText);
+            errorMessage = `Server error: ${response.status} ${response.statusText}. ${errorText}`;
+          } else {
+            errorMessage = `Server error: ${response.status} ${response.statusText}`;
+          }
+        }
+        
+        throw new Error(errorMessage);
       }
       
       const result = await response.json();
       const processingTime = Date.now() - processStartTime;
+      
+      // Show information about invalid records if any
+      if (result.invalidRecordsCount && result.invalidRecordsCount > 0) {
+        toast({
+          variant: 'warning',
+          title: 'Some Records Skipped',
+          description: `${result.invalidRecordsCount} invalid records were skipped during processing.`,
+        });
+      }
       
       setJsonParsingStatus('success');
       
@@ -518,16 +651,24 @@ const DataUploads: React.FC = () => {
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <Label htmlFor="jsonInput">JSON Data</Label>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="text-muted-foreground text-sm cursor-help">Format Help ⓘ</div>
-                        </TooltipTrigger>
-                        <TooltipContent side="left" className="max-w-sm">
-                          <p className="text-sm">
-                            Paste JSON data in the following format:
-                          </p>
-                          <pre className="text-xs mt-2 bg-secondary p-2 rounded">
+                    <div className="flex items-center space-x-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => setJsonInput(getSampleJsonData())}
+                      >
+                        Load Sample
+                      </Button>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="text-muted-foreground text-sm cursor-help">Format Help ⓘ</div>
+                          </TooltipTrigger>
+                          <TooltipContent side="left" className="max-w-sm">
+                            <p className="text-sm">
+                              Paste JSON data in the following format:
+                            </p>
+                            <pre className="text-xs mt-2 bg-secondary p-2 rounded">
 {`{
   "Data": [
     {
@@ -541,20 +682,21 @@ const DataUploads: React.FC = () => {
     ...
   ]
 }`}
-                          </pre>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                            </pre>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
                   </div>
                   <Textarea 
                     id="jsonInput"
-                    placeholder="Paste JSON data here..."
+                    placeholder="Paste JSON data here or click 'Load Sample' to see an example..."
                     value={jsonInput}
                     onChange={(e) => setJsonInput(e.target.value)}
                     className="min-h-[200px] font-mono text-sm"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Paste the JSON response from the CoinDesk API or other compatible data source.
+                    Paste the JSON response from the CoinDesk API or other compatible data source. Make sure the TIMESTAMP field contains Unix timestamps (seconds since epoch).
                   </p>
                 </div>
                 

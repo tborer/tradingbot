@@ -50,9 +50,19 @@ async function handleManualDataUpload(req: NextApiRequest, res: NextApiResponse,
     // Validate request body
     const { records, symbol } = req.body;
     
-    if (!records || !Array.isArray(records) || records.length === 0) {
-      logWithTimestamp(`Invalid request body: missing or empty records array`);
+    if (!records) {
+      logWithTimestamp(`Invalid request body: records is null or undefined`);
       return res.status(400).json({ error: 'Records array is required' });
+    }
+    
+    if (!Array.isArray(records)) {
+      logWithTimestamp(`Invalid request body: records is not an array`);
+      return res.status(400).json({ error: 'Records must be an array' });
+    }
+    
+    if (records.length === 0) {
+      logWithTimestamp(`Invalid request body: records array is empty`);
+      return res.status(400).json({ error: 'Records array cannot be empty' });
     }
     
     if (!symbol || typeof symbol !== 'string') {
@@ -60,19 +70,108 @@ async function handleManualDataUpload(req: NextApiRequest, res: NextApiResponse,
       return res.status(400).json({ error: 'Symbol is required' });
     }
     
-    logWithTimestamp(`Processing ${records.length} manual records for ${symbol}`);
+    // Validate each record before processing
+    const validRecords: ManualDataRecord[] = [];
+    const invalidRecords: {index: number; reason: string}[] = [];
     
-    // Process and save the data in batches
-    const BATCH_SIZE = 50;
+    records.forEach((record: any, index: number) => {
+      if (!record) {
+        invalidRecords.push({index, reason: 'Record is null or undefined'});
+        return;
+      }
+      
+      // Check required fields
+      if (record.timestamp === undefined || record.timestamp === null) {
+        invalidRecords.push({index, reason: 'Missing timestamp field'});
+        return;
+      }
+      
+      if (record.open === undefined || record.open === null) {
+        invalidRecords.push({index, reason: 'Missing open field'});
+        return;
+      }
+      
+      if (record.high === undefined || record.high === null) {
+        invalidRecords.push({index, reason: 'Missing high field'});
+        return;
+      }
+      
+      if (record.low === undefined || record.low === null) {
+        invalidRecords.push({index, reason: 'Missing low field'});
+        return;
+      }
+      
+      if (record.close === undefined || record.close === null) {
+        invalidRecords.push({index, reason: 'Missing close field'});
+        return;
+      }
+      
+      // Validate timestamp
+      let timestamp: Date;
+      try {
+        timestamp = new Date(record.timestamp);
+        if (isNaN(timestamp.getTime())) {
+          invalidRecords.push({index, reason: `Invalid timestamp: ${record.timestamp}`});
+          return;
+        }
+      } catch (error) {
+        invalidRecords.push({index, reason: `Error parsing timestamp: ${error instanceof Error ? error.message : 'Unknown error'}`});
+        return;
+      }
+      
+      // Validate numeric fields
+      try {
+        const open = parseFloat(record.open);
+        const high = parseFloat(record.high);
+        const low = parseFloat(record.low);
+        const close = parseFloat(record.close);
+        const volume = record.volume !== undefined ? parseFloat(record.volume) : 0;
+        const quoteVolume = record.quoteVolume !== undefined ? parseFloat(record.quoteVolume) : 0;
+        
+        if (isNaN(open) || isNaN(high) || isNaN(low) || isNaN(close) || isNaN(volume) || isNaN(quoteVolume)) {
+          invalidRecords.push({index, reason: 'One or more numeric fields contain invalid values'});
+          return;
+        }
+        
+        validRecords.push({
+          symbol: symbol.toUpperCase(),
+          timestamp,
+          unit: record.unit || 'MINUTE',
+          open,
+          high,
+          low,
+          close,
+          volume,
+          quoteVolume,
+          instrument: record.instrument || `${symbol.toUpperCase()}-USD`,
+          market: record.market || 'MANUAL',
+        });
+      } catch (error) {
+        invalidRecords.push({index, reason: `Error parsing numeric fields: ${error instanceof Error ? error.message : 'Unknown error'}`});
+      }
+    });
+    
+    if (validRecords.length === 0) {
+      logWithTimestamp(`No valid records found after validation`);
+      return res.status(400).json({
+        error: 'No valid records to process',
+        invalidRecords
+      });
+    }
+    
+    logWithTimestamp(`Processing ${validRecords.length} valid manual records for ${symbol} (${invalidRecords.length} invalid records skipped)`);
+    
+    // Use a smaller batch size to prevent timeouts
+    const BATCH_SIZE = 25; // Reduced from 50 to 25
     const savedRecords = [];
     const errors = [];
-    const totalBatches = Math.ceil(records.length / BATCH_SIZE);
+    const totalBatches = Math.ceil(validRecords.length / BATCH_SIZE);
     const batchStartTime = Date.now();
     
     // Process data in batches to avoid timeouts
-    for (let i = 0; i < records.length; i += BATCH_SIZE) {
+    for (let i = 0; i < validRecords.length; i += BATCH_SIZE) {
       const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
-      const batch = records.slice(i, i + BATCH_SIZE);
+      const batch = validRecords.slice(i, i + BATCH_SIZE);
       const batchSize = batch.length;
       
       logWithTimestamp(`Processing batch ${batchNumber} of ${totalBatches} (${batchSize} records)`);
@@ -84,7 +183,7 @@ async function handleManualDataUpload(req: NextApiRequest, res: NextApiResponse,
             where: {
               symbol_timestamp: {
                 symbol: record.symbol.toUpperCase(),
-                timestamp: new Date(record.timestamp),
+                timestamp: record.timestamp,
               },
             },
             update: {
@@ -99,7 +198,7 @@ async function handleManualDataUpload(req: NextApiRequest, res: NextApiResponse,
             },
             create: {
               symbol: record.symbol.toUpperCase(),
-              timestamp: new Date(record.timestamp),
+              timestamp: record.timestamp,
               unit: record.unit || 'MINUTE',
               open: record.open,
               high: record.high,
@@ -121,6 +220,25 @@ async function handleManualDataUpload(req: NextApiRequest, res: NextApiResponse,
         savedRecords.push(...results);
         
         logWithTimestamp(`Successfully processed batch ${batchNumber}, saved ${results.length} records in ${batchDbDuration}ms`);
+        
+        // Check if we're approaching the timeout limit (10 seconds)
+        const elapsedTime = Date.now() - requestStartTime;
+        if (elapsedTime > 10000 && i + BATCH_SIZE < validRecords.length) {
+          // We're at risk of timeout, return partial results
+          logWithTimestamp(`Approaching timeout limit (${elapsedTime}ms), returning partial results`);
+          
+          return res.status(202).json({
+            success: true,
+            partial: true,
+            message: `Partially processed ${i + batchSize} of ${validRecords.length} records for ${symbol}`,
+            savedCount: savedRecords.length,
+            totalRecords: validRecords.length,
+            remainingRecords: validRecords.length - (i + batchSize),
+            processingTimeMs: Date.now() - batchStartTime,
+            totalTimeMs: Date.now() - requestStartTime,
+            invalidRecordsCount: invalidRecords.length,
+          });
+        }
       } catch (error) {
         logWithTimestamp(`Error processing batch ${batchNumber} for ${symbol}`, error);
         
@@ -134,7 +252,7 @@ async function handleManualDataUpload(req: NextApiRequest, res: NextApiResponse,
               where: {
                 symbol_timestamp: {
                   symbol: record.symbol.toUpperCase(),
-                  timestamp: new Date(record.timestamp),
+                  timestamp: record.timestamp,
                 },
               },
               update: {
@@ -149,7 +267,7 @@ async function handleManualDataUpload(req: NextApiRequest, res: NextApiResponse,
               },
               create: {
                 symbol: record.symbol.toUpperCase(),
-                timestamp: new Date(record.timestamp),
+                timestamp: record.timestamp,
                 unit: record.unit || 'MINUTE',
                 open: record.open,
                 high: record.high,
@@ -163,6 +281,24 @@ async function handleManualDataUpload(req: NextApiRequest, res: NextApiResponse,
             });
 
             savedRecords.push(savedRecord);
+            
+            // Check for timeout risk after each individual record
+            const elapsedTime = Date.now() - requestStartTime;
+            if (elapsedTime > 10000) {
+              logWithTimestamp(`Approaching timeout during individual processing (${elapsedTime}ms), returning partial results`);
+              
+              return res.status(202).json({
+                success: true,
+                partial: true,
+                message: `Partially processed records for ${symbol} (individual fallback mode)`,
+                savedCount: savedRecords.length,
+                totalRecords: validRecords.length,
+                processingTimeMs: Date.now() - batchStartTime,
+                totalTimeMs: Date.now() - requestStartTime,
+                invalidRecordsCount: invalidRecords.length,
+                errors: errors.length > 0 ? errors : undefined,
+              });
+            }
           } catch (error) {
             logWithTimestamp(`Error saving individual record for ${symbol}`, error);
             errors.push({
@@ -182,11 +318,12 @@ async function handleManualDataUpload(req: NextApiRequest, res: NextApiResponse,
 
     return res.status(200).json({
       success: true,
-      message: `Processed ${records.length} manual records for ${symbol}`,
+      message: `Processed ${validRecords.length} manual records for ${symbol}`,
       savedCount: savedRecords.length,
       errorCount: errors.length,
       processingTimeMs: totalProcessingTime,
       totalTimeMs: totalRequestTime,
+      invalidRecordsCount: invalidRecords.length,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {

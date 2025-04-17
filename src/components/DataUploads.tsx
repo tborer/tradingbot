@@ -27,6 +27,7 @@ const DataUploads: React.FC = () => {
   const [processingStatus, setProcessingStatus] = useState<Record<string, string>>({});
   const [dataLimit, setDataLimit] = useState<string>("200");
   const [timestampAdjustment, setTimestampAdjustment] = useState<string>("0");
+  const [collectFullDay, setCollectFullDay] = useState<boolean>(false);
   const [processingDetails, setProcessingDetails] = useState<Record<string, { total: number; saved: number; errors: number }>>({});
   const [activeTab, setActiveTab] = useState<string>("coindesk-api");
   const [jsonInput, setJsonInput] = useState<string>("");
@@ -179,81 +180,195 @@ const DataUploads: React.FC = () => {
       try {
         setProcessingStatus(prev => ({ ...prev, [symbol]: 'processing' }));
         
-        // Build URL with parameters
-        const url = new URL(`/api/cryptos/historical-minutes`, window.location.origin);
-        url.searchParams.append('symbol', symbol);
-        url.searchParams.append('limit', limit.toString());
+        // Track total records saved for this symbol across all batches
+        let totalSavedRecords = 0;
+        let totalProcessedRecords = 0;
+        let batchCount = 0;
+        let currentTimestamp = toTimestamp;
+        let targetTimestamp = null;
         
-        // Add to_ts parameter if timestamp adjustment is provided
-        if (toTimestamp) {
-          url.searchParams.append('to_ts', toTimestamp.toString());
+        // If collecting full day, calculate the target timestamp (24 hours before the current/adjusted timestamp)
+        if (collectFullDay) {
+          // Current timestamp or adjusted timestamp
+          const startTimestamp = toTimestamp || Math.floor(Date.now() / 1000);
+          // Target is 24 hours (86400 seconds) before the start timestamp
+          targetTimestamp = startTimestamp - 86400;
+          
+          toast({
+            title: 'Full Day Collection',
+            description: `Starting collection for ${symbol} until reaching data from ${new Date(targetTimestamp * 1000).toLocaleString()}`,
+          });
         }
         
-        const response = await fetch(url.toString());
+        // Flag to track if we should continue fetching data
+        let continueDataCollection = true;
         
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => null);
-          console.error(`API error for ${symbol}:`, { status: response.status, data: errorData });
+        // Keep track of the earliest timestamp we've seen
+        let earliestTimestampSeen = Number.MAX_SAFE_INTEGER;
+        
+        while (continueDataCollection) {
+          batchCount++;
           
-          let errorMessage = `Failed to fetch data for ${symbol}`;
-          let detailedError = '';
+          // Build URL with parameters
+          const url = new URL(`/api/cryptos/historical-minutes`, window.location.origin);
+          url.searchParams.append('symbol', symbol);
+          url.searchParams.append('limit', limit.toString());
           
-          if (errorData && errorData.error) {
-            errorMessage = errorData.error;
-            
-            // Try to parse and extract more detailed error information
-            if (errorData.details) {
-              console.error(`Error details:`, errorData.details);
-              
-              try {
-                // Try to parse the details if it's a JSON string
-                const parsedDetails = typeof errorData.details === 'string' 
-                  ? JSON.parse(errorData.details) 
-                  : errorData.details;
-                
-                // Check for CoinDesk API specific error messages
-                if (parsedDetails.Err && parsedDetails.Err.message) {
-                  detailedError = parsedDetails.Err.message;
-                  
-                  // If there's information about timestamp requirements, add it to the error
-                  if (parsedDetails.Err.other_info && 
-                      parsedDetails.Err.other_info.first && 
-                      parsedDetails.Err.other_info.param === 'to_ts') {
-                    const earliestTimestamp = parsedDetails.Err.other_info.first;
-                    const earliestDate = new Date(earliestTimestamp * 1000).toLocaleDateString();
-                    detailedError += ` Earliest available data is from ${earliestDate} (timestamp: ${earliestTimestamp}).`;
-                  }
-                }
-              } catch (parseError) {
-                // If parsing fails, use the raw details
-                detailedError = String(errorData.details);
-              }
-            }
+          // Add to_ts parameter if we have a timestamp
+          if (currentTimestamp) {
+            url.searchParams.append('to_ts', currentTimestamp.toString());
           }
           
-          throw new Error(detailedError || errorMessage);
+          console.log(`Fetching batch ${batchCount} for ${symbol} with timestamp: ${currentTimestamp || 'current'}`);
+          
+          const response = await fetch(url.toString());
+          
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => null);
+            console.error(`API error for ${symbol} (batch ${batchCount}):`, { status: response.status, data: errorData });
+            
+            let errorMessage = `Failed to fetch data for ${symbol} (batch ${batchCount})`;
+            let detailedError = '';
+            
+            if (errorData && errorData.error) {
+              errorMessage = errorData.error;
+              
+              // Try to parse and extract more detailed error information
+              if (errorData.details) {
+                console.error(`Error details:`, errorData.details);
+                
+                try {
+                  // Try to parse the details if it's a JSON string
+                  const parsedDetails = typeof errorData.details === 'string' 
+                    ? JSON.parse(errorData.details) 
+                    : errorData.details;
+                  
+                  // Check for CoinDesk API specific error messages
+                  if (parsedDetails.Err && parsedDetails.Err.message) {
+                    detailedError = parsedDetails.Err.message;
+                    
+                    // If there's information about timestamp requirements, add it to the error
+                    if (parsedDetails.Err.other_info && 
+                        parsedDetails.Err.other_info.first && 
+                        parsedDetails.Err.other_info.param === 'to_ts') {
+                      const earliestTimestamp = parsedDetails.Err.other_info.first;
+                      const earliestDate = new Date(earliestTimestamp * 1000).toLocaleDateString();
+                      detailedError += ` Earliest available data is from ${earliestDate} (timestamp: ${earliestTimestamp}).`;
+                    }
+                  }
+                } catch (parseError) {
+                  // If parsing fails, use the raw details
+                  detailedError = String(errorData.details);
+                }
+              }
+            }
+            
+            throw new Error(detailedError || errorMessage);
+          }
+          
+          const data = await response.json();
+          
+          // Update total counts
+          const batchSavedCount = data.savedCount || 0;
+          const batchTotalCount = data.message ? parseInt(data.message.match(/Processed (\d+) records/)?.[1] || '0') : 0;
+          
+          totalSavedRecords += batchSavedCount;
+          totalProcessedRecords += batchTotalCount;
+          
+          // Update processing details for this symbol
+          setProcessingDetails(prev => ({ 
+            ...prev, 
+            [symbol]: { 
+              total: totalProcessedRecords,
+              saved: totalSavedRecords,
+              errors: (prev[symbol]?.errors || 0) + (data.errorCount || 0)
+            } 
+          }));
+          
+          // Show batch success message
+          const processingTime = data.processingTimeMs ? `(${(data.processingTimeMs/1000).toFixed(1)}s)` : '';
+          
+          toast({
+            title: `Batch ${batchCount} Complete`,
+            description: `Saved ${batchSavedCount} records for ${symbol} ${processingTime}`,
+          });
+          
+          // If we're not collecting a full day, we're done after the first batch
+          if (!collectFullDay) {
+            continueDataCollection = false;
+          } else {
+            // Find the earliest timestamp in the data
+            if (data.Data && Array.isArray(data.Data)) {
+              // Find the earliest timestamp in this batch
+              let batchEarliestTimestamp = Number.MAX_SAFE_INTEGER;
+              
+              for (const record of data.Data) {
+                if (record.TIMESTAMP && record.TIMESTAMP < batchEarliestTimestamp) {
+                  batchEarliestTimestamp = record.TIMESTAMP;
+                }
+              }
+              
+              // Update the earliest timestamp we've seen
+              if (batchEarliestTimestamp < earliestTimestampSeen) {
+                earliestTimestampSeen = batchEarliestTimestamp;
+              }
+              
+              // Use the earliest timestamp for the next batch
+              currentTimestamp = batchEarliestTimestamp;
+              
+              console.log(`Earliest timestamp in batch ${batchCount}: ${batchEarliestTimestamp} (${new Date(batchEarliestTimestamp * 1000).toLocaleString()})`);
+              
+              // Check if we've reached our target timestamp
+              if (targetTimestamp && batchEarliestTimestamp <= targetTimestamp) {
+                console.log(`Reached target timestamp (${targetTimestamp}). Stopping data collection.`);
+                continueDataCollection = false;
+                
+                toast({
+                  title: 'Full Day Collection Complete',
+                  description: `Collected data for ${symbol} reaching ${new Date(batchEarliestTimestamp * 1000).toLocaleString()}`,
+                });
+              } else if (data.Data.length < limit) {
+                // If we got fewer records than requested, we've likely reached the end of available data
+                console.log(`Received fewer records (${data.Data.length}) than requested (${limit}). Stopping data collection.`);
+                continueDataCollection = false;
+                
+                toast({
+                  variant: 'warning',
+                  title: 'Data Collection Stopped',
+                  description: `Reached the limit of available data for ${symbol}`,
+                });
+              } else if (batchCount >= 10) {
+                // Safety limit to prevent infinite loops
+                console.log(`Reached maximum batch count (${batchCount}). Stopping data collection.`);
+                continueDataCollection = false;
+                
+                toast({
+                  variant: 'warning',
+                  title: 'Data Collection Stopped',
+                  description: `Reached maximum batch count (${batchCount}) for ${symbol}`,
+                });
+              }
+            } else {
+              // If we can't find data to determine the next timestamp, stop collection
+              console.log(`No data found to determine next timestamp. Stopping data collection.`);
+              continueDataCollection = false;
+              
+              toast({
+                variant: 'warning',
+                title: 'Data Collection Stopped',
+                description: `Could not determine next timestamp for ${symbol}`,
+              });
+            }
+          }
         }
         
-        const data = await response.json();
-        
-        // Update processing details
-        setProcessingDetails(prev => ({ 
-          ...prev, 
-          [symbol]: { 
-            total: data.message ? parseInt(data.message.match(/Processed (\d+) records/)?.[1] || '0') : 0,
-            saved: data.savedCount || 0,
-            errors: data.errorCount || 0
-          } 
-        }));
-        
+        // Update final status
         setProcessingStatus(prev => ({ ...prev, [symbol]: 'success' }));
         
-        // Show more detailed success message
-        const processingTime = data.processingTimeMs ? `(${(data.processingTimeMs/1000).toFixed(1)}s)` : '';
-        
+        // Show final success message
         toast({
-          title: 'Data Fetched',
-          description: `Successfully fetched and saved ${data.savedCount || 0} records for ${symbol} ${processingTime}.`,
+          title: 'Data Collection Complete',
+          description: `Successfully fetched and saved ${totalSavedRecords} records for ${symbol} in ${batchCount} batch(es).`,
         });
       } catch (error) {
         console.error(`Error fetching data for ${symbol}:`, error);
@@ -571,6 +686,31 @@ const DataUploads: React.FC = () => {
                     <p>
                       Earliest valid timestamp: 1279324800 (July 17, 2010)
                     </p>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2 mt-2">
+                    <Checkbox 
+                      id="collectFullDay" 
+                      checked={collectFullDay}
+                      onCheckedChange={(checked) => setCollectFullDay(checked === true)}
+                    />
+                    <Label htmlFor="collectFullDay" className="text-sm font-normal">
+                      Collect full 24 hours of data
+                    </Label>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="text-muted-foreground text-sm">ⓘ</div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs">
+                            When checked, the API will run repeatedly until a full 24 hours of data is collected.
+                            Each run will use the earliest timestamp from the previous batch as the starting point
+                            for the next batch.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                 </div>
                 

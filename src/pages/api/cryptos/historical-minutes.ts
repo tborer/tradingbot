@@ -607,6 +607,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const totalRequestTime = Date.now() - requestStartTime;
     logWithTimestamp(`Total request processing time: ${totalRequestTime}ms`);
 
+    // Find the earliest timestamp in the data for client-side processing
+    let earliestTimestamp = Number.MAX_SAFE_INTEGER;
+    if (data.Data && Array.isArray(data.Data)) {
+      for (const record of data.Data) {
+        if (record.TIMESTAMP && record.TIMESTAMP < earliestTimestamp) {
+          earliestTimestamp = record.TIMESTAMP;
+        }
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: `Processed ${data.Data.length} records for ${symbol}`,
@@ -615,6 +625,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       processingTimeMs: totalProcessingTime,
       totalTimeMs: totalRequestTime,
       errors: errors.length > 0 ? errors : undefined,
+      earliestTimestamp: earliestTimestamp !== Number.MAX_SAFE_INTEGER ? earliestTimestamp : null,
+      Data: data.Data // Include the raw data for client-side processing
     });
   } catch (error) {
     const totalRequestTime = Date.now() - requestStartTime;

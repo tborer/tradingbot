@@ -147,6 +147,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const normalizedSymbol = symbol.toUpperCase();
     console.log(`[${requestId}] Normalized symbol from ${symbol} to ${normalizedSymbol}`);
     
+    // Log that we're using CryptoHistoricalData table directly
+    console.log(`[${requestId}] Using CryptoHistoricalData table directly for trend analysis of ${normalizedSymbol}`);
+    
 
     console.log(`[${requestId}] Processing trend analysis for symbol: ${symbol}`);
 

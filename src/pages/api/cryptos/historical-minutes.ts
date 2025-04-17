@@ -3,64 +3,79 @@ import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
 
 // Define batch size to prevent timeouts
-const DEFAULT_LIMIT = 2000; // Updated from 500
+const DEFAULT_LIMIT = 2000;
 const BATCH_SIZE = 50; // Number of records to process in a single database operation
+const REQUEST_TIMEOUT = 60000; // 60 seconds timeout for API requests
+
+// Helper function for enhanced logging
+const logWithTimestamp = (message: string, data?: any) => {
+  const timestamp = new Date().toISOString();
+  if (data) {
+    console.log(`[${timestamp}] ${message}`, data);
+  } else {
+    console.log(`[${timestamp}] ${message}`);
+  }
+};
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const requestStartTime = Date.now();
+  logWithTimestamp(`Historical minutes API request started`);
+  
   if (req.method !== 'GET') {
+    logWithTimestamp(`Method not allowed: ${req.method}`);
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { symbol, limit, days, to_ts } = req.query;
+  const { symbol, limit, to_ts } = req.query;
 
   if (!symbol || typeof symbol !== 'string') {
+    logWithTimestamp(`Missing required parameter: symbol`);
     return res.status(400).json({ error: 'Symbol is required' });
   }
   
   // Parse limit parameter or use default
   const dataLimit = limit && !isNaN(Number(limit)) ? Math.min(Number(limit), DEFAULT_LIMIT) : DEFAULT_LIMIT;
-  
-  // Calculate start date if days parameter is provided
-  let startDate: Date | undefined;
-  if (days && !isNaN(Number(days))) {
-    startDate = new Date();
-    startDate.setDate(startDate.getDate() - Number(days));
-  }
+  logWithTimestamp(`Using data limit: ${dataLimit}`);
   
   // Parse to_ts parameter if provided
   let toTimestamp: number | undefined;
   if (to_ts && !isNaN(Number(to_ts))) {
     toTimestamp = Number(to_ts);
-    console.log(`Using custom timestamp: ${toTimestamp}`);
+    logWithTimestamp(`Using custom timestamp: ${toTimestamp}`);
+  } else {
+    logWithTimestamp(`No custom timestamp provided, using current time`);
   }
 
   try {
     // Get the authenticated user
+    logWithTimestamp(`Authenticating user`);
     const supabase = createClient(req, res);
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      console.error('Authentication error:', authError);
+      logWithTimestamp(`Authentication error`, authError);
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    logWithTimestamp(`User authenticated: ${user.id}`);
 
     // Fetch historical data from CoinDesk API
     const coinDeskApiKey = process.env.NEXT_PUBLIC_COINDESK_API_KEY;
     if (!coinDeskApiKey) {
+      logWithTimestamp(`CoinDesk API key not configured`);
       return res.status(500).json({ error: 'CoinDesk API key is not configured' });
     }
 
     // Format the instrument based on the symbol
     const instrument = `${symbol.toUpperCase()}-USD`;
     
-    console.log(`Preparing to fetch historical data for ${symbol} from CoinDesk API`);
+    logWithTimestamp(`Preparing to fetch historical data for ${symbol} from CoinDesk API`);
     
-    // Construct the full URL with API key as a query parameter (as used in coinDesk.ts)
+    // Construct the full URL with API key as a query parameter
     const baseUrl = 'https://data-api.coindesk.com/index/cc/v1/historical/minutes';
     const params: Record<string, string> = {
       "market": "cadli",
       "instrument": instrument,
-      "api_key": coinDeskApiKey, // API key as query parameter instead of header
+      "api_key": coinDeskApiKey,
       "limit": dataLimit.toString(),
       "aggregate": "1",
       "fill": "true",
@@ -68,62 +83,83 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       "response_format": "JSON"
     };
     
-    // Add start_time parameter if days was specified
-    if (startDate) {
-      // Convert to Unix timestamp (seconds)
-      const startTimestamp = Math.floor(startDate.getTime() / 1000);
-      params["start_time"] = startTimestamp.toString();
-    }
-    
     // Add to_ts parameter if provided
     if (toTimestamp) {
       params["to_ts"] = toTimestamp.toString();
-      console.log(`Adding to_ts parameter: ${toTimestamp}`);
+      logWithTimestamp(`Adding to_ts parameter: ${toTimestamp}`);
     }
     
     // Create URL with parameters using URLSearchParams
     const url = new URL(baseUrl);
     url.search = new URLSearchParams(params).toString();
     
-    console.log(`Fetching historical data for ${symbol} from CoinDesk API: ${url.toString()}`);
+    logWithTimestamp(`Fetching historical data for ${symbol} from CoinDesk API: ${url.toString().replace(coinDeskApiKey, '[REDACTED]')}`);
     
-    // Make the API request with the correct headers
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        "Content-type": "application/json; charset=UTF-8"
-      }
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`CoinDesk API error (${response.status}):`, errorText);
-      return res.status(response.status).json({ 
-        error: `Failed to fetch data from CoinDesk API: ${response.statusText}`,
-        details: errorText
+    // Create AbortController for timeout handling
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+    
+    try {
+      // Make the API request with the correct headers and timeout
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          "Content-type": "application/json; charset=UTF-8"
+        },
+        signal: controller.signal
       });
-    }
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        logWithTimestamp(`CoinDesk API error (${response.status})`, errorText);
+        return res.status(response.status).json({ 
+          error: `Failed to fetch data from CoinDesk API: ${response.statusText}`,
+          details: errorText,
+          statusCode: response.status
+        });
+      }
 
-    const data = await response.json();
-    
-    if (!data.Data || !Array.isArray(data.Data) || data.Data.length === 0) {
-      console.error('No data returned from CoinDesk API:', data);
-      return res.status(404).json({ error: 'No data found for the specified symbol' });
-    }
+      const data = await response.json();
+      
+      if (!data.Data || !Array.isArray(data.Data) || data.Data.length === 0) {
+        logWithTimestamp(`No data returned from CoinDesk API`, data);
+        return res.status(404).json({ 
+          error: 'No data found for the specified symbol',
+          apiResponse: data
+        });
+      }
 
-    console.log(`Received ${data.Data.length} records for ${symbol}`);
+      logWithTimestamp(`Received ${data.Data.length} records for ${symbol}`);
+    } catch (fetchError) {
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        logWithTimestamp(`Request timeout after ${REQUEST_TIMEOUT/1000} seconds`);
+        return res.status(504).json({ 
+          error: 'Request timeout', 
+          details: `The request to CoinDesk API timed out after ${REQUEST_TIMEOUT/1000} seconds`
+        });
+      }
+      throw fetchError; // Re-throw to be caught by the outer try-catch
+    }
 
     // Process and save the data in batches
     const savedRecords = [];
     const errors = [];
     const recordsToProcess = data.Data;
     
-    console.log(`Processing ${recordsToProcess.length} records in batches of ${BATCH_SIZE}`);
+    logWithTimestamp(`Processing ${recordsToProcess.length} records in batches of ${BATCH_SIZE}`);
+    
+    const totalBatches = Math.ceil(recordsToProcess.length / BATCH_SIZE);
+    const batchStartTime = Date.now();
     
     // Process data in batches to avoid timeouts
     for (let i = 0; i < recordsToProcess.length; i += BATCH_SIZE) {
+      const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
       const batch = recordsToProcess.slice(i, i + BATCH_SIZE);
-      console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(recordsToProcess.length / BATCH_SIZE)} (${batch.length} records)`);
+      const batchSize = batch.length;
+      
+      logWithTimestamp(`Processing batch ${batchNumber} of ${totalBatches} (${batchSize} records)`);
       
       try {
         // Prepare batch operations
@@ -165,15 +201,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
         
         // Execute all operations in the batch
+        const batchDbStartTime = Date.now();
         const results = await prisma.$transaction(operations);
+        const batchDbDuration = Date.now() - batchDbStartTime;
+        
         savedRecords.push(...results);
         
-        console.log(`Successfully processed batch ${Math.floor(i / BATCH_SIZE) + 1}, saved ${results.length} records`);
+        logWithTimestamp(`Successfully processed batch ${batchNumber}, saved ${results.length} records in ${batchDbDuration}ms`);
       } catch (error) {
-        console.error(`Error processing batch for ${symbol}:`, error);
+        logWithTimestamp(`Error processing batch ${batchNumber} for ${symbol}`, error);
         
         // If batch operation fails, try individual records
-        console.log(`Falling back to individual processing for batch ${Math.floor(i / BATCH_SIZE) + 1}`);
+        logWithTimestamp(`Falling back to individual processing for batch ${batchNumber}`);
         
         for (const record of batch) {
           try {
@@ -215,7 +254,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
             savedRecords.push(savedRecord);
           } catch (error) {
-            console.error(`Error saving individual record for ${symbol}:`, error);
+            logWithTimestamp(`Error saving individual record for ${symbol}`, error);
             errors.push({
               timestamp: record.TIMESTAMP,
               error: error instanceof Error ? error.message : 'Unknown error',
@@ -224,23 +263,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
     }
+    
+    const totalProcessingTime = Date.now() - batchStartTime;
+    logWithTimestamp(`Completed processing all batches in ${totalProcessingTime}ms`);
+    
+    const totalRequestTime = Date.now() - requestStartTime;
+    logWithTimestamp(`Total request processing time: ${totalRequestTime}ms`);
 
     return res.status(200).json({
       success: true,
       message: `Processed ${data.Data.length} records for ${symbol}`,
       savedCount: savedRecords.length,
       errorCount: errors.length,
+      processingTimeMs: totalProcessingTime,
+      totalTimeMs: totalRequestTime,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {
-    console.error('Error processing historical data:', error);
+    const totalRequestTime = Date.now() - requestStartTime;
+    logWithTimestamp(`Error processing historical data after ${totalRequestTime}ms`, error);
     
-    // Provide more detailed error information
+    // Provide detailed error information
     let errorDetails = 'Unknown error';
     let errorMessage = 'Failed to process historical data';
+    let errorType = 'unknown';
     
     if (error instanceof Error) {
       errorDetails = error.message;
+      errorType = error.name;
       
       // Check for network-related errors
       if (error.message === 'fetch failed' && 'cause' in error) {
@@ -248,13 +298,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (cause && cause.code) {
           errorDetails = `Network error: ${cause.code} - ${cause.hostname || ''}`;
           errorMessage = 'Failed to connect to CoinDesk API';
+          errorType = 'network';
         }
       }
+      
+      // Check for timeout errors
+      if (error.name === 'AbortError' || error.message.includes('timeout')) {
+        errorMessage = 'Request timed out';
+        errorType = 'timeout';
+      }
+      
+      // Check for database errors
+      if (error.message.includes('prisma') || error.message.includes('database')) {
+        errorMessage = 'Database operation failed';
+        errorType = 'database';
+      }
     }
+    
+    logWithTimestamp(`Returning error response: ${errorType} - ${errorMessage}`);
     
     return res.status(500).json({
       error: errorMessage,
       details: errorDetails,
+      type: errorType,
+      requestDurationMs: totalRequestTime,
+      timestamp: new Date().toISOString()
     });
   }
 }

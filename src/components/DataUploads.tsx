@@ -24,7 +24,6 @@ const DataUploads: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<Record<string, string>>({});
   const [dataLimit, setDataLimit] = useState<string>("200");
-  const [timeRange, setTimeRange] = useState<string>("7");
   const [timestampAdjustment, setTimestampAdjustment] = useState<string>("0");
   const [processingDetails, setProcessingDetails] = useState<Record<string, { total: number; saved: number; errors: number }>>({});
 
@@ -91,7 +90,6 @@ const DataUploads: React.FC = () => {
 
     // Validate inputs
     const limit = parseInt(dataLimit);
-    const days = parseInt(timeRange);
     const adjustment = parseInt(timestampAdjustment);
     
     if (isNaN(limit) || limit <= 0) {
@@ -104,16 +102,6 @@ const DataUploads: React.FC = () => {
       return;
     }
     
-    if (isNaN(days) || days <= 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Invalid Time Range',
-        description: 'Please enter a valid number of days for the time range.',
-      });
-      setIsProcessing(false);
-      return;
-    }
-
     if (isNaN(adjustment)) {
       toast({
         variant: 'destructive',
@@ -140,7 +128,6 @@ const DataUploads: React.FC = () => {
         const url = new URL(`/api/cryptos/historical-minutes`, window.location.origin);
         url.searchParams.append('symbol', symbol);
         url.searchParams.append('limit', limit.toString());
-        url.searchParams.append('days', days.toString());
         
         // Add to_ts parameter if timestamp adjustment is provided
         if (toTimestamp) {
@@ -150,7 +137,18 @@ const DataUploads: React.FC = () => {
         const response = await fetch(url.toString());
         
         if (!response.ok) {
-          throw new Error(`Failed to fetch data for ${symbol}`);
+          const errorData = await response.json().catch(() => null);
+          console.error(`API error for ${symbol}:`, { status: response.status, data: errorData });
+          
+          let errorMessage = `Failed to fetch data for ${symbol}`;
+          if (errorData && errorData.error) {
+            errorMessage = errorData.error;
+            if (errorData.details) {
+              console.error(`Error details:`, errorData.details);
+            }
+          }
+          
+          throw new Error(errorMessage);
         }
         
         const data = await response.json();
@@ -167,18 +165,24 @@ const DataUploads: React.FC = () => {
         
         setProcessingStatus(prev => ({ ...prev, [symbol]: 'success' }));
         
+        // Show more detailed success message
+        const processingTime = data.processingTimeMs ? `(${(data.processingTimeMs/1000).toFixed(1)}s)` : '';
+        
         toast({
           title: 'Data Fetched',
-          description: `Successfully fetched and saved ${data.savedCount || 0} records for ${symbol}.`,
+          description: `Successfully fetched and saved ${data.savedCount || 0} records for ${symbol} ${processingTime}.`,
         });
       } catch (error) {
         console.error(`Error fetching data for ${symbol}:`, error);
         setProcessingStatus(prev => ({ ...prev, [symbol]: 'error' }));
         
+        // Provide more detailed error message
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        
         toast({
           variant: 'destructive',
           title: 'Error',
-          description: `Failed to fetch data for ${symbol}. Please try again.`,
+          description: errorMessage,
         });
       }
     }
@@ -217,7 +221,7 @@ const DataUploads: React.FC = () => {
             </DialogHeader>
             
             {/* Data fetching options */}
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="mb-4">
               <div className="space-y-2">
                 <Label htmlFor="dataLimit">Data Limit (records)</Label>
                 <Input
@@ -230,21 +234,6 @@ const DataUploads: React.FC = () => {
                   placeholder="200"
                 />
                 <p className="text-xs text-muted-foreground">Max: 2000 records</p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="timeRange">Time Range (days)</Label>
-                <Select value={timeRange} onValueChange={setTimeRange}>
-                  <SelectTrigger id="timeRange">
-                    <SelectValue placeholder="Select days" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">1 day</SelectItem>
-                    <SelectItem value="3">3 days</SelectItem>
-                    <SelectItem value="7">7 days</SelectItem>
-                    <SelectItem value="14">14 days</SelectItem>
-                    <SelectItem value="30">30 days</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
             </div>
             

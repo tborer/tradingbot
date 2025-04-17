@@ -41,6 +41,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   let toTimestamp: number | undefined;
   if (to_ts && !isNaN(Number(to_ts))) {
     toTimestamp = Number(to_ts);
+    
+    // Validate timestamp is not earlier than the earliest available data
+    // July 17, 2010 in Unix timestamp (earliest BTC data available)
+    const earliestBTCTimestamp = 1279324800;
+    if (toTimestamp < earliestBTCTimestamp) {
+      logWithTimestamp(`Timestamp ${toTimestamp} is earlier than the earliest available data (${earliestBTCTimestamp}). Adjusting to earliest available.`);
+      toTimestamp = earliestBTCTimestamp;
+    }
+    
     logWithTimestamp(`Using custom timestamp: ${toTimestamp}`);
   } else {
     logWithTimestamp(`No custom timestamp provided, using current time`);

@@ -90,7 +90,7 @@ const DataUploads: React.FC = () => {
 
     // Validate inputs
     const limit = parseInt(dataLimit);
-    const adjustment = parseInt(timestampAdjustment);
+    const adjustmentMinutes = parseInt(timestampAdjustment);
     
     if (isNaN(limit) || limit <= 0) {
       toast({
@@ -102,7 +102,7 @@ const DataUploads: React.FC = () => {
       return;
     }
     
-    if (isNaN(adjustment)) {
+    if (isNaN(adjustmentMinutes)) {
       toast({
         variant: 'destructive',
         title: 'Invalid Timestamp Adjustment',
@@ -114,9 +114,21 @@ const DataUploads: React.FC = () => {
 
     // Calculate adjusted timestamp if needed
     let toTimestamp;
-    if (adjustment > 0) {
-      // Get current timestamp in seconds and subtract the adjustment
-      toTimestamp = Math.floor(Date.now() / 1000) - adjustment;
+    if (adjustmentMinutes > 0) {
+      // Convert minutes to seconds and subtract from current timestamp
+      const adjustmentSeconds = adjustmentMinutes * 60;
+      toTimestamp = Math.floor(Date.now() / 1000) - adjustmentSeconds;
+      
+      // Ensure timestamp is not earlier than the earliest available data (July 17, 2010)
+      const earliestBTCTimestamp = 1279324800; // July 17, 2010 in Unix timestamp
+      if (toTimestamp < earliestBTCTimestamp) {
+        toast({
+          variant: 'warning',
+          title: 'Timestamp Adjusted',
+          description: `Timestamp was too early. Using the earliest available data point (July 17, 2010).`,
+        });
+        toTimestamp = earliestBTCTimestamp;
+      }
     }
 
     // Process each selected crypto
@@ -141,14 +153,42 @@ const DataUploads: React.FC = () => {
           console.error(`API error for ${symbol}:`, { status: response.status, data: errorData });
           
           let errorMessage = `Failed to fetch data for ${symbol}`;
+          let detailedError = '';
+          
           if (errorData && errorData.error) {
             errorMessage = errorData.error;
+            
+            // Try to parse and extract more detailed error information
             if (errorData.details) {
               console.error(`Error details:`, errorData.details);
+              
+              try {
+                // Try to parse the details if it's a JSON string
+                const parsedDetails = typeof errorData.details === 'string' 
+                  ? JSON.parse(errorData.details) 
+                  : errorData.details;
+                
+                // Check for CoinDesk API specific error messages
+                if (parsedDetails.Err && parsedDetails.Err.message) {
+                  detailedError = parsedDetails.Err.message;
+                  
+                  // If there's information about timestamp requirements, add it to the error
+                  if (parsedDetails.Err.other_info && 
+                      parsedDetails.Err.other_info.first && 
+                      parsedDetails.Err.other_info.param === 'to_ts') {
+                    const earliestTimestamp = parsedDetails.Err.other_info.first;
+                    const earliestDate = new Date(earliestTimestamp * 1000).toLocaleDateString();
+                    detailedError += ` Earliest available data is from ${earliestDate} (timestamp: ${earliestTimestamp}).`;
+                  }
+                }
+              } catch (parseError) {
+                // If parsing fails, use the raw details
+                detailedError = String(errorData.details);
+              }
             }
           }
           
-          throw new Error(errorMessage);
+          throw new Error(detailedError || errorMessage);
         }
         
         const data = await response.json();
@@ -248,8 +288,8 @@ const DataUploads: React.FC = () => {
                   </TooltipTrigger>
                   <TooltipContent>
                     <p className="max-w-xs">
-                      Enter a value to adjust the current timestamp. For example, enter 60 to go back 1 hour, 
-                      1440 to go back 1 day, etc. This value is subtracted from the current timestamp.
+                      Enter a value in minutes to adjust the current timestamp. For example, enter 60 to go back 1 hour, 
+                      1440 to go back 1 day, etc. This value is converted to seconds and subtracted from the current timestamp.
                     </p>
                   </TooltipContent>
                 </Tooltip>
@@ -262,10 +302,21 @@ const DataUploads: React.FC = () => {
                 min="0"
                 placeholder="0"
               />
-              <p className="text-xs text-muted-foreground">
-                Current timestamp: {Math.floor(Date.now() / 1000)}
-                {parseInt(timestampAdjustment) > 0 && ` → Adjusted: ${Math.floor(Date.now() / 1000) - parseInt(timestampAdjustment)}`}
-              </p>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>
+                  Current timestamp: {Math.floor(Date.now() / 1000)}
+                </p>
+                {parseInt(timestampAdjustment) > 0 && (
+                  <p>
+                    Adjusted timestamp: {Math.floor(Date.now() / 1000) - (parseInt(timestampAdjustment) * 60)}
+                    {Math.floor(Date.now() / 1000) - (parseInt(timestampAdjustment) * 60) < 1279324800 && 
+                      " (will be capped at 1279324800)"}
+                  </p>
+                )}
+                <p>
+                  Earliest valid timestamp: 1279324800 (July 17, 2010)
+                </p>
+              </div>
             </div>
             
             <div className="flex items-center space-x-2 mb-4">

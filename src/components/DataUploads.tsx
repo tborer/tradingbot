@@ -224,46 +224,84 @@ const DataUploads: React.FC = () => {
           const response = await fetch(url.toString());
           
           if (!response.ok) {
-            const errorData = await response.json().catch(() => null);
-            console.error(`API error for ${symbol} (batch ${batchCount}):`, { status: response.status, data: errorData });
-            
-            let errorMessage = `Failed to fetch data for ${symbol} (batch ${batchCount})`;
-            let detailedError = '';
-            
-            if (errorData && errorData.error) {
-              errorMessage = errorData.error;
+            // Handle different error status codes differently
+            if (response.status === 504) {
+              console.error(`Timeout error for ${symbol} (batch ${batchCount}):`, { status: response.status });
               
-              // Try to parse and extract more detailed error information
-              if (errorData.details) {
-                console.error(`Error details:`, errorData.details);
+              // For timeout errors, we'll try again with a smaller limit
+              const reducedLimit = Math.floor(limit / 2);
+              if (reducedLimit >= 10) {
+                console.log(`Retrying with reduced limit of ${reducedLimit} for ${symbol} (batch ${batchCount})`);
                 
-                try {
-                  // Try to parse the details if it's a JSON string
-                  const parsedDetails = typeof errorData.details === 'string' 
-                    ? JSON.parse(errorData.details) 
-                    : errorData.details;
+                toast({
+                  variant: 'warning',
+                  title: 'Request Timeout',
+                  description: `Retrying with smaller batch size for ${symbol}`,
+                });
+                
+                // Update the limit for future requests
+                url.searchParams.set('limit', reducedLimit.toString());
+                
+                // Try the request again with the reduced limit
+                const retryResponse = await fetch(url.toString());
+                
+                if (!retryResponse.ok) {
+                  // If retry also fails, throw error
+                  const retryErrorData = await retryResponse.json().catch(() => null);
+                  console.error(`Retry also failed for ${symbol} (batch ${batchCount}):`, { status: retryResponse.status, data: retryErrorData });
+                  throw new Error(`Failed to fetch data for ${symbol} (batch ${batchCount}) even with reduced limit`);
+                }
+                
+                // If retry succeeds, continue with the data
+                const retryData = await retryResponse.json();
+                return retryData;
+              } else {
+                // If we can't reduce the limit further, throw error
+                throw new Error(`Timeout error fetching data for ${symbol} (batch ${batchCount}). Try with a smaller limit.`);
+              }
+            } else {
+              // Handle other error types
+              const errorData = await response.json().catch(() => null);
+              console.error(`API error for ${symbol} (batch ${batchCount}):`, { status: response.status, data: errorData });
+              
+              let errorMessage = `Failed to fetch data for ${symbol} (batch ${batchCount})`;
+              let detailedError = '';
+              
+              if (errorData && errorData.error) {
+                errorMessage = errorData.error;
+                
+                // Try to parse and extract more detailed error information
+                if (errorData.details) {
+                  console.error(`Error details:`, errorData.details);
                   
-                  // Check for CoinDesk API specific error messages
-                  if (parsedDetails.Err && parsedDetails.Err.message) {
-                    detailedError = parsedDetails.Err.message;
+                  try {
+                    // Try to parse the details if it's a JSON string
+                    const parsedDetails = typeof errorData.details === 'string' 
+                      ? JSON.parse(errorData.details) 
+                      : errorData.details;
                     
-                    // If there's information about timestamp requirements, add it to the error
-                    if (parsedDetails.Err.other_info && 
-                        parsedDetails.Err.other_info.first && 
-                        parsedDetails.Err.other_info.param === 'to_ts') {
-                      const earliestTimestamp = parsedDetails.Err.other_info.first;
-                      const earliestDate = new Date(earliestTimestamp * 1000).toLocaleDateString();
-                      detailedError += ` Earliest available data is from ${earliestDate} (timestamp: ${earliestTimestamp}).`;
+                    // Check for CoinDesk API specific error messages
+                    if (parsedDetails.Err && parsedDetails.Err.message) {
+                      detailedError = parsedDetails.Err.message;
+                      
+                      // If there's information about timestamp requirements, add it to the error
+                      if (parsedDetails.Err.other_info && 
+                          parsedDetails.Err.other_info.first && 
+                          parsedDetails.Err.other_info.param === 'to_ts') {
+                        const earliestTimestamp = parsedDetails.Err.other_info.first;
+                        const earliestDate = new Date(earliestTimestamp * 1000).toLocaleDateString();
+                        detailedError += ` Earliest available data is from ${earliestDate} (timestamp: ${earliestTimestamp}).`;
+                      }
                     }
+                  } catch (parseError) {
+                    // If parsing fails, use the raw details
+                    detailedError = String(errorData.details);
                   }
-                } catch (parseError) {
-                  // If parsing fails, use the raw details
-                  detailedError = String(errorData.details);
                 }
               }
+              
+              throw new Error(detailedError || errorMessage);
             }
-            
-            throw new Error(detailedError || errorMessage);
           }
           
           const data = await response.json();
@@ -304,20 +342,31 @@ const DataUploads: React.FC = () => {
           if (!collectFullDay) {
             continueDataCollection = false;
           } else {
-            // Check if we have the earliest timestamp directly from the API response
-            if (data.earliestTimestamp) {
-              // Use the earliest timestamp provided by the API
+            // Check if we have the nextBatchTimestamp directly from the API response
+            if (data.nextBatchTimestamp) {
+              // Use the nextBatchTimestamp provided by the API
+              const nextTimestamp = data.nextBatchTimestamp;
+              
+              // Use the next batch timestamp for the next batch
+              currentTimestamp = nextTimestamp;
+              
+              console.log(`Using next batch timestamp from API response: ${nextTimestamp} (${new Date(nextTimestamp * 1000).toLocaleString()})`);
+            }
+            // Fallback to using earliestTimestamp if available
+            else if (data.earliestTimestamp) {
+              // Use the earliest timestamp provided by the API and subtract 60 seconds (1 minute)
               const batchEarliestTimestamp = data.earliestTimestamp;
+              const nextTimestamp = batchEarliestTimestamp - 60;
               
               // Update the earliest timestamp we've seen
               if (batchEarliestTimestamp < earliestTimestampSeen) {
                 earliestTimestampSeen = batchEarliestTimestamp;
               }
               
-              // Use the earliest timestamp for the next batch
-              currentTimestamp = batchEarliestTimestamp;
+              // Use the calculated next timestamp for the next batch
+              currentTimestamp = nextTimestamp;
               
-              console.log(`Using earliest timestamp from API response: ${batchEarliestTimestamp} (${new Date(batchEarliestTimestamp * 1000).toLocaleString()})`);
+              console.log(`Using calculated next timestamp (earliest - 60s): ${nextTimestamp} (${new Date(nextTimestamp * 1000).toLocaleString()})`);
             } 
             // Fallback to finding the earliest timestamp in the data if available
             else if (data.Data && Array.isArray(data.Data)) {
@@ -330,15 +379,18 @@ const DataUploads: React.FC = () => {
                 }
               }
               
+              // Calculate the next timestamp by subtracting 60 seconds (1 minute)
+              const nextTimestamp = batchEarliestTimestamp - 60;
+              
               // Update the earliest timestamp we've seen
               if (batchEarliestTimestamp < earliestTimestampSeen) {
                 earliestTimestampSeen = batchEarliestTimestamp;
               }
               
-              // Use the earliest timestamp for the next batch
-              currentTimestamp = batchEarliestTimestamp;
+              // Use the calculated next timestamp for the next batch
+              currentTimestamp = nextTimestamp;
               
-              console.log(`Earliest timestamp in batch ${batchCount}: ${batchEarliestTimestamp} (${new Date(batchEarliestTimestamp * 1000).toLocaleString()})`);
+              console.log(`Calculated next timestamp for batch ${batchCount + 1}: ${nextTimestamp} (${new Date(nextTimestamp * 1000).toLocaleString()})`);
               
               // Check if we've reached our target timestamp
               if (targetTimestamp && batchEarliestTimestamp <= targetTimestamp) {

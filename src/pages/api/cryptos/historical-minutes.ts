@@ -5,7 +5,7 @@ import prisma from '@/lib/prisma';
 // Define batch size to prevent timeouts
 const DEFAULT_LIMIT = 2000;
 const BATCH_SIZE = 50; // Number of records to process in a single database operation
-const REQUEST_TIMEOUT = 60000; // 60 seconds timeout for API requests
+const REQUEST_TIMEOUT = 30000; // 30 seconds timeout for API requests to avoid Vercel function timeout
 
 // Helper function for enhanced logging
 const logWithTimestamp = (message: string, data?: any) => {
@@ -606,6 +606,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         }
       }
+      
+      // Calculate the next timestamp to use for batch processing
+      // Subtract 60 seconds (1 minute) from the earliest timestamp to ensure we get the next batch
+      // without any overlap or gaps
+      const nextBatchTimestamp = earliestTimestamp !== Number.MAX_SAFE_INTEGER ? 
+        earliestTimestamp - 60 : null;
+      
+      logWithTimestamp(`Earliest timestamp in batch: ${earliestTimestamp}, next batch timestamp: ${nextBatchTimestamp}`);
 
       return res.status(200).json({
         success: true,
@@ -616,6 +624,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         totalTimeMs: totalRequestTime,
         errors: errors.length > 0 ? errors : undefined,
         earliestTimestamp: earliestTimestamp !== Number.MAX_SAFE_INTEGER ? earliestTimestamp : null,
+        nextBatchTimestamp: nextBatchTimestamp,
         Data: data.Data // Include the raw data for client-side processing
       });
     } catch (fetchError) {

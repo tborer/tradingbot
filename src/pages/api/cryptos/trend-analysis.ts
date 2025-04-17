@@ -1,10 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@/util/supabase/api';
 import { 
-  fetchCoinDeskHistoricalData, 
-  formatCoinDeskDataForAnalysis 
-} from '@/lib/coinDesk';
-import { 
   calculateDrawdownDrawup,
   extractPriceDataFromCoinDesk
 } from '@/lib/trendAnalysis';
@@ -149,39 +145,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     console.log(`[${requestId}] Processing trend analysis for symbol: ${symbol}`);
 
-    // Get the CoinDesk API key from environment variables
-    const apiKey = process.env.NEXT_PUBLIC_COINDESK_API_KEY;
-    if (!apiKey) {
-      const errorDetails = createAndLogError(
-        ErrorCategory.API,
-        ErrorSeverity.CRITICAL,
-        4003,
-        'CoinDesk API key not configured',
-        { requestId, symbol }
-      );
-      
-      // Update log entry with error
-      if (logEntryId) {
-        try {
-          await prisma.apiLog.update({
-            where: { id: logEntryId },
-            data: {
-              status: 'ERROR',
-              statusCode: 500,
-              responseBody: JSON.stringify({ error: 'CoinDesk API key not configured', code: errorDetails.code }),
-              errorMessage: 'CoinDesk API key not configured',
-              endTime: new Date(),
-              duration: Date.now() - startTime
-            }
-          });
-        } catch (dbError) {
-          console.error(`[${requestId}] Failed to update API log entry:`, dbError);
-        }
-      }
-      
-      return res.status(500).json({ error: 'CoinDesk API key not configured', code: errorDetails.code });
-    }
-
     // Update log entry with user and symbol info
     if (logEntryId) {
       try {
@@ -204,45 +167,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Fetch and analyze trend data
     console.log(`[${requestId}] Fetching and analyzing trend data for ${symbol}`);
     
-    // Create a logging function for API requests
-    const logApiRequest = async (url: string, method: string, requestBody: any, response?: any, status?: number, error?: string, duration?: number) => {
-      try {
-        await prisma.apiLog.create({
-          data: {
-            requestId: `${requestId}-coindesk-api`,
-            endpoint: url,
-            method: method,
-            requestBody: JSON.stringify(requestBody),
-            responseBody: response ? JSON.stringify(response) : null,
-            status: error ? 'ERROR' : 'SUCCESS',
-            statusCode: status || (error ? 500 : 200),
-            errorMessage: error || null,
-            startTime: new Date(Date.now() - (duration || 0)),
-            endTime: new Date(),
-            duration: duration || 0,
-            userId: user.id,
-            metadata: JSON.stringify({
-              parentRequestId: requestId,
-              symbol,
-              timestamp: new Date().toISOString()
-            })
-          }
-        });
-      } catch (logError) {
-        console.error(`[${requestId}] Failed to log CoinDesk API request:`, logError);
-      }
-    };
+    // Fetch historical data from CryptoHistoricalData table
+    console.log(`[${requestId}] Fetching historical data from CryptoHistoricalData table for ${symbol}`);
     
-    // Fetch historical data from CoinDesk API
-    console.log(`[${requestId}] Fetching historical data from CoinDesk API for ${symbol}`);
-    const historicalData = await fetchCoinDeskHistoricalData(symbol, apiKey, 30, logApiRequest);
+    // Get the last 30 days of data (or as many as available)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    if (!historicalData) {
+    const historicalRecords = await prisma.cryptoHistoricalData.findMany({
+      where: {
+        symbol: symbol.toUpperCase(),
+        timestamp: {
+          gte: thirtyDaysAgo
+        }
+      },
+      orderBy: {
+        timestamp: 'asc'
+      },
+      take: 1000 // Limit to 1000 records to prevent performance issues
+    });
+    
+    console.log(`[${requestId}] Retrieved ${historicalRecords.length} historical records for ${symbol}`);
+    
+    if (!historicalRecords || historicalRecords.length === 0) {
       const errorDetails = createAndLogError(
         ErrorCategory.API,
-        ErrorSeverity.ERROR,
+        ErrorSeverity.WARNING,
         4004,
-        `Failed to fetch historical data for ${symbol} from CoinDesk API`,
+        `No historical data found for ${symbol} in CryptoHistoricalData table`,
         { requestId, symbol }
       );
       
@@ -253,9 +205,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             where: { id: logEntryId },
             data: {
               status: 'ERROR',
-              statusCode: 500,
-              responseBody: JSON.stringify({ error: 'Failed to fetch historical data', code: errorDetails.code }),
-              errorMessage: `Failed to fetch historical data for ${symbol}`,
+              statusCode: 404,
+              responseBody: JSON.stringify({ error: 'No historical data available', code: errorDetails.code }),
+              errorMessage: `No historical data found for ${symbol}`,
               endTime: new Date(),
               duration: Date.now() - startTime
             }
@@ -265,47 +217,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
       
-      return res.status(500).json({ error: 'Failed to fetch historical data', code: errorDetails.code });
+      return res.status(404).json({ 
+        error: 'No historical data available', 
+        message: `No historical data found for ${symbol}. Please upload historical data first.`,
+        code: errorDetails.code 
+      });
     }
     
-    // Format the data for analysis
-    console.log(`[${requestId}] Formatting historical data for analysis`);
-    const formattedData = formatCoinDeskDataForAnalysis(historicalData);
-    
-    if (!formattedData) {
-      const errorDetails = createAndLogError(
-        ErrorCategory.API,
-        ErrorSeverity.ERROR,
-        4005,
-        `Failed to format historical data for ${symbol}`,
-        { requestId, symbol }
-      );
-      
-      // Update log entry with error
-      if (logEntryId) {
-        try {
-          await prisma.apiLog.update({
-            where: { id: logEntryId },
-            data: {
-              status: 'ERROR',
-              statusCode: 500,
-              responseBody: JSON.stringify({ error: 'Failed to format historical data', code: errorDetails.code }),
-              errorMessage: `Failed to format historical data for ${symbol}`,
-              endTime: new Date(),
-              duration: Date.now() - startTime
-            }
-          });
-        } catch (dbError) {
-          console.error(`[${requestId}] Failed to update API log entry:`, dbError);
-        }
-      }
-      
-      return res.status(500).json({ error: 'Failed to format historical data', code: errorDetails.code });
-    }
-    
-    // Extract price data (closing prices)
-    console.log(`[${requestId}] Extracting price data from formatted data`);
-    const priceData = extractPriceDataFromCoinDesk(formattedData);
+    // Extract price data (closing prices) from the historical records
+    console.log(`[${requestId}] Extracting price data from historical records`);
+    const priceData = historicalRecords.map(record => record.close);
     
     if (priceData.length === 0) {
       const errorDetails = createAndLogError(

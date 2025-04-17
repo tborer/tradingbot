@@ -40,8 +40,14 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
       
       if (!response.ok) {
         const errorData = await response.json();
-        const errorMessage = errorData.error || `API error: ${response.status}`;
+        const errorMessage = errorData.message || errorData.error || `API error: ${response.status}`;
         console.error(`Trend analysis API error: ${errorMessage}`);
+        
+        // Special handling for 404 (no historical data available)
+        if (response.status === 404) {
+          throw new Error('No historical data available for this cryptocurrency. Please upload historical data first.');
+        }
+        
         throw new Error(errorMessage);
       }
       

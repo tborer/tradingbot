@@ -479,87 +479,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       const totalBatches = Math.ceil(recordsToProcess.length / BATCH_SIZE);
       const batchStartTime = Date.now();
-    } catch (fetchError) {
-      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-        logWithTimestamp(`Request timeout after ${REQUEST_TIMEOUT/1000} seconds`);
-        return res.status(504).json({ 
-          error: 'Request timeout', 
-          details: `The request to CoinDesk API timed out after ${REQUEST_TIMEOUT/1000} seconds`
-        });
-      }
-      throw fetchError; // Re-throw to be caught by the outer try-catch
-    }
-
-    // This section was moved up to avoid the "data is not defined" error
-    
-    // Process data in batches to avoid timeouts
-    for (let i = 0; i < recordsToProcess.length; i += BATCH_SIZE) {
-      const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
-      const batch = recordsToProcess.slice(i, i + BATCH_SIZE);
-      const batchSize = batch.length;
       
-      logWithTimestamp(`Processing batch ${batchNumber} of ${totalBatches} (${batchSize} records)`);
-      
-      try {
-        // Prepare batch operations
-        const operations = batch.map(record => {
-          // Convert UNIX timestamp to Date
-          const timestamp = new Date(record.TIMESTAMP * 1000);
-          
-          return prisma.cryptoHistoricalData.upsert({
-            where: {
-              symbol_timestamp: {
-                symbol: symbol.toUpperCase(),
-                timestamp,
-              },
-            },
-            update: {
-              open: record.OPEN,
-              high: record.HIGH,
-              low: record.LOW,
-              close: record.CLOSE,
-              volume: record.VOLUME || 0,
-              quoteVolume: record.QUOTE_VOLUME || 0,
-              instrument: record.INSTRUMENT,
-              market: record.MARKET,
-            },
-            create: {
-              symbol: symbol.toUpperCase(),
-              timestamp,
-              unit: record.UNIT || 'MINUTE',
-              open: record.OPEN,
-              high: record.HIGH,
-              low: record.LOW,
-              close: record.CLOSE,
-              volume: record.VOLUME || 0,
-              quoteVolume: record.QUOTE_VOLUME || 0,
-              instrument: record.INSTRUMENT,
-              market: record.MARKET,
-            },
-          });
-        });
+      // Process data in batches to avoid timeouts
+      for (let i = 0; i < recordsToProcess.length; i += BATCH_SIZE) {
+        const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+        const batch = recordsToProcess.slice(i, i + BATCH_SIZE);
+        const batchSize = batch.length;
         
-        // Execute all operations in the batch
-        const batchDbStartTime = Date.now();
-        const results = await prisma.$transaction(operations);
-        const batchDbDuration = Date.now() - batchDbStartTime;
+        logWithTimestamp(`Processing batch ${batchNumber} of ${totalBatches} (${batchSize} records)`);
         
-        savedRecords.push(...results);
-        
-        logWithTimestamp(`Successfully processed batch ${batchNumber}, saved ${results.length} records in ${batchDbDuration}ms`);
-      } catch (error) {
-        logWithTimestamp(`Error processing batch ${batchNumber} for ${symbol}`, error);
-        
-        // If batch operation fails, try individual records
-        logWithTimestamp(`Falling back to individual processing for batch ${batchNumber}`);
-        
-        for (const record of batch) {
-          try {
+        try {
+          // Prepare batch operations
+          const operations = batch.map(record => {
             // Convert UNIX timestamp to Date
             const timestamp = new Date(record.TIMESTAMP * 1000);
             
-            // Create or update the record in the database
-            const savedRecord = await prisma.cryptoHistoricalData.upsert({
+            return prisma.cryptoHistoricalData.upsert({
               where: {
                 symbol_timestamp: {
                   symbol: symbol.toUpperCase(),
@@ -590,46 +525,109 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 market: record.MARKET,
               },
             });
+          });
+          
+          // Execute all operations in the batch
+          const batchDbStartTime = Date.now();
+          const results = await prisma.$transaction(operations);
+          const batchDbDuration = Date.now() - batchDbStartTime;
+          
+          savedRecords.push(...results);
+          
+          logWithTimestamp(`Successfully processed batch ${batchNumber}, saved ${results.length} records in ${batchDbDuration}ms`);
+        } catch (error) {
+          logWithTimestamp(`Error processing batch ${batchNumber} for ${symbol}`, error);
+          
+          // If batch operation fails, try individual records
+          logWithTimestamp(`Falling back to individual processing for batch ${batchNumber}`);
+          
+          for (const record of batch) {
+            try {
+              // Convert UNIX timestamp to Date
+              const timestamp = new Date(record.TIMESTAMP * 1000);
+              
+              // Create or update the record in the database
+              const savedRecord = await prisma.cryptoHistoricalData.upsert({
+                where: {
+                  symbol_timestamp: {
+                    symbol: symbol.toUpperCase(),
+                    timestamp,
+                  },
+                },
+                update: {
+                  open: record.OPEN,
+                  high: record.HIGH,
+                  low: record.LOW,
+                  close: record.CLOSE,
+                  volume: record.VOLUME || 0,
+                  quoteVolume: record.QUOTE_VOLUME || 0,
+                  instrument: record.INSTRUMENT,
+                  market: record.MARKET,
+                },
+                create: {
+                  symbol: symbol.toUpperCase(),
+                  timestamp,
+                  unit: record.UNIT || 'MINUTE',
+                  open: record.OPEN,
+                  high: record.HIGH,
+                  low: record.LOW,
+                  close: record.CLOSE,
+                  volume: record.VOLUME || 0,
+                  quoteVolume: record.QUOTE_VOLUME || 0,
+                  instrument: record.INSTRUMENT,
+                  market: record.MARKET,
+                },
+              });
 
-            savedRecords.push(savedRecord);
-          } catch (error) {
-            logWithTimestamp(`Error saving individual record for ${symbol}`, error);
-            errors.push({
-              timestamp: record.TIMESTAMP,
-              error: error instanceof Error ? error.message : 'Unknown error',
-            });
+              savedRecords.push(savedRecord);
+            } catch (error) {
+              logWithTimestamp(`Error saving individual record for ${symbol}`, error);
+              errors.push({
+                timestamp: record.TIMESTAMP,
+                error: error instanceof Error ? error.message : 'Unknown error',
+              });
+            }
           }
         }
       }
-    }
-    
-    const totalProcessingTime = Date.now() - batchStartTime;
-    logWithTimestamp(`Completed processing all batches in ${totalProcessingTime}ms`);
-    
-    const totalRequestTime = Date.now() - requestStartTime;
-    logWithTimestamp(`Total request processing time: ${totalRequestTime}ms`);
+      
+      const totalProcessingTime = Date.now() - batchStartTime;
+      logWithTimestamp(`Completed processing all batches in ${totalProcessingTime}ms`);
+      
+      const totalRequestTime = Date.now() - requestStartTime;
+      logWithTimestamp(`Total request processing time: ${totalRequestTime}ms`);
 
-    // Find the earliest timestamp in the data for client-side processing
-    let earliestTimestamp = Number.MAX_SAFE_INTEGER;
-    if (data.Data && Array.isArray(data.Data)) {
-      for (const record of data.Data) {
-        if (record.TIMESTAMP && record.TIMESTAMP < earliestTimestamp) {
-          earliestTimestamp = record.TIMESTAMP;
+      // Find the earliest timestamp in the data for client-side processing
+      let earliestTimestamp = Number.MAX_SAFE_INTEGER;
+      if (data.Data && Array.isArray(data.Data)) {
+        for (const record of data.Data) {
+          if (record.TIMESTAMP && record.TIMESTAMP < earliestTimestamp) {
+            earliestTimestamp = record.TIMESTAMP;
+          }
         }
       }
-    }
 
-    return res.status(200).json({
-      success: true,
-      message: `Processed ${data.Data.length} records for ${symbol}`,
-      savedCount: savedRecords.length,
-      errorCount: errors.length,
-      processingTimeMs: totalProcessingTime,
-      totalTimeMs: totalRequestTime,
-      errors: errors.length > 0 ? errors : undefined,
-      earliestTimestamp: earliestTimestamp !== Number.MAX_SAFE_INTEGER ? earliestTimestamp : null,
-      Data: data.Data // Include the raw data for client-side processing
-    });
+      return res.status(200).json({
+        success: true,
+        message: `Processed ${data.Data.length} records for ${symbol}`,
+        savedCount: savedRecords.length,
+        errorCount: errors.length,
+        processingTimeMs: totalProcessingTime,
+        totalTimeMs: totalRequestTime,
+        errors: errors.length > 0 ? errors : undefined,
+        earliestTimestamp: earliestTimestamp !== Number.MAX_SAFE_INTEGER ? earliestTimestamp : null,
+        Data: data.Data // Include the raw data for client-side processing
+      });
+    } catch (fetchError) {
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        logWithTimestamp(`Request timeout after ${REQUEST_TIMEOUT/1000} seconds`);
+        return res.status(504).json({ 
+          error: 'Request timeout', 
+          details: `The request to CoinDesk API timed out after ${REQUEST_TIMEOUT/1000} seconds`
+        });
+      }
+      throw fetchError; // Re-throw to be caught by the outer try-catch
+    }
   } catch (error) {
     const totalRequestTime = Date.now() - requestStartTime;
     logWithTimestamp(`Error processing historical data after ${totalRequestTime}ms`, error);

@@ -27,6 +27,7 @@ import OpenAISettings from "@/components/OpenAISettings";
 import WebSocketLogger from "@/components/WebSocketLogger";
 import Research from "@/components/Research";
 import UserManagement from "@/components/UserManagement";
+import DataUploads from "@/components/DataUploads";
 import { Stock, StockWithPrice as StockWithCurrentPrice, Settings, Crypto, CryptoWithPrice } from "@/types/stock";
 import { useKrakenWebSocket } from "@/contexts/KrakenWebSocketContext";
 import { useAnalysis } from "@/contexts/AnalysisContext";
@@ -1348,6 +1349,7 @@ export default function Dashboard() {
             <TabsTrigger value="error-logs">Error Logs</TabsTrigger>
             <TabsTrigger value="research">Research</TabsTrigger>
             <TabsTrigger value="user-management">User Management</TabsTrigger>
+            <TabsTrigger value="data-uploads">Data Uploads</TabsTrigger>
           </TabsList>
           
           <TabsContent value="portfolio" className="space-y-6">
@@ -1573,6 +1575,10 @@ export default function Dashboard() {
           
           <TabsContent value="user-management">
             <UserManagement />
+          </TabsContent>
+          
+          <TabsContent value="data-uploads">
+            <DataUploads />
           </TabsContent>
           
           <TabsContent value="settings">

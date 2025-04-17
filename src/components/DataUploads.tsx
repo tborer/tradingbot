@@ -28,7 +28,8 @@ const DataUploads: React.FC = () => {
   const [dataLimit, setDataLimit] = useState<string>("200");
   const [timestampAdjustment, setTimestampAdjustment] = useState<string>("0");
   const [collectFullDay, setCollectFullDay] = useState<boolean>(false);
-  const [processingDetails, setProcessingDetails] = useState<Record<string, { total: number; saved: number; errors: number }>>({});
+  const [maxBatchCount, setMaxBatchCount] = useState<string>("24");
+  const [processingDetails, setProcessingDetails] = useState<Record<string, { total: number; saved: number; errors: number; batchCount?: number }>>({});
   const [activeTab, setActiveTab] = useState<string>("coindesk-api");
   const [jsonInput, setJsonInput] = useState<string>("");
   const [jsonParsingStatus, setJsonParsingStatus] = useState<string>("idle"); // idle, parsing, success, error
@@ -163,6 +164,7 @@ const DataUploads: React.FC = () => {
     // Validate inputs
     const limit = parseInt(dataLimit);
     const adjustmentMinutes = parseInt(timestampAdjustment);
+    const maxBatches = parseInt(maxBatchCount);
     
     if (isNaN(limit) || limit <= 0) {
       toast({
@@ -179,6 +181,16 @@ const DataUploads: React.FC = () => {
         variant: 'destructive',
         title: 'Invalid Timestamp Adjustment',
         description: 'Please enter a valid number for the timestamp adjustment.',
+      });
+      setIsProcessing(false);
+      return;
+    }
+    
+    if (collectFullDay && (isNaN(maxBatches) || maxBatches <= 0)) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid Max Batch Count',
+        description: 'Please enter a valid number for the maximum batch count.',
       });
       setIsProcessing(false);
       return;
@@ -364,7 +376,8 @@ const DataUploads: React.FC = () => {
             [symbol]: { 
               total: totalProcessedRecords,
               saved: totalSavedRecords,
-              errors: (prev[symbol]?.errors || 0) + (data.errorCount || 0)
+              errors: (prev[symbol]?.errors || 0) + (data.errorCount || 0),
+              batchCount: batchCount
             } 
           }));
           
@@ -449,15 +462,15 @@ const DataUploads: React.FC = () => {
                   title: 'Data Collection Stopped',
                   description: `Reached the limit of available data for ${symbol}`,
                 });
-              } else if (batchCount >= 10) {
-                // Safety limit to prevent infinite loops
-                console.log(`Reached maximum batch count (${batchCount}). Stopping data collection.`);
+              } else if (collectFullDay && batchCount >= parseInt(maxBatchCount)) {
+                // User-defined batch limit reached
+                console.log(`Reached user-defined maximum batch count (${maxBatchCount}). Stopping data collection.`);
                 continueDataCollection = false;
                 
                 toast({
                   variant: 'warning',
                   title: 'Data Collection Stopped',
-                  description: `Reached maximum batch count (${batchCount}) for ${symbol}`,
+                  description: `Reached maximum batch count (${maxBatchCount}) for ${symbol}`,
                 });
               }
             } else {
@@ -812,29 +825,61 @@ const DataUploads: React.FC = () => {
                     </p>
                   </div>
                   
-                  <div className="flex items-center space-x-2 mt-2">
-                    <Checkbox 
-                      id="collectFullDay" 
-                      checked={collectFullDay}
-                      onCheckedChange={(checked) => setCollectFullDay(checked === true)}
-                    />
-                    <Label htmlFor="collectFullDay" className="text-sm font-normal">
-                      Collect full 24 hours of data
-                    </Label>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="text-muted-foreground text-sm">ⓘ</div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">
-                            When checked, the API will run repeatedly until a full 24 hours of data is collected.
-                            Each run will use the earliest timestamp from the previous batch as the starting point
-                            for the next batch.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                  <div className="space-y-2 mt-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="collectFullDay" 
+                        checked={collectFullDay}
+                        onCheckedChange={(checked) => setCollectFullDay(checked === true)}
+                      />
+                      <Label htmlFor="collectFullDay" className="text-sm font-normal">
+                        Collect full 24 hours of data
+                      </Label>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="text-muted-foreground text-sm">ⓘ</div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-xs">
+                              When checked, the API will run repeatedly until a full 24 hours of data is collected.
+                              Each run will use the earliest timestamp from the previous batch as the starting point
+                              for the next batch.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    
+                    {collectFullDay && (
+                      <div className="flex items-center space-x-2 ml-6">
+                        <Label htmlFor="maxBatchCount" className="text-sm font-normal whitespace-nowrap">
+                          Max Batches:
+                        </Label>
+                        <Input
+                          id="maxBatchCount"
+                          type="number"
+                          value={maxBatchCount}
+                          onChange={(e) => setMaxBatchCount(e.target.value)}
+                          min="1"
+                          className="w-20 h-8"
+                        />
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="text-muted-foreground text-sm">ⓘ</div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="max-w-xs">
+                                Maximum number of batches to process when collecting data. 
+                                The process will stop after reaching this number of batches, 
+                                even if 24 hours of data hasn't been collected yet.
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    )}
                   </div>
                 </div>
                 
@@ -858,14 +903,23 @@ const DataUploads: React.FC = () => {
                       <Label htmlFor={`crypto-${crypto.id}`} className="flex items-center">
                         {crypto.symbol}
                         {processingStatus[crypto.symbol] === 'processing' && (
-                          <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                          <div className="ml-2 flex items-center">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            {collectFullDay && processingDetails[crypto.symbol] && processingDetails[crypto.symbol].batchCount && (
+                              <span className="ml-1 text-xs text-muted-foreground">
+                                (Batch {processingDetails[crypto.symbol].batchCount}/{maxBatchCount})
+                              </span>
+                            )}
+                          </div>
                         )}
                         {processingStatus[crypto.symbol] === 'success' && (
                           <div className="ml-2 flex items-center">
                             <span className="text-green-500">✓</span>
                             {processingDetails[crypto.symbol] && (
                               <span className="ml-1 text-xs text-muted-foreground">
-                                ({processingDetails[crypto.symbol].saved}/{processingDetails[crypto.symbol].total})
+                                ({processingDetails[crypto.symbol].saved}/{processingDetails[crypto.symbol].total}
+                                {collectFullDay && processingDetails[crypto.symbol].batchCount && 
+                                  `, ${processingDetails[crypto.symbol].batchCount} batches`})
                               </span>
                             )}
                           </div>

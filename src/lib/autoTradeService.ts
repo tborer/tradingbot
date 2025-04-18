@@ -364,7 +364,18 @@ export async function processAutoCryptoTrades(
               errorMessage
             );
             
-            throw new Error(errorMessage);
+            console.error(`Auto trade execution failed for ${crypto.symbol}: ${errorMessage}`);
+            
+            // Return a failure result instead of throwing an error
+            results.push({
+              success: false,
+              message: `Error executing auto ${action} for ${crypto.symbol}: ${errorMessage}`,
+              cryptoId: crypto.id,
+              symbol: crypto.symbol,
+              action
+            });
+            
+            continue; // Skip to the next crypto instead of throwing
           }
 
           // If this is a one-time trade, disable the auto flag
@@ -764,7 +775,31 @@ export async function checkCryptoForAutoTrade(
         );
 
         if (!executeOrderResult.success) {
-          throw new Error(executeOrderResult.error || 'Failed to execute order via Kraken API');
+          const errorMessage = executeOrderResult.error || 'Failed to execute order via Kraken API';
+          console.error(`Auto trade execution failed for ${crypto.symbol}: ${errorMessage}`);
+          
+          // Log the failed execution
+          await logAutoTradeEvent(
+            userId,
+            AutoTradeLogType.ERROR,
+            `Failed to execute auto ${action} for ${crypto.symbol}`,
+            {
+              cryptoId: crypto.id,
+              symbol: crypto.symbol,
+              action,
+              price,
+              shares: sharesToTrade,
+              error: errorMessage
+            }
+          );
+          
+          return {
+            success: false,
+            message: `Error executing auto ${action} for ${crypto.symbol}: ${errorMessage}`,
+            cryptoId: crypto.id,
+            symbol: crypto.symbol,
+            action
+          };
         }
 
         // If this is a one-time trade, disable the auto flag

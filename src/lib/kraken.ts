@@ -362,6 +362,7 @@ export const shouldSellCrypto = (
   console.log(`SELL CHECK: Current: $${currentPrice}, Purchase: $${purchasePrice}, Gain: ${percentGain.toFixed(2)}%, Threshold: ${thresholdPercent}%`);
   
   // Ensure the price change meets or exceeds the threshold percentage
+  // For selling, we want the price to have increased by at least the threshold percentage
   const shouldSell = percentGain >= thresholdPercent;
   console.log(`Should sell? ${shouldSell ? 'YES' : 'NO'} (Gain: ${percentGain.toFixed(2)}% >= Threshold: ${thresholdPercent}%: ${percentGain >= thresholdPercent})`);
   
@@ -398,6 +399,7 @@ export const shouldBuyCrypto = (
   console.log(`BUY CHECK: Current: $${currentPrice}, Purchase: $${purchasePrice}, Drop: ${percentDrop.toFixed(2)}%, Threshold: ${thresholdPercent}%`);
   
   // Ensure the price change meets or exceeds the threshold percentage
+  // For buying, we want the price to have dropped by at least the threshold percentage
   const shouldBuy = percentDrop >= thresholdPercent;
   console.log(`Should buy? ${shouldBuy ? 'YES' : 'NO'} (Drop: ${percentDrop.toFixed(2)}% >= Threshold: ${thresholdPercent}%: ${percentDrop >= thresholdPercent})`);
   

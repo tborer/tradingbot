@@ -122,24 +122,77 @@ export async function executeKrakenOrderAndCreateTransaction(
 
     console.log(`Executing auto ${action} order for ${shares} shares of ${symbol} at $${price}`);
     
-    // Execute the order
-    const response = await fetch(apiEndpoint, {
+    // Prepare API request details for logging
+    const apiRequestDetails = {
+      endpoint: apiEndpoint,
       method: 'POST',
       headers: {
-        'API-Key': krakenApiKey,
-        'API-Sign': hmac,
+        'API-Key': '[REDACTED]',
         'Content-Type': 'application/x-www-form-urlencoded'
       },
       body: postData
-    });
+    };
+    
+    let krakenResponse;
+    let responseText;
+    
+    try {
+      // Execute the order
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: {
+          'API-Key': krakenApiKey,
+          'API-Sign': hmac,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: postData
+      });
 
-    const krakenResponse = await response.json() as KrakenOrderResponse;
+      responseText = await response.text();
+      
+      try {
+        krakenResponse = JSON.parse(responseText) as KrakenOrderResponse;
+      } catch (parseError) {
+        console.error('Error parsing Kraken API response:', parseError);
+        console.log('Raw response:', responseText);
+        throw new Error(`Failed to parse Kraken API response: ${parseError.message}`);
+      }
 
-    if (krakenResponse.error && krakenResponse.error.length > 0) {
-      throw new Error(`Kraken API error: ${krakenResponse.error.join(', ')}`);
+      if (krakenResponse.error && krakenResponse.error.length > 0) {
+        throw new Error(`Kraken API error: ${krakenResponse.error.join(', ')}`);
+      }
+      
+      if (!krakenResponse.result || !krakenResponse.result.txid || !krakenResponse.result.txid[0]) {
+        throw new Error('Invalid Kraken API response: Missing transaction ID');
+      }
+    } catch (apiError) {
+      console.error('Error calling Kraken API:', apiError);
+      
+      // Create a transaction record for the failed trade attempt
+      // This ensures we have a record even when the API call fails
+      await createAutoTradeTransaction(
+        userId,
+        cryptoId,
+        symbol,
+        action,
+        shares,
+        price,
+        'failed-' + orderId,
+        JSON.stringify(apiRequestDetails, null, 2),
+        JSON.stringify({
+          error: apiError.message,
+          rawResponse: responseText || 'No response received'
+        }, null, 2)
+      );
+      
+      return {
+        success: false,
+        error: `Failed to execute Kraken order: ${apiError.message}`,
+        krakenOrderId: null
+      };
     }
 
-    // Create a transaction record
+    // Create a transaction record for the successful trade
     const transaction = await createAutoTradeTransaction(
       userId,
       cryptoId,
@@ -148,17 +201,35 @@ export async function executeKrakenOrderAndCreateTransaction(
       shares,
       price,
       krakenResponse.result.txid[0],
-      JSON.stringify({
-        endpoint: apiEndpoint,
-        method: 'POST',
-        headers: {
-          'API-Key': '[REDACTED]',
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: postData
-      }, null, 2),
+      JSON.stringify(apiRequestDetails, null, 2),
       JSON.stringify(krakenResponse, null, 2)
     );
+
+    // Update the crypto's shares and purchase price in the database
+    try {
+      if (action === 'buy') {
+        await prisma.crypto.update({
+          where: { id: cryptoId },
+          data: {
+            shares: { increment: shares },
+            purchasePrice: price, // Update purchase price to the new buy price
+            lastPrice: price
+          }
+        });
+      } else { // sell
+        await prisma.crypto.update({
+          where: { id: cryptoId },
+          data: {
+            shares: { decrement: shares },
+            lastPrice: price
+          }
+        });
+      }
+      console.log(`Updated crypto record for ${symbol} after ${action} transaction`);
+    } catch (updateError) {
+      console.error(`Failed to update crypto record after transaction:`, updateError);
+      // Continue since the transaction was already created
+    }
 
     return {
       success: true,
@@ -168,6 +239,12 @@ export async function executeKrakenOrderAndCreateTransaction(
     };
   } catch (error) {
     console.error('Error executing Kraken order and creating transaction:', error);
-    throw error;
+    
+    // Return a structured error response instead of throwing
+    return {
+      success: false,
+      error: error.message || 'Unknown error during order execution',
+      krakenOrderId: null
+    };
   }
 }

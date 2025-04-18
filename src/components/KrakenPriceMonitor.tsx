@@ -9,6 +9,8 @@ import { useToast } from '@/components/ui/use-toast';
 import WebSocketConnectionStatus from '@/components/WebSocketConnectionStatus';
 import { useKrakenWebSocket } from '@/contexts/KrakenWebSocketContext';
 import { useThrottledPriceUpdates } from '@/hooks/useThrottledPriceUpdates';
+import { useCryptoPriceMonitor } from '@/hooks/useCryptoPriceMonitor';
+import { batchUpdatePriceCache } from '@/lib/priceCache';
 
 interface KrakenPriceMonitorProps {
   symbols: string[];
@@ -736,6 +738,17 @@ export default function KrakenPriceMonitor({
     }
   }, [symbols, updateSymbols]);
   
+  // Initialize the client-side price monitor
+  const {
+    cryptos,
+    loading: cryptosLoading,
+    error: cryptosError,
+    lastUpdated: cryptosLastUpdated,
+    pendingTrades,
+    handlePriceUpdate: handleClientPriceUpdate,
+    evaluateAllTradingConditions
+  } = useCryptoPriceMonitor();
+  
   // Process price updates from the shared context
   useEffect(() => {
     if (lastPrices.length > 0 && enableKrakenWebSocket) {
@@ -750,8 +763,14 @@ export default function KrakenPriceMonitor({
         throttlingEnabled: enableThrottling
       });
       
+      // Update the client-side price cache
+      batchUpdatePriceCache(lastPrices);
+      
+      // Update client-side state
+      handleClientPriceUpdate(lastPrices);
+      
       if (enableThrottling) {
-        // Add to throttled batch instead of processing immediately
+        // Add to throttled batch instead of processing immediately for database updates
         addPriceUpdates(lastPrices);
         
         // Log the throttling
@@ -770,7 +789,7 @@ export default function KrakenPriceMonitor({
     } else if (lastPrices.length > 0 && !enableKrakenWebSocket) {
       console.log('Ignoring price updates because Kraken WebSocket is disabled');
     }
-  }, [lastPrices, handlePriceUpdate, enableKrakenWebSocket, enableThrottling, addPriceUpdates, pendingCount, isProcessing, throttleInterval, addLog]);
+  }, [lastPrices, handlePriceUpdate, handleClientPriceUpdate, enableKrakenWebSocket, enableThrottling, addPriceUpdates, pendingCount, isProcessing, throttleInterval, addLog]);
   
   // Clear prices when symbols change
   useEffect(() => {
@@ -890,6 +909,22 @@ export default function KrakenPriceMonitor({
             </Alert>
           )}
           
+          {pendingTrades.length > 0 && (
+            <Alert variant="default" className="mb-4 bg-amber-50 dark:bg-amber-900/20 border-amber-500">
+              <AlertTitle className="text-amber-700 dark:text-amber-300">Pending Auto Trades</AlertTitle>
+              <AlertDescription className="text-amber-700 dark:text-amber-300">
+                <ul className="text-xs mt-1 space-y-1">
+                  {pendingTrades.map((crypto, index) => (
+                    <li key={index}>
+                      {crypto.tradingConditions?.action === 'buy' ? 'Buy' : 'Sell'} {crypto.symbol} at ${crypto.tradingConditions?.currentPrice?.toFixed(2)}
+                      <div className="text-xs opacity-75">{crypto.tradingConditions?.reason}</div>
+                    </li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+          
           {symbols.length === 0 ? (
             <p className="text-muted-foreground">No symbols to monitor</p>
           ) : (
@@ -957,6 +992,45 @@ export default function KrakenPriceMonitor({
                 <p className="text-xs text-muted-foreground mt-4">
                   Last updated: {contextLastUpdated.toLocaleTimeString()}
                 </p>
+              )}
+              
+              {cryptos.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="text-sm font-medium mb-2">Client-Side Trading Conditions</h4>
+                  <div className="text-xs space-y-2">
+                    {cryptos.filter(c => c.autoBuy || c.autoSell).map(crypto => (
+                      <div key={crypto.id} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-md">
+                        <div className="font-medium">{crypto.symbol} - ${crypto.lastPrice?.toFixed(2)}</div>
+                        <div className="grid grid-cols-2 gap-x-4 mt-1">
+                          <div>Purchase: ${crypto.purchasePrice?.toFixed(2)}</div>
+                          <div>Shares: {crypto.shares?.toFixed(6)}</div>
+                          <div>Auto Buy: {crypto.autoBuy ? 'Yes' : 'No'}</div>
+                          <div>Auto Sell: {crypto.autoSell ? 'Yes' : 'No'}</div>
+                        </div>
+                        {crypto.tradingConditions && (
+                          <div className={`mt-2 p-1 rounded ${crypto.tradingConditions.shouldTrade ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'}`}>
+                            {crypto.tradingConditions.shouldTrade ? (
+                              <>
+                                <span className="font-medium">Ready to {crypto.tradingConditions.action}: </span>
+                                {crypto.tradingConditions.reason}
+                              </>
+                            ) : (
+                              <span>No trade conditions met</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-3"
+                    onClick={evaluateAllTradingConditions}
+                  >
+                    Evaluate Trading Conditions
+                  </Button>
+                </div>
               )}
             </>
           )}

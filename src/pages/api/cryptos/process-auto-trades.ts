@@ -5,6 +5,7 @@ import { processAutoCryptoTrades } from '@/lib/autoTradeService';
 import { PrismaClientInitializationError, PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { logAutoTradeEvent, AutoTradeLogType } from '@/lib/autoTradeLogger';
 import { executeKrakenOrderAndCreateTransaction } from '@/lib/autoTradeTransaction';
+import { acquireAutoTradeLock, releaseAutoTradeLock, clearExpiredLocks } from '@/lib/autoTradeLock';
 
 // Add timeout for long-running operations
 const PROCESS_TIMEOUT = 25000; // 25 seconds (Vercel functions timeout at 30s)
@@ -15,6 +16,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Method not allowed' });
     }
+    
+    // Clear any expired locks before processing
+    await clearExpiredLocks();
 
     // Initialize Supabase client
     const supabase = createClient(req, res);
@@ -65,12 +69,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           return res.status(404).json({ error: 'Crypto not found' });
         }
         
+        // Try to acquire a lock for this crypto before executing the trade
+        const lockAcquired = await acquireAutoTradeLock(user.id, cryptoId, crypto.symbol, action);
+        
+        if (!lockAcquired) {
+          // Another transaction is already in progress for this crypto
+          await logAutoTradeEvent(
+            user.id,
+            AutoTradeLogType.WARNING,
+            `Skipping direct trade for ${crypto.symbol}: Another transaction is already in progress`,
+            {
+              cryptoId,
+              symbol: crypto.symbol,
+              action
+            }
+          );
+          
+          return res.status(409).json({ 
+            error: 'Another transaction is already in progress for this cryptocurrency',
+            message: `Skipped ${action} for ${crypto.symbol}: Another transaction is already in progress`
+          });
+        }
+        
         // Get user settings
         const settings = await prisma.settings.findUnique({
           where: { userId: user.id }
         });
         
         if (!settings || !settings.krakenApiKey || !settings.krakenApiSign) {
+          // Release the lock since we're not proceeding with the trade
+          await releaseAutoTradeLock(user.id, cryptoId, crypto.symbol);
+          
           await logAutoTradeEvent(
             user.id,
             AutoTradeLogType.ERROR,
@@ -110,6 +139,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
         
         if (sharesToTrade <= 0) {
+          // Release the lock since we're not proceeding with the trade
+          await releaseAutoTradeLock(user.id, cryptoId, crypto.symbol);
+          
           await logAutoTradeEvent(
             user.id,
             AutoTradeLogType.ERROR,
@@ -133,6 +165,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         );
         
         if (!executeOrderResult.success) {
+          // Release the lock since the trade failed
+          await releaseAutoTradeLock(user.id, cryptoId, crypto.symbol);
+          
           await logAutoTradeEvent(
             user.id,
             AutoTradeLogType.ERROR,
@@ -212,6 +247,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
           );
         }
+        
+        // Release the lock now that all updates are complete
+        await releaseAutoTradeLock(user.id, cryptoId, crypto.symbol);
         
         return res.status(200).json({
           success: true,

@@ -144,3 +144,11 @@ model CryptoHistoricalData {
   @@unique([symbol, timestamp], name: "symbol_timestamp")
   @@index([symbol, timestamp])
 }
+
+model CryptoAutoTradeLock {
+  cryptoId     String   @id
+  symbol       String
+  lockedAt     DateTime @default(now())
+  lockedBy     String   @db.Uuid
+  action       String   // 'buy' or 'sell'
+}

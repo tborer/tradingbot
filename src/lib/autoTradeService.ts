@@ -2,6 +2,7 @@ import prisma from '@/lib/prisma';
 import { KrakenPrice } from '@/lib/kraken';
 import { shouldBuyCrypto, shouldSellCrypto } from '@/lib/kraken';
 import { logAutoTradeEvaluation, logAutoTradeExecution, AutoTradeLogType, logAutoTradeEvent } from './autoTradeLogger';
+import { acquireAutoTradeLock, releaseAutoTradeLock, clearExpiredLocks } from './autoTradeLock';
 
 interface AutoTradeResult {
   success: boolean;
@@ -284,6 +285,34 @@ export async function processAutoCryptoTrades(
       }
 
       if (shouldTrade && action) {
+        // Try to acquire a lock for this crypto before executing the trade
+        const lockAcquired = await acquireAutoTradeLock(userId, crypto.id, crypto.symbol, action);
+        
+        if (!lockAcquired) {
+          // Another transaction is already in progress for this crypto
+          console.log(`Skipping auto trade for ${crypto.symbol}: Another transaction is already in progress`);
+          await logAutoTradeEvent(
+            userId,
+            AutoTradeLogType.WARNING,
+            `Skipping auto trade for ${crypto.symbol}: Another transaction is already in progress`,
+            {
+              cryptoId: crypto.id,
+              symbol: crypto.symbol,
+              action
+            }
+          );
+          
+          results.push({
+            success: false,
+            message: `Skipped auto ${action} for ${crypto.symbol}: Another transaction is already in progress`,
+            cryptoId: crypto.id,
+            symbol: crypto.symbol,
+            action
+          });
+          
+          continue; // Skip to the next crypto
+        }
+        
         // Execute the trade
         try {
           // Determine shares to trade based on settings
@@ -329,6 +358,9 @@ export async function processAutoCryptoTrades(
           }
 
           if (sharesToTrade <= 0) {
+            // Release the lock since we're not proceeding with the trade
+            await releaseAutoTradeLock(userId, crypto.id, crypto.symbol);
+            
             results.push({
               success: false,
               message: `Invalid shares amount for ${crypto.symbol}`,
@@ -345,6 +377,9 @@ export async function processAutoCryptoTrades(
           });
 
           if (!userSettings || !userSettings.krakenApiKey || !userSettings.krakenApiSign) {
+            // Release the lock since we're not proceeding with the trade
+            await releaseAutoTradeLock(userId, crypto.id, crypto.symbol);
+            
             throw new Error('Kraken API credentials not found. Please configure them in settings.');
           }
 
@@ -383,6 +418,9 @@ export async function processAutoCryptoTrades(
             );
             
             console.error(`Auto trade execution failed for ${crypto.symbol}: ${errorMessage}`);
+            
+            // Release the lock since the trade failed
+            await releaseAutoTradeLock(userId, crypto.id, crypto.symbol);
             
             // Return a failure result instead of throwing an error
             results.push({
@@ -457,6 +495,9 @@ export async function processAutoCryptoTrades(
             executeOrderResult.transaction?.id
           );
 
+          // Release the lock now that all updates are complete
+          await releaseAutoTradeLock(userId, crypto.id, crypto.symbol);
+          
           results.push({
             success: true,
             message: `Successfully executed auto ${action} for ${crypto.symbol} via Kraken API`,
@@ -483,6 +524,9 @@ export async function processAutoCryptoTrades(
             undefined,
             error.message
           );
+          
+          // Release the lock since the trade failed
+          await releaseAutoTradeLock(userId, crypto.id, crypto.symbol);
           
           results.push({
             success: false,
@@ -736,6 +780,32 @@ export async function checkCryptoForAutoTrade(
     }
 
     if (shouldTrade && action) {
+      // Try to acquire a lock for this crypto before executing the trade
+      const lockAcquired = await acquireAutoTradeLock(userId, crypto.id, crypto.symbol, action);
+      
+      if (!lockAcquired) {
+        // Another transaction is already in progress for this crypto
+        console.log(`Skipping auto trade for ${crypto.symbol}: Another transaction is already in progress`);
+        await logAutoTradeEvent(
+          userId,
+          AutoTradeLogType.WARNING,
+          `Skipping auto trade for ${crypto.symbol}: Another transaction is already in progress`,
+          {
+            cryptoId: crypto.id,
+            symbol: crypto.symbol,
+            action
+          }
+        );
+        
+        return {
+          success: false,
+          message: `Skipped auto ${action} for ${crypto.symbol}: Another transaction is already in progress`,
+          cryptoId: crypto.id,
+          symbol: crypto.symbol,
+          action
+        };
+      }
+      
       // Execute the trade
       try {
         // Determine shares to trade based on settings
@@ -781,6 +851,9 @@ export async function checkCryptoForAutoTrade(
         }
 
         if (sharesToTrade <= 0) {
+          // Release the lock since we're not proceeding with the trade
+          await releaseAutoTradeLock(userId, crypto.id, crypto.symbol);
+          
           return {
             success: false,
             message: `Invalid shares amount for ${crypto.symbol}`,
@@ -796,6 +869,9 @@ export async function checkCryptoForAutoTrade(
         });
 
         if (!userSettings || !userSettings.krakenApiKey || !userSettings.krakenApiSign) {
+          // Release the lock since we're not proceeding with the trade
+          await releaseAutoTradeLock(userId, crypto.id, crypto.symbol);
+          
           throw new Error('Kraken API credentials not found. Please configure them in settings.');
         }
 
@@ -834,6 +910,9 @@ export async function checkCryptoForAutoTrade(
               error: errorMessage
             }
           );
+          
+          // Release the lock since the trade failed
+          await releaseAutoTradeLock(userId, crypto.id, crypto.symbol);
           
           return {
             success: false,
@@ -881,6 +960,9 @@ export async function checkCryptoForAutoTrade(
           
           console.log(`Updated next action for ${crypto.symbol} to ${newNextAction}`);
         }
+        
+        // Release the lock now that all updates are complete
+        await releaseAutoTradeLock(userId, crypto.id, crypto.symbol);
 
         return {
           success: true,
@@ -894,6 +976,10 @@ export async function checkCryptoForAutoTrade(
         };
       } catch (error) {
         console.error(`Error executing auto ${action} for ${crypto.symbol}:`, error);
+        
+        // Release the lock since the trade failed
+        await releaseAutoTradeLock(userId, crypto.id, crypto.symbol);
+        
         return {
           success: false,
           message: `Error executing auto ${action} for ${crypto.symbol}: ${error.message}`,

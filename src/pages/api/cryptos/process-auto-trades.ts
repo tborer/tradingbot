@@ -145,11 +145,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           });
         }
         
-        // Update auto trade settings if needed
-        if (crypto.autoTradeSettings?.enableContinuousTrading) {
-          // Flip the next action
-          const newNextAction = action === 'buy' ? 'sell' : 'buy';
-          
+        // Always update the next action after a successful transaction
+        const newNextAction = action === 'buy' ? 'sell' : 'buy';
+        
+        if (crypto.autoTradeSettings) {
           await prisma.cryptoAutoTradeSettings.update({
             where: { id: crypto.autoTradeSettings.id },
             data: { nextAction: newNextAction }
@@ -167,6 +166,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
           );
         } else {
+          // Create settings if they don't exist
+          await prisma.cryptoAutoTradeSettings.create({
+            data: {
+              cryptoId: crypto.id,
+              nextAction: newNextAction,
+              enableContinuousTrading: true,
+              buyThresholdPercent: settings.buyThresholdPercent,
+              sellThresholdPercent: settings.sellThresholdPercent
+            }
+          });
+          
+          await logAutoTradeEvent(
+            user.id,
+            AutoTradeLogType.INFO,
+            `Created auto trade settings for ${crypto.symbol} with next action ${newNextAction}`,
+            {
+              cryptoId,
+              symbol: crypto.symbol,
+              previousAction: action,
+              newAction: newNextAction
+            }
+          );
+        }
+        
+        // If this is not a continuous trading setup, disable the appropriate flag
+        if (!crypto.autoTradeSettings?.enableContinuousTrading) {
           // For one-time trades, disable the auto flag
           await prisma.crypto.update({
             where: { id: cryptoId },

@@ -215,6 +215,24 @@ export async function processAutoCryptoTrades(
       if (crypto.autoSell) {
         console.log(`Checking sell conditions for ${crypto.symbol}: nextAction=${nextAction}, oneTimeSell=${oneTimeSell}`);
         
+        // First check if there are shares available to sell
+        if (crypto.shares <= 0) {
+          console.log(`Skipping sell check for ${crypto.symbol}: No shares available to sell (current shares: ${crypto.shares})`);
+          await logAutoTradeEvent(
+            userId,
+            AutoTradeLogType.WARNING,
+            `Skipping sell check for ${crypto.symbol}: No shares available to sell`,
+            {
+              cryptoId: crypto.id,
+              symbol: crypto.symbol,
+              shares: crypto.shares,
+              nextAction,
+              oneTimeSell
+            }
+          );
+          continue; // Skip to the next crypto
+        }
+        
         // Check if we should sell based on either nextAction or oneTimeSell flag
         if ((nextAction === 'sell' || oneTimeSell)) {
           console.log(`Sell condition check for ${crypto.symbol}: currentPrice=${priceData.price}, purchasePrice=${crypto.purchasePrice}, sellThreshold=${sellThreshold}`);
@@ -668,6 +686,30 @@ export async function checkCryptoForAutoTrade(
     // Check for auto sell conditions
     if (crypto.autoSell) {
       console.log(`Checking sell conditions for ${crypto.symbol}: nextAction=${nextAction}, oneTimeSell=${oneTimeSell}`);
+      
+      // First check if there are shares available to sell
+      if (crypto.shares <= 0) {
+        console.log(`Skipping sell check for ${crypto.symbol}: No shares available to sell (current shares: ${crypto.shares})`);
+        await logAutoTradeEvent(
+          userId,
+          AutoTradeLogType.WARNING,
+          `Skipping sell check for ${crypto.symbol}: No shares available to sell`,
+          {
+            cryptoId: crypto.id,
+            symbol: crypto.symbol,
+            shares: crypto.shares,
+            nextAction,
+            oneTimeSell
+          }
+        );
+        return {
+          success: false,
+          message: `Cannot sell ${crypto.symbol}: No shares available`,
+          cryptoId: crypto.id,
+          symbol: crypto.symbol
+        };
+      }
+      
       // Check if we should sell based on either nextAction or oneTimeSell flag
       if ((nextAction === 'sell' || oneTimeSell)) {
         console.log(`Sell condition check for ${crypto.symbol}: currentPrice=${price}, purchasePrice=${crypto.purchasePrice}, sellThreshold=${sellThreshold}`);

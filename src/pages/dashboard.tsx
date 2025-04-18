@@ -28,6 +28,7 @@ import WebSocketLogger from "@/components/WebSocketLogger";
 import Research from "@/components/Research";
 import UserManagement from "@/components/UserManagement";
 import DataUploads from "@/components/DataUploads";
+import FixAutoTradeFlags from "@/components/FixAutoTradeFlags";
 import { Stock, StockWithPrice as StockWithCurrentPrice, Settings, Crypto, CryptoWithPrice } from "@/types/stock";
 import { useKrakenWebSocket } from "@/contexts/KrakenWebSocketContext";
 import { useAnalysis } from "@/contexts/AnalysisContext";
@@ -1538,6 +1539,9 @@ export default function Dashboard() {
                 onPriceUpdate={updateCryptoPrices}
               />
             )}
+            
+            {/* Fix Auto Trade Flags */}
+            <FixAutoTradeFlags />
             
             {/* Crypto Transaction History */}
             <Card>

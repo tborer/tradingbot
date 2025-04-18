@@ -135,8 +135,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Process auto trade synchronously to ensure it completes
         // This is important to make sure trades are executed when conditions are met
         console.log(`Executing auto trade check for ${symbol} (ID: ${crypto.id}) at price ${lastPrice}`);
+        console.log(`Auto trade enabled: Buy=${crypto.autoBuy}, Sell=${crypto.autoSell}`);
         
+        // Add more detailed logging about the auto trade check
+        console.log(`Starting auto trade evaluation for ${symbol} at price ${lastPrice}`);
         const result = await checkCryptoForAutoTrade(crypto.id, Number(lastPrice), user.id);
+        console.log(`Auto trade evaluation result for ${symbol}:`, result);
         
         if (result.success && result.action) {
           console.log(`Successfully executed auto ${result.action} for ${symbol}:`, result);

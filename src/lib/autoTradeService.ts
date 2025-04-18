@@ -321,28 +321,33 @@ export async function processAutoCryptoTrades(
             continue;
           }
 
-          // Execute the order using the Kraken API
-          // Call the execute-order API endpoint to use the Kraken API
-          const executeOrderResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/api/cryptos/execute-order`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              cryptoId: crypto.id,
-              action,
-              shares: purchaseMethod === 'shares' ? sharesToTrade : undefined,
-              price: priceData.price,
-              orderType: orderType,
-              isAutoOrder: true,
-              totalValue: purchaseMethod === 'totalValue' ? calculatedTotalValue : undefined,
-              purchaseMethod
-            })
+          // Get user settings to retrieve API credentials
+          const userSettings = await prisma.settings.findUnique({
+            where: { userId }
           });
 
-          const executeOrderResult = await executeOrderResponse.json();
+          if (!userSettings || !userSettings.krakenApiKey || !userSettings.krakenApiSign) {
+            throw new Error('Kraken API credentials not found. Please configure them in settings.');
+          }
 
-          if (!executeOrderResponse.ok) {
+          // Import the executeKrakenOrderAndCreateTransaction function
+          const { executeKrakenOrderAndCreateTransaction } = require('./autoTradeTransaction');
+          
+          // Execute the order and create a transaction in one step
+          console.log(`Executing auto trade for ${crypto.symbol} using direct Kraken API call`);
+          const executeOrderResult = await executeKrakenOrderAndCreateTransaction(
+            userId,
+            crypto.id,
+            crypto.symbol,
+            action,
+            purchaseMethod === 'shares' ? sharesToTrade : (calculatedTotalValue / priceData.price),
+            priceData.price,
+            orderType,
+            userSettings.krakenApiKey,
+            userSettings.krakenApiSign
+          );
+
+          if (!executeOrderResult.success) {
             const errorMessage = executeOrderResult.error || 'Failed to execute order via Kraken API';
             
             // Log the failed execution
@@ -732,28 +737,33 @@ export async function checkCryptoForAutoTrade(
           };
         }
 
-        // Execute the order using the Kraken API
-        // Call the execute-order API endpoint to use the Kraken API
-        const executeOrderResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/api/cryptos/execute-order`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            cryptoId: crypto.id,
-            action,
-            shares: purchaseMethod === 'shares' ? sharesToTrade : undefined,
-            price,
-            orderType: orderType,
-            isAutoOrder: true,
-            totalValue: purchaseMethod === 'totalValue' ? calculatedTotalValue : undefined,
-            purchaseMethod
-          })
+        // Get user settings to retrieve API credentials
+        const userSettings = await prisma.settings.findUnique({
+          where: { userId }
         });
 
-        const executeOrderResult = await executeOrderResponse.json();
+        if (!userSettings || !userSettings.krakenApiKey || !userSettings.krakenApiSign) {
+          throw new Error('Kraken API credentials not found. Please configure them in settings.');
+        }
 
-        if (!executeOrderResponse.ok) {
+        // Import the executeKrakenOrderAndCreateTransaction function
+        const { executeKrakenOrderAndCreateTransaction } = require('./autoTradeTransaction');
+        
+        // Execute the order and create a transaction in one step
+        console.log(`Executing auto trade for ${crypto.symbol} using direct Kraken API call`);
+        const executeOrderResult = await executeKrakenOrderAndCreateTransaction(
+          userId,
+          crypto.id,
+          crypto.symbol,
+          action,
+          purchaseMethod === 'shares' ? sharesToTrade : (calculatedTotalValue / price),
+          price,
+          orderType,
+          userSettings.krakenApiKey,
+          userSettings.krakenApiSign
+        );
+
+        if (!executeOrderResult.success) {
           throw new Error(executeOrderResult.error || 'Failed to execute order via Kraken API');
         }
 

@@ -14,6 +14,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.error('Execute Order API: Method not allowed:', req.method);
     return res.status(405).json({ error: 'Method not allowed' });
   }
+  
+  // Add detailed logging for auto-trade requests
+  if (req.body.isAutoOrder) {
+    console.log('Auto-trade order received:', {
+      cryptoId: req.body.cryptoId,
+      action: req.body.action,
+      shares: req.body.shares,
+      price: req.body.price,
+      isAutoOrder: req.body.isAutoOrder,
+      purchaseMethod: req.body.purchaseMethod
+    });
+  }
 
   const supabase = createClient(req, res);
   

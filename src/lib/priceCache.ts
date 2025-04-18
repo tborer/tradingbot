@@ -198,21 +198,43 @@ export function evaluateTradingConditions(crypto: any, settings: any) {
   let action: 'buy' | 'sell' | null = null;
   let reason = '';
 
-  // Check for auto buy conditions
-  if (crypto.autoBuy && (nextAction === 'buy' || oneTimeBuy)) {
-    if (shouldBuyCrypto(crypto.symbol, crypto.purchasePrice, buyThreshold)) {
-      shouldTrade = true;
-      action = 'buy';
-      reason = `Price dropped by ${((crypto.purchasePrice - cachedPrice.price) / crypto.purchasePrice * 100).toFixed(2)}%, exceeding threshold of ${buyThreshold}%`;
+  // First check the nextAction from autoTradeSettings to determine which condition to evaluate first
+  if (nextAction === 'sell') {
+    // Check for auto sell conditions first
+    if (crypto.autoSell && (nextAction === 'sell' || oneTimeSell)) {
+      if (shouldSellCrypto(crypto.symbol, crypto.purchasePrice, sellThreshold)) {
+        shouldTrade = true;
+        action = 'sell';
+        reason = `Price increased by ${((cachedPrice.price - crypto.purchasePrice) / crypto.purchasePrice * 100).toFixed(2)}%, exceeding threshold of ${sellThreshold}%`;
+      }
     }
-  }
-
-  // Check for auto sell conditions
-  if (!shouldTrade && crypto.autoSell && (nextAction === 'sell' || oneTimeSell)) {
-    if (shouldSellCrypto(crypto.symbol, crypto.purchasePrice, sellThreshold)) {
-      shouldTrade = true;
-      action = 'sell';
-      reason = `Price increased by ${((cachedPrice.price - crypto.purchasePrice) / crypto.purchasePrice * 100).toFixed(2)}%, exceeding threshold of ${sellThreshold}%`;
+    
+    // Only check buy conditions if sell conditions weren't met and oneTimeBuy is true
+    if (!shouldTrade && crypto.autoBuy && oneTimeBuy) {
+      if (shouldBuyCrypto(crypto.symbol, crypto.purchasePrice, buyThreshold)) {
+        shouldTrade = true;
+        action = 'buy';
+        reason = `Price dropped by ${((crypto.purchasePrice - cachedPrice.price) / crypto.purchasePrice * 100).toFixed(2)}%, exceeding threshold of ${buyThreshold}%`;
+      }
+    }
+  } else {
+    // Default case: nextAction is 'buy' or not specified
+    // Check for auto buy conditions first
+    if (crypto.autoBuy && (nextAction === 'buy' || oneTimeBuy)) {
+      if (shouldBuyCrypto(crypto.symbol, crypto.purchasePrice, buyThreshold)) {
+        shouldTrade = true;
+        action = 'buy';
+        reason = `Price dropped by ${((crypto.purchasePrice - cachedPrice.price) / crypto.purchasePrice * 100).toFixed(2)}%, exceeding threshold of ${buyThreshold}%`;
+      }
+    }
+    
+    // Only check sell conditions if buy conditions weren't met and oneTimeSell is true
+    if (!shouldTrade && crypto.autoSell && oneTimeSell) {
+      if (shouldSellCrypto(crypto.symbol, crypto.purchasePrice, sellThreshold)) {
+        shouldTrade = true;
+        action = 'sell';
+        reason = `Price increased by ${((cachedPrice.price - crypto.purchasePrice) / crypto.purchasePrice * 100).toFixed(2)}%, exceeding threshold of ${sellThreshold}%`;
+      }
     }
   }
 
@@ -223,6 +245,7 @@ export function evaluateTradingConditions(crypto: any, settings: any) {
     currentPrice: cachedPrice.price,
     purchasePrice: crypto.purchasePrice,
     timestamp: cachedPrice.timestamp,
+    nextAction: nextAction, // Add the nextAction to the return value for display purposes
     settings: {
       buyThreshold,
       sellThreshold,

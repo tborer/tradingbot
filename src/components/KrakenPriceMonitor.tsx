@@ -1004,8 +1004,12 @@ export default function KrakenPriceMonitor({
                         <div className="grid grid-cols-2 gap-x-4 mt-1">
                           <div>Purchase: ${crypto.purchasePrice?.toFixed(2)}</div>
                           <div>Shares: {crypto.shares?.toFixed(6)}</div>
-                          <div>Auto Buy: {crypto.autoBuy ? 'Yes' : 'No'}</div>
-                          <div>Auto Sell: {crypto.autoSell ? 'Yes' : 'No'}</div>
+                          <div>Next Action: {crypto.tradingConditions?.nextAction === 'sell' ? 'Sell' : 'Buy'}</div>
+                          <div>
+                            {crypto.tradingConditions?.nextAction === 'sell' 
+                              ? `Auto Sell: ${crypto.autoSell ? 'Yes' : 'No'}`
+                              : `Auto Buy: ${crypto.autoBuy ? 'Yes' : 'No'}`}
+                          </div>
                         </div>
                         {crypto.tradingConditions && (
                           <div className={`mt-2 p-1 rounded ${crypto.tradingConditions.shouldTrade ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'}`}>

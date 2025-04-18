@@ -48,21 +48,17 @@ export async function logAutoTradeEvent(
     
     // Determine if this event should be recorded in the transaction history
     const shouldCreateTransactionRecord = 
-      // Always log errors
-      type === AutoTradeLogType.ERROR || 
-      // Always log successful events
-      type === AutoTradeLogType.SUCCESS ||
-      // Log events related to actual trade execution
-      message.includes('executed auto') ||
-      // Log events related to failed trade attempts
-      message.includes('Failed to execute');
+      // Only create transaction records for actual trade executions with an order ID
+      (message.includes('executed auto') && data.krakenOrderId) ||
+      // Log events related to failed trade attempts after API call
+      (message.includes('Failed to execute') && message.includes('API'));
     
-    // Only create transaction records for important events
+    // Only create transaction records for completed trades with order IDs
     if (shouldCreateTransactionRecord) {
       await prisma.cryptoTransaction.create({
         data: {
           cryptoId: data.cryptoId || 'system',
-          action: 'auto_trade_log',
+          action: data.action || 'auto_trade_log',
           shares: data.shares || 0,
           price: data.price || 0,
           totalAmount: data.totalValue || (data.shares && data.price ? data.shares * data.price : 0),
@@ -115,29 +111,29 @@ export async function logAutoTradeEvaluation(
     conditionMet: shouldTrade
   });
   
-  // Only create transaction records for successful conditions
-  // This prevents cluttering the transaction history with "condition not met" messages
+  // Log to the console but DO NOT create transaction records for condition evaluations
+  // We'll only create transaction records when the actual trade is executed
   if (shouldTrade) {
-    await logAutoTradeEvent(
-      userId,
-      AutoTradeLogType.SUCCESS,
+    // Use a custom function to log to console only, not to the database
+    console.log(`[AUTO TRADE CONDITION MET] ${message}`, {
+      timestamp: new Date().toISOString(),
+      type: AutoTradeLogType.SUCCESS,
       message,
-      {
-        cryptoId,
-        symbol,
-        action,
-        price: currentPrice,
-        purchasePrice,
-        thresholdPercent,
-        percentChange,
-        conditionMet: shouldTrade
-      }
-    );
+      cryptoId,
+      symbol,
+      action,
+      price: currentPrice,
+      purchasePrice,
+      thresholdPercent,
+      percentChange,
+      conditionMet: shouldTrade
+    });
   }
 }
 
 /**
  * Logs the execution of an auto trade
+ * Only creates transaction records for successful trades with a Kraken order ID
  */
 export async function logAutoTradeExecution(
   userId: string,
@@ -153,10 +149,13 @@ export async function logAutoTradeExecution(
 ): Promise<void> {
   const totalValue = price * shares;
   
+  // Create different messages for successful and failed trades
   const message = success
-    ? `Successfully executed auto ${action} for ${shares} shares of ${symbol} at $${price.toFixed(2)} (Total: $${totalValue.toFixed(2)})`
-    : `Failed to execute auto ${action} for ${shares} shares of ${symbol} at $${price.toFixed(2)}: ${errorMessage || 'Unknown error'}`;
+    ? `Successfully executed auto ${action} order for ${shares} shares of ${symbol} at $${price}`
+    : `Failed to execute auto ${action} for ${shares} shares of ${symbol} at $${price}: ${errorMessage || 'Unknown error'}`;
   
+  // Only log successful trades with order IDs to the transaction history
+  // For failed trades or trades without order IDs, just log to console
   await logAutoTradeEvent(
     userId,
     success ? AutoTradeLogType.SUCCESS : AutoTradeLogType.ERROR,

@@ -1019,7 +1019,7 @@ export default function KrakenPriceMonitor({
                                 {crypto.tradingConditions.reason}
                               </>
                             ) : (
-                              <span>Waiting for {crypto.autoTradeSettings?.nextAction} conditions to be met</span>
+                              <span>Waiting for {crypto.tradingConditions.nextAction || crypto.autoTradeSettings?.nextAction || 'buy'} conditions to be met</span>
                             )}
                           </div>
                         )}

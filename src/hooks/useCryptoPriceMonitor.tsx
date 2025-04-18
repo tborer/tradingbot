@@ -150,7 +150,19 @@ export function useCryptoPriceMonitor() {
         return crypto;
       }
       
+      // Log the auto trade settings for debugging
+      console.log(`Evaluating trading conditions for ${crypto.symbol}:`, {
+        nextAction: crypto.autoTradeSettings?.nextAction,
+        autoBuy: crypto.autoBuy,
+        autoSell: crypto.autoSell,
+        purchasePrice: crypto.purchasePrice,
+        lastPrice: crypto.lastPrice
+      });
+      
       const conditions = evaluateTradingConditions(crypto, settings);
+      
+      // Log the evaluated conditions
+      console.log(`Trading conditions for ${crypto.symbol}:`, conditions);
       
       return {
         ...crypto,

@@ -221,11 +221,12 @@ export async function executeKrakenOrderAndCreateTransaction(
           where: { id: cryptoId },
           data: {
             shares: { decrement: shares },
+            purchasePrice: price, // Update purchase price to the new sell price
             lastPrice: price
           }
         });
       }
-      console.log(`Updated crypto record for ${symbol} after ${action} transaction`);
+      console.log(`Updated crypto record for ${symbol} after ${action} transaction. Purchase price updated to ${price}`);
     } catch (updateError) {
       console.error(`Failed to update crypto record after transaction:`, updateError);
       // Continue since the transaction was already created

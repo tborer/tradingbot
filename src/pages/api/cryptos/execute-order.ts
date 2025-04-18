@@ -327,14 +327,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // For buy transactions, update the purchasePrice to the current price
-    if (action === 'buy') {
-      await prisma.crypto.update({
-        where: { id: crypto.id },
-        data: { purchasePrice: price }
-      });
-      console.log(`Updated purchasePrice for ${crypto.symbol} to ${price} on buy transaction`);
-    }
+    // For both buy and sell transactions, update the purchasePrice to the current price
+    await prisma.crypto.update({
+      where: { id: crypto.id },
+      data: { purchasePrice: price }
+    });
+    console.log(`Updated purchasePrice for ${crypto.symbol} to ${price} on ${action} transaction`);
     
     // Calculate total amount
     const totalAmount = sharesToTrade * price;

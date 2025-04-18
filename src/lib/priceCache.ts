@@ -201,7 +201,7 @@ export function evaluateTradingConditions(crypto: any, settings: any) {
   // First check the nextAction from autoTradeSettings to determine which condition to evaluate first
   if (nextAction === 'sell') {
     // Check for auto sell conditions first
-    if (crypto.autoSell && (nextAction === 'sell' || oneTimeSell)) {
+    if (crypto.autoSell) {
       if (shouldSellCrypto(crypto.symbol, crypto.purchasePrice, sellThreshold)) {
         shouldTrade = true;
         action = 'sell';
@@ -220,7 +220,7 @@ export function evaluateTradingConditions(crypto: any, settings: any) {
   } else {
     // Default case: nextAction is 'buy' or not specified
     // Check for auto buy conditions first
-    if (crypto.autoBuy && (nextAction === 'buy' || oneTimeBuy)) {
+    if (crypto.autoBuy) {
       if (shouldBuyCrypto(crypto.symbol, crypto.purchasePrice, buyThreshold)) {
         shouldTrade = true;
         action = 'buy';

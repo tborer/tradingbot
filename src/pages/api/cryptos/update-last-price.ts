@@ -115,24 +115,59 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try {
         console.log(`Triggering auto trade evaluation for ${symbol} at price ${lastPrice}`);
         
+        // Check if this crypto has auto trading enabled
+        const hasAutoTradeEnabled = crypto.autoBuy || crypto.autoSell;
+        
+        if (!hasAutoTradeEnabled) {
+          console.log(`Auto trading not enabled for ${symbol}, skipping evaluation`);
+          return res.status(200).json({ 
+            message: `Successfully updated lastPrice for ${symbol}`,
+            symbol,
+            lastPrice: Number(lastPrice),
+            autoTradeStatus: 'skipped',
+            reason: 'Auto trading not enabled for this crypto'
+          });
+        }
+        
         // Import the auto trade service function
         const { checkCryptoForAutoTrade } = require('@/lib/autoTradeService');
         
-        // Process auto trade asynchronously without waiting for the result
-        // This prevents the price update API from being slowed down
-        checkCryptoForAutoTrade(crypto.id, Number(lastPrice), user.id)
-          .then(result => {
-            if (result.success && result.action) {
-              console.log(`Successfully executed auto ${result.action} for ${symbol}:`, result);
-            } else {
-              console.log(`No auto trade executed for ${symbol}:`, result.message);
-            }
-          })
-          .catch(error => {
-            console.error(`Error processing auto trade for ${symbol}:`, error);
+        // Process auto trade synchronously to ensure it completes
+        // This is important to make sure trades are executed when conditions are met
+        console.log(`Executing auto trade check for ${symbol} (ID: ${crypto.id}) at price ${lastPrice}`);
+        
+        const result = await checkCryptoForAutoTrade(crypto.id, Number(lastPrice), user.id);
+        
+        if (result.success && result.action) {
+          console.log(`Successfully executed auto ${result.action} for ${symbol}:`, result);
+          return res.status(200).json({ 
+            message: `Successfully updated lastPrice and executed auto ${result.action} for ${symbol}`,
+            symbol,
+            lastPrice: Number(lastPrice),
+            autoTradeStatus: 'executed',
+            autoTradeAction: result.action,
+            autoTradeShares: result.shares,
+            autoTradePrice: result.price
           });
+        } else {
+          console.log(`No auto trade executed for ${symbol}:`, result.message);
+          return res.status(200).json({ 
+            message: `Successfully updated lastPrice for ${symbol}`,
+            symbol,
+            lastPrice: Number(lastPrice),
+            autoTradeStatus: 'evaluated',
+            autoTradeResult: result.message
+          });
+        }
       } catch (error) {
         console.error(`Error triggering auto trade for ${symbol}:`, error);
+        return res.status(200).json({ 
+          message: `Successfully updated lastPrice for ${symbol}, but auto trade evaluation failed`,
+          symbol,
+          lastPrice: Number(lastPrice),
+          autoTradeStatus: 'error',
+          autoTradeError: error.message
+        });
       }
     }
     

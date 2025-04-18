@@ -364,6 +364,14 @@ export const shouldSellCrypto = (
   // Ensure the price change meets or exceeds the threshold percentage
   const shouldSell = percentGain >= thresholdPercent;
   console.log(`Should sell? ${shouldSell ? 'YES' : 'NO'} (Gain: ${percentGain.toFixed(2)}% >= Threshold: ${thresholdPercent}%: ${percentGain >= thresholdPercent})`);
+  
+  // Add additional logging for debugging
+  if (shouldSell) {
+    console.log(`SELL CONDITION MET: Price increased by ${percentGain.toFixed(2)}%, which is >= threshold of ${thresholdPercent}%`);
+  } else {
+    console.log(`SELL CONDITION NOT MET: ${percentGain.toFixed(2)}% gain is less than threshold of ${thresholdPercent}%`);
+  }
+  
   return shouldSell;
 };
 
@@ -392,6 +400,14 @@ export const shouldBuyCrypto = (
   // Ensure the price change meets or exceeds the threshold percentage
   const shouldBuy = percentDrop >= thresholdPercent;
   console.log(`Should buy? ${shouldBuy ? 'YES' : 'NO'} (Drop: ${percentDrop.toFixed(2)}% >= Threshold: ${thresholdPercent}%: ${percentDrop >= thresholdPercent})`);
+  
+  // Add additional logging for debugging
+  if (shouldBuy) {
+    console.log(`BUY CONDITION MET: Price dropped by ${percentDrop.toFixed(2)}%, which is >= threshold of ${thresholdPercent}%`);
+  } else {
+    console.log(`BUY CONDITION NOT MET: ${percentDrop.toFixed(2)}% drop is less than threshold of ${thresholdPercent}%`);
+  }
+  
   return shouldBuy;
 };
 

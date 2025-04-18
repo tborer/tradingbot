@@ -114,6 +114,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Wait for either the process to complete or the timeout
     const results = await processWithTimeout as Awaited<ReturnType<typeof processAutoCryptoTrades>>;
     
+    // Log detailed results for debugging
+    console.log('Auto trade processing results:');
+    for (const result of results) {
+      if (result.success) {
+        console.log(`SUCCESS: ${result.symbol} - ${result.action} - ${result.shares} shares at $${result.price}`);
+      } else {
+        console.log(`FAILED: ${result.symbol} - ${result.message}`);
+      }
+    }
+    
     console.log(`Auto trade processing completed with ${results.length} results`);
     console.log('Results:', results.map(r => 
       `${r.symbol || 'unknown'}: ${r.success ? 'SUCCESS' : 'FAILED'} - ${r.message} ${r.action ? `(${r.action})` : ''}`

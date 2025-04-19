@@ -25,274 +25,235 @@ export interface KrakenTickerMessage {
 
 import { createAndLogError, ErrorCategory, ErrorSeverity, WebSocketErrorCodes } from './errorLogger';
 
-// Parse Kraken websocket message
+// Parse Kraken websocket message with optimized logic
 export const parseKrakenMessage = (message: string): KrakenPrice[] => {
-  // Add detailed logging to help diagnose parsing issues
-  console.log('Starting to parse Kraken message:', message.substring(0, 200));
+  // Minimal logging to reduce processing overhead
   try {
-    // Check for empty message
+    // Quick check for empty message
     if (!message || message === '{}') {
-      console.log('Received empty Kraken message, ignoring');
       return [];
     }
     
-    console.log('Parsing Kraken message:', message.substring(0, 200));
     const parsed = JSON.parse(message);
     
-    // Handle subscription confirmation messages
-    if (parsed.event === 'subscribed' || parsed.event === 'heartbeat') {
-      console.log('Received subscription confirmation or heartbeat from Kraken');
-      return [];
-    }
-    
-    // Handle error messages
-    if (parsed.event === 'error') {
-      // Log the error with our enhanced error logging
-      createAndLogError(
-        ErrorCategory.WEBSOCKET,
-        ErrorSeverity.ERROR,
-        1003,
-        `Kraken WebSocket API error: ${parsed.message || 'Unknown error'}`,
-        {
-          krakenError: parsed,
-          timestamp: Date.now(),
-          errorCode: parsed.code || 'UNKNOWN'
-        }
-      );
-      return [];
-    }
-    
-    // Handle pong responses
-    if (parsed.name === 'pong' || parsed.method === 'pong') {
-      console.log('Received pong from Kraken');
-      return [];
-    }
-    
-    // Handle status updates (connection confirmation)
-    if (parsed.channel === 'status' && parsed.type === 'update' && Array.isArray(parsed.data)) {
-      console.log('Received status update from Kraken:', JSON.stringify(parsed).substring(0, 200));
-      return [];
-    }
-    
-    // Handle the v2 format with channel and data array (exactly as specified in requirements)
-    if (parsed.channel === 'ticker' && (parsed.type === 'snapshot' || parsed.type === 'update') && Array.isArray(parsed.data)) {
-      console.log('Found ticker data in v2 format with channel and data array');
+    // Use a Map to define message type handlers for better lookup performance
+    const messageTypeHandlers = new Map<string, () => KrakenPrice[]>([
+      // Non-price messages that should be ignored
+      ['subscription', () => {
+        return [];
+      }],
+      ['heartbeat', () => {
+        return [];
+      }],
+      ['error', () => {
+        createAndLogError(
+          ErrorCategory.WEBSOCKET,
+          ErrorSeverity.ERROR,
+          1003,
+          `Kraken WebSocket API error: ${parsed.message || 'Unknown error'}`,
+          {
+            krakenError: parsed,
+            timestamp: Date.now(),
+            errorCode: parsed.code || 'UNKNOWN'
+          }
+        );
+        return [];
+      }],
+      ['pong', () => {
+        return [];
+      }],
+      ['status', () => {
+        return [];
+      }],
       
-      // Extract prices from each ticker item in the data array
-      const prices: KrakenPrice[] = [];
-      
-      for (const item of parsed.data) {
-        if (item.symbol) {
-          // Extract the symbol (remove the /USD part)
+      // V2 format with channel and data array
+      ['v2-ticker', () => {
+        if (!Array.isArray(parsed.data)) return [];
+        
+        const prices: KrakenPrice[] = [];
+        const timestamp = parsed.timestamp || Date.now();
+        
+        // Use a Map for XBT to BTC conversion to avoid repeated string comparisons
+        const symbolMap = new Map<string, string>([['XBT', 'BTC']]);
+        
+        for (const item of parsed.data) {
+          if (!item.symbol) continue;
+          
+          // Extract symbol more efficiently
           const rawSymbol = item.symbol.split('/')[0];
+          const symbol = symbolMap.get(rawSymbol) || rawSymbol;
           
-          // Convert XBT to BTC for consistency
-          const symbol = rawSymbol === 'XBT' ? 'BTC' : rawSymbol;
-          
-          // According to the specified format, we have direct access to these fields
+          // Simplified price extraction logic
           let price: number | null = null;
           
           if (item.last !== undefined) {
             price = typeof item.last === 'string' ? parseFloat(item.last) : item.last;
           } else if (item.ask !== undefined && item.bid !== undefined) {
-            // If last is not available, use the midpoint of bid and ask
             const ask = typeof item.ask === 'string' ? parseFloat(item.ask) : item.ask;
             const bid = typeof item.bid === 'string' ? parseFloat(item.bid) : item.bid;
             price = (ask + bid) / 2;
           }
           
           if (price !== null) {
-            console.log(`Extracted price ${price} for symbol ${symbol} from ${parsed.type} message`);
-            
-            prices.push({
-              symbol,
-              price,
-              timestamp: parsed.timestamp || Date.now(),
-            });
+            prices.push({ symbol, price, timestamp });
           }
         }
-      }
-      
-      if (prices.length > 0) {
-        return prices;
-      }
-    }
-    
-    // Handle the new message format with data field containing a JSON string
-    if (parsed.data && typeof parsed.data === 'string') {
-      console.log('Detected new message format with data as string');
-      try {
-        // Parse the nested JSON string in the data field
-        const innerData = JSON.parse(parsed.data);
-        console.log('Parsed inner data:', JSON.stringify(innerData).substring(0, 200));
         
-        // Check if it's a ticker message with type update or snapshot
-        if (innerData.channel === 'ticker' && (innerData.type === 'update' || innerData.type === 'snapshot') && Array.isArray(innerData.data)) {
-          console.log('Found ticker update/snapshot data in new format');
+        return prices;
+      }],
+      
+      // Nested JSON string format
+      ['nested-json', () => {
+        if (typeof parsed.data !== 'string') return [];
+        
+        try {
+          const innerData = JSON.parse(parsed.data);
           
-          // Extract prices from each ticker item
+          if (innerData.channel !== 'ticker' || !Array.isArray(innerData.data)) {
+            return [];
+          }
+          
           const prices: KrakenPrice[] = [];
+          const timestamp = parsed.timestamp || Date.now();
+          const symbolMap = new Map<string, string>([['XBT', 'BTC']]);
           
           for (const item of innerData.data) {
-            if (item.symbol && item.last !== undefined) {
-              // Extract the symbol (remove the /USD part)
-              const rawSymbol = item.symbol.split('/')[0];
-              
-              // Convert XBT to BTC for consistency
-              const symbol = rawSymbol === 'XBT' ? 'BTC' : rawSymbol;
-              
-              // Use the 'last' field as the current price
-              const price = typeof item.last === 'string' ? parseFloat(item.last) : item.last;
-              
-              console.log(`Extracted price ${price} for symbol ${symbol} from new format ticker`);
-              
-              prices.push({
-                symbol,
-                price,
-                timestamp: parsed.timestamp || Date.now(),
-              });
-            }
+            if (!item.symbol || item.last === undefined) continue;
+            
+            const rawSymbol = item.symbol.split('/')[0];
+            const symbol = symbolMap.get(rawSymbol) || rawSymbol;
+            const price = typeof item.last === 'string' ? parseFloat(item.last) : item.last;
+            
+            prices.push({ symbol, price, timestamp });
           }
           
-          if (prices.length > 0) {
-            return prices;
-          }
+          return prices;
+        } catch {
+          return [];
         }
-      } catch (innerError) {
-        console.error('Error parsing inner data JSON:', innerError);
-      }
-    }
-    
-    // Check if it's an array (Kraken sends arrays for ticker updates)
-    if (Array.isArray(parsed)) {
-      console.log('Received array-format message from Kraken:', JSON.stringify(parsed).substring(0, 200));
+      }],
       
-      // Kraken v2 WebSocket format: [channelID, data, channelName, pair]
-      // Example: [0,{"a":[["41772.10000",0.00100000,1.00000000]],"b":[["41772.00000",0.77920533,1.00000000]],"c":["41772.10000","0.00006949"],"v":["1903.41357664","2167.75553954"],"p":["41984.40905156","42020.94016593"],"t":[14218,16453],"l":["41600.00000","41600.00000"],"h":["42399.90000","42399.90000"],"o":["42208.80000","42208.80000"]},"ticker","XBT/USD"]
-      
-      if (parsed.length >= 4 && parsed[2] === 'ticker') {
+      // Array format v2: [channelID, data, channelName, pair]
+      ['array-v2', () => {
+        if (!Array.isArray(parsed) || parsed.length < 4 || parsed[2] !== 'ticker') {
+          return [];
+        }
+        
         const data = parsed[1];
         const pair = parsed[3];
         
-        console.log(`Extracted ticker data for pair ${pair}:`, JSON.stringify(data).substring(0, 200));
+        if (!data?.c?.[0]) return [];
         
-        // Make sure data and c field exist
-        if (!data || !data.c || !Array.isArray(data.c) || data.c.length === 0) {
-          console.log('Invalid Kraken ticker data format:', data);
-          return [];
-        }
-        
-        // Extract the price from the close price (c) field
-        // The first element in the array is the price
         const price = parseFloat(data.c[0]);
-        
-        // Extract the symbol from the pair
         const symbol = formatKrakenSymbol(pair);
-        
-        console.log(`Extracted price ${price} for symbol ${symbol} from pair ${pair}`);
         
         return [{
           symbol,
           price,
           timestamp: Date.now(),
         }];
-      }
+      }],
       
-      // Handle v1 format array response: [channelName, data, pair]
-      // Example: ["ticker", {"a": ["58661.00000", 0, "0.00000000"], ...}, "XBT/USD"]
-      if (parsed.length >= 3 && parsed[0] === 'ticker') {
+      // Array format v1: [channelName, data, pair]
+      ['array-v1', () => {
+        if (!Array.isArray(parsed) || parsed.length < 3 || parsed[0] !== 'ticker') {
+          return [];
+        }
+        
         const data = parsed[1];
         const pair = parsed[2];
         
-        console.log(`Extracted v1 ticker data for pair ${pair}:`, JSON.stringify(data).substring(0, 200));
+        if (!data?.c?.[0]) return [];
         
-        // Make sure data and c field exist
-        if (!data || !data.c || !Array.isArray(data.c) || data.c.length === 0) {
-          console.log('Invalid Kraken v1 ticker data format:', data);
-          return [];
-        }
-        
-        // Extract the price from the close price (c) field
         const price = parseFloat(data.c[0]);
-        
-        // Extract the symbol from the pair
         const symbol = formatKrakenSymbol(pair);
-        
-        console.log(`Extracted price ${price} for symbol ${symbol} from pair ${pair} (v1 format)`);
         
         return [{
           symbol,
           price,
           timestamp: Date.now(),
         }];
-      }
-    }
-    
-    // Handle ticker updates in v1 format (fallback)
-    if (parsed.type === 'update' && parsed.channel === 'ticker') {
-      console.log('Received update-type message from Kraken:', JSON.stringify(parsed).substring(0, 200));
+      }],
       
-      // Make sure data and c field exist
-      if (!parsed.data || !parsed.data.c || !Array.isArray(parsed.data.c) || parsed.data.c.length === 0) {
-        console.log('Invalid Kraken ticker data format (v1):', parsed.data);
-        return [];
-      }
-      
-      // Extract the price from the close price (c) field
-      const price = parseFloat(parsed.data.c[0]);
-      
-      // Extract the symbol from the message
-      const symbol = formatKrakenSymbol(parsed.symbol);
-      
-      console.log(`Extracted price ${price} for symbol ${symbol} from update message`);
-      
-      return [{
-        symbol,
-        price,
-        timestamp: parsed.timestamp || Date.now(),
-      }];
-    }
-    
-    // Handle Kraken v2 API format with ticker updates
-    if (parsed.type === 'ticker' && parsed.symbol) {
-      console.log('Detected Kraken v2 ticker update format:', JSON.stringify(parsed).substring(0, 200));
-      
-      // Extract the symbol (remove the /USD part)
-      const rawSymbol = parsed.symbol.split('/')[0];
-      
-      // Convert XBT to BTC for consistency
-      const symbol = rawSymbol === 'XBT' ? 'BTC' : rawSymbol;
-      
-      // Try to extract price from different possible fields
-      let price: number | null = null;
-      
-      // Check for price in different possible locations
-      if (parsed.price !== undefined) {
-        price = typeof parsed.price === 'string' ? parseFloat(parsed.price) : parsed.price;
-      } else if (parsed.last !== undefined) {
-        price = typeof parsed.last === 'string' ? parseFloat(parsed.last) : parsed.last;
-      } else if (parsed.c && Array.isArray(parsed.c) && parsed.c.length > 0) {
-        price = parseFloat(parsed.c[0]);
-      } else if (parsed.data && parsed.data.c && Array.isArray(parsed.data.c) && parsed.data.c.length > 0) {
-        price = parseFloat(parsed.data.c[0]);
-      }
-      
-      if (price !== null) {
-        console.log(`Extracted price ${price} for symbol ${symbol} from v2 ticker update`);
+      // V1 ticker update format
+      ['v1-ticker', () => {
+        if (!parsed.data?.c?.[0]) return [];
+        
+        const price = parseFloat(parsed.data.c[0]);
+        const symbol = formatKrakenSymbol(parsed.symbol);
         
         return [{
           symbol,
           price,
           timestamp: parsed.timestamp || Date.now(),
         }];
+      }],
+      
+      // V2 ticker direct format
+      ['v2-ticker-direct', () => {
+        if (!parsed.symbol) return [];
+        
+        const rawSymbol = parsed.symbol.split('/')[0];
+        const symbol = rawSymbol === 'XBT' ? 'BTC' : rawSymbol;
+        let price: number | null = null;
+        
+        // Simplified price extraction with early returns
+        if (parsed.price !== undefined) {
+          price = typeof parsed.price === 'string' ? parseFloat(parsed.price) : parsed.price;
+        } else if (parsed.last !== undefined) {
+          price = typeof parsed.last === 'string' ? parseFloat(parsed.last) : parsed.last;
+        } else if (parsed.c?.[0]) {
+          price = parseFloat(parsed.c[0]);
+        } else if (parsed.data?.c?.[0]) {
+          price = parseFloat(parsed.data.c[0]);
+        }
+        
+        if (price === null) return [];
+        
+        return [{
+          symbol,
+          price,
+          timestamp: parsed.timestamp || Date.now(),
+        }];
+      }]
+    ]);
+    
+    // Determine message type and call appropriate handler
+    let handlerKey: string | null = null;
+    
+    // Check for event-based messages
+    if (parsed.event === 'subscribed' || parsed.event === 'heartbeat') {
+      handlerKey = 'subscription';
+    } else if (parsed.event === 'error') {
+      handlerKey = 'error';
+    } else if (parsed.name === 'pong' || parsed.method === 'pong') {
+      handlerKey = 'pong';
+    } else if (parsed.channel === 'status' && parsed.type === 'update' && Array.isArray(parsed.data)) {
+      handlerKey = 'status';
+    } else if (parsed.channel === 'ticker' && (parsed.type === 'snapshot' || parsed.type === 'update') && Array.isArray(parsed.data)) {
+      handlerKey = 'v2-ticker';
+    } else if (parsed.data && typeof parsed.data === 'string') {
+      handlerKey = 'nested-json';
+    } else if (Array.isArray(parsed)) {
+      // Check array format v2 first (more specific)
+      if (parsed.length >= 4 && parsed[2] === 'ticker') {
+        handlerKey = 'array-v2';
+      } else if (parsed.length >= 3 && parsed[0] === 'ticker') {
+        handlerKey = 'array-v1';
       }
+    } else if (parsed.type === 'update' && parsed.channel === 'ticker') {
+      handlerKey = 'v1-ticker';
+    } else if (parsed.type === 'ticker' && parsed.symbol) {
+      handlerKey = 'v2-ticker-direct';
     }
     
-    // If we get here, we received a message we don't understand
-    console.log('Unrecognized Kraken message format:', JSON.stringify(parsed).substring(0, 200));
-    return [];
+    // Call the appropriate handler or return empty array if no handler found
+    return handlerKey && messageTypeHandlers.has(handlerKey) 
+      ? messageTypeHandlers.get(handlerKey)!() 
+      : [];
+      
   } catch (error) {
-    console.error('Error parsing Kraken message:', error, 'Message:', message.substring(0, 200));
+    console.error('Error parsing Kraken message:', error);
     return [];
   }
 };

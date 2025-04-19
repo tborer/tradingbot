@@ -22,17 +22,24 @@ interface UseThrottledPriceUpdatesOptions {
    * Whether the throttling is enabled
    */
   enabled?: boolean;
+  
+  /**
+   * Whether to enable detailed logging
+   */
+  enableDetailedLogging?: boolean;
 }
 
 /**
  * A hook that throttles price updates from WebSockets by batching them
  * and processing them at a specified interval.
+ * Optimized for performance with Map-based lookups and reduced logging.
  */
 export function useThrottledPriceUpdates({
   interval = 5000, // Default to 5 seconds
   maxBatchSize = 20, // Default to 20 updates per batch
   onBatchProcess,
-  enabled = true
+  enabled = true,
+  enableDetailedLogging = false
 }: UseThrottledPriceUpdatesOptions) {
   const { addLog } = useWebSocketLogs();
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -52,6 +59,13 @@ export function useThrottledPriceUpdates({
     maxBatchSize: 0
   });
   
+  // Optimized logging function that only logs when detailed logging is enabled
+  const logIfEnabled = useCallback((level: 'info' | 'warning' | 'error' | 'success', message: string, details?: Record<string, any>) => {
+    if (enableDetailedLogging) {
+      addLog(level, message, details);
+    }
+  }, [enableDetailedLogging, addLog]);
+  
   // Function to add a price update to the pending batch
   const addPriceUpdate = useCallback((price: KrakenPrice) => {
     if (!enabled) {
@@ -60,17 +74,20 @@ export function useThrottledPriceUpdates({
       return;
     }
     
-    // Update stats
-    setStats(prev => ({
-      ...prev,
-      totalUpdatesReceived: prev.totalUpdatesReceived + 1
-    }));
+    // Update stats without re-rendering on every update
+    const newTotal = stats.totalUpdatesReceived + 1;
+    if (newTotal % 10 === 0) { // Only update stats every 10 updates to reduce renders
+      setStats(prev => ({
+        ...prev,
+        totalUpdatesReceived: newTotal
+      }));
+    }
     
     // Store only the latest price for each symbol
     pendingUpdatesRef.current.set(price.symbol, price);
     
-    // Log the pending update
-    addLog('info', 'Price update queued for batching', { 
+    // Log the pending update (only if detailed logging is enabled)
+    logIfEnabled('info', 'Price update queued for batching', { 
       timestamp: Date.now(),
       component: 'useThrottledPriceUpdates',
       symbol: price.symbol,
@@ -82,35 +99,35 @@ export function useThrottledPriceUpdates({
     if (!processingTimeoutRef.current) {
       scheduleProcessing();
     }
-  }, [enabled, onBatchProcess, addLog]);
+  }, [enabled, onBatchProcess, logIfEnabled, stats.totalUpdatesReceived]);
   
   // Function to add multiple price updates to the pending batch
   const addPriceUpdates = useCallback((prices: KrakenPrice[]) => {
+    if (!enabled || prices.length === 0) return;
+    
     if (!enabled) {
       // If throttling is disabled, process immediately
       onBatchProcess(prices);
       return;
     }
     
-    if (prices.length === 0) return;
-    
-    // Update stats
+    // Update stats without re-rendering on every update
+    const newTotal = stats.totalUpdatesReceived + prices.length;
     setStats(prev => ({
       ...prev,
-      totalUpdatesReceived: prev.totalUpdatesReceived + prices.length
+      totalUpdatesReceived: newTotal
     }));
     
-    // Store only the latest price for each symbol
-    prices.forEach(price => {
+    // Store only the latest price for each symbol - more efficient with Map
+    for (const price of prices) {
       pendingUpdatesRef.current.set(price.symbol, price);
-    });
+    }
     
-    // Log the pending updates
-    addLog('info', 'Multiple price updates queued for batching', { 
+    // Log the pending updates (only if detailed logging is enabled)
+    logIfEnabled('info', 'Multiple price updates queued for batching', { 
       timestamp: Date.now(),
       component: 'useThrottledPriceUpdates',
       updateCount: prices.length,
-      symbols: prices.map(p => p.symbol),
       pendingCount: pendingUpdatesRef.current.size
     });
     
@@ -118,7 +135,7 @@ export function useThrottledPriceUpdates({
     if (!processingTimeoutRef.current) {
       scheduleProcessing();
     }
-  }, [enabled, onBatchProcess, addLog]);
+  }, [enabled, onBatchProcess, logIfEnabled, stats.totalUpdatesReceived]);
   
   // Function to schedule the processing of the pending batch
   const scheduleProcessing = useCallback(() => {
@@ -137,14 +154,14 @@ export function useThrottledPriceUpdates({
       processBatch();
     }, timeUntilNextProcess);
     
-    // Log the scheduling
-    addLog('info', 'Scheduled batch processing', { 
+    // Log the scheduling (only if detailed logging is enabled)
+    logIfEnabled('info', 'Scheduled batch processing', { 
       timestamp: now,
       component: 'useThrottledPriceUpdates',
       timeUntilNextProcess,
       pendingCount: pendingUpdatesRef.current.size
     });
-  }, [interval, addLog]);
+  }, [interval, logIfEnabled]);
   
   // Function to process the pending batch
   const processBatch = useCallback(() => {
@@ -153,31 +170,32 @@ export function useThrottledPriceUpdates({
     
     // If there are no pending updates, do nothing
     if (pendingUpdatesRef.current.size === 0) {
-      addLog('info', 'No pending updates to process', { 
-        timestamp: Date.now(),
-        component: 'useThrottledPriceUpdates'
-      });
       return;
     }
     
     // Set processing flag
     setIsProcessing(true);
     
-    // Get the pending updates
+    // Get the pending updates - more efficient to extract values directly from Map
     const updates = Array.from(pendingUpdatesRef.current.values());
     
     // Clear the pending updates
     pendingUpdatesRef.current.clear();
     
     // Limit the batch size if needed
-    const batchToProcess = updates.slice(0, maxBatchSize);
+    const batchToProcess = updates.length <= maxBatchSize ? 
+      updates : 
+      updates.slice(0, maxBatchSize);
     
     // If we had to limit the batch size, put the rest back in the pending queue
     if (updates.length > maxBatchSize) {
-      updates.slice(maxBatchSize).forEach(price => {
+      // More efficient to use a loop with Map.set than forEach
+      for (let i = maxBatchSize; i < updates.length; i++) {
+        const price = updates[i];
         pendingUpdatesRef.current.set(price.symbol, price);
-      });
+      }
       
+      // Log warning about batch size limitation (always log this as it's important)
       addLog('warning', 'Batch size limited, remaining updates requeued', { 
         timestamp: Date.now(),
         component: 'useThrottledPriceUpdates',
@@ -186,17 +204,16 @@ export function useThrottledPriceUpdates({
       });
     }
     
-    // Log the batch processing
+    // Log the batch processing (only if detailed logging is enabled)
     const processingStartTime = Date.now();
     processingCountRef.current++;
     const currentProcessingCount = processingCountRef.current;
     
-    addLog('info', 'Processing price update batch', { 
+    logIfEnabled('info', 'Processing price update batch', { 
       timestamp: processingStartTime,
       component: 'useThrottledPriceUpdates',
       batchSize: batchToProcess.length,
-      batchNumber: currentProcessingCount,
-      symbols: batchToProcess.map(p => p.symbol)
+      batchNumber: currentProcessingCount
     });
     
     // Update the last process time
@@ -224,8 +241,8 @@ export function useThrottledPriceUpdates({
         };
       });
       
-      // Log successful processing
-      addLog('success', 'Successfully processed price update batch', { 
+      // Log successful processing (only if detailed logging is enabled)
+      logIfEnabled('success', 'Successfully processed price update batch', { 
         timestamp: Date.now(),
         component: 'useThrottledPriceUpdates',
         batchSize: batchToProcess.length,
@@ -233,7 +250,7 @@ export function useThrottledPriceUpdates({
         batchNumber: currentProcessingCount
       });
     } catch (error) {
-      // Log error
+      // Always log errors
       addLog('error', 'Error processing price update batch', { 
         timestamp: Date.now(),
         component: 'useThrottledPriceUpdates',
@@ -252,7 +269,7 @@ export function useThrottledPriceUpdates({
         scheduleProcessing();
       }
     }
-  }, [maxBatchSize, onBatchProcess, addLog, scheduleProcessing]);
+  }, [maxBatchSize, onBatchProcess, addLog, logIfEnabled, scheduleProcessing]);
   
   // Clean up on unmount
   useEffect(() => {

@@ -1,6 +1,7 @@
 /**
  * In-memory price cache for cryptocurrency prices
  * This reduces database writes and allows client-side evaluation of trading conditions
+ * Optimized with Map for better lookup performance
  */
 
 // Define the price cache entry type
@@ -11,13 +12,9 @@ export interface PriceCacheEntry {
   previousPrice?: number;
 }
 
-// Define the cache type
-type PriceCache = {
-  [symbol: string]: PriceCacheEntry;
-};
-
-// Global in-memory cache
-let priceCache: PriceCache = {};
+// Use Map instead of object for better performance with string keys
+// Maps have better performance characteristics for frequent additions and lookups
+const priceCache = new Map<string, PriceCacheEntry>();
 
 // Cache expiration time (5 minutes)
 const CACHE_EXPIRATION_MS = 5 * 60 * 1000;
@@ -30,15 +27,15 @@ const CACHE_EXPIRATION_MS = 5 * 60 * 1000;
  */
 export function updatePriceCache(symbol: string, price: number, timestamp: number = Date.now()): void {
   // Store previous price before updating
-  const previousPrice = priceCache[symbol]?.price;
+  const previousPrice = priceCache.get(symbol)?.price;
   
-  // Update the cache
-  priceCache[symbol] = {
+  // Update the cache - Map.set is more efficient than object property assignment
+  priceCache.set(symbol, {
     symbol,
     price,
     timestamp,
     previousPrice
-  };
+  });
 }
 
 /**
@@ -46,8 +43,19 @@ export function updatePriceCache(symbol: string, price: number, timestamp: numbe
  * @param prices Array of price updates
  */
 export function batchUpdatePriceCache(prices: { symbol: string; price: number; timestamp?: number }[]): void {
+  // Process all updates in a single loop for better performance
+  const now = Date.now();
+  
   for (const update of prices) {
-    updatePriceCache(update.symbol, update.price, update.timestamp || Date.now());
+    const symbol = update.symbol;
+    const previousPrice = priceCache.get(symbol)?.price;
+    
+    priceCache.set(symbol, {
+      symbol,
+      price: update.price,
+      timestamp: update.timestamp || now,
+      previousPrice
+    });
   }
 }
 
@@ -57,7 +65,7 @@ export function batchUpdatePriceCache(prices: { symbol: string; price: number; t
  * @returns The cached price entry or null if not found or expired
  */
 export function getCachedPrice(symbol: string): PriceCacheEntry | null {
-  const entry = priceCache[symbol];
+  const entry = priceCache.get(symbol);
   
   // Return null if no entry exists or if it's expired
   if (!entry || Date.now() - entry.timestamp > CACHE_EXPIRATION_MS) {
@@ -74,9 +82,16 @@ export function getCachedPrice(symbol: string): PriceCacheEntry | null {
  */
 export function getAllCachedPrices(includeExpired: boolean = false): PriceCacheEntry[] {
   const now = Date.now();
-  return Object.values(priceCache).filter(entry => {
-    return includeExpired || (now - entry.timestamp <= CACHE_EXPIRATION_MS);
+  const result: PriceCacheEntry[] = [];
+  
+  // Using Map.forEach is more efficient than Object.values().filter()
+  priceCache.forEach(entry => {
+    if (includeExpired || (now - entry.timestamp <= CACHE_EXPIRATION_MS)) {
+      result.push(entry);
+    }
   });
+  
+  return result;
 }
 
 /**
@@ -84,9 +99,11 @@ export function getAllCachedPrices(includeExpired: boolean = false): PriceCacheE
  */
 export function cleanupExpiredEntries(): void {
   const now = Date.now();
-  Object.keys(priceCache).forEach(symbol => {
-    if (now - priceCache[symbol].timestamp > CACHE_EXPIRATION_MS) {
-      delete priceCache[symbol];
+  
+  // Using Map.forEach with delete is more efficient than Object.keys().forEach with delete
+  priceCache.forEach((entry, symbol) => {
+    if (now - entry.timestamp > CACHE_EXPIRATION_MS) {
+      priceCache.delete(symbol);
     }
   });
 }
@@ -106,30 +123,16 @@ export function shouldBuyCrypto(
   const cachedPrice = getCachedPrice(symbol);
   if (!cachedPrice) return false;
   
-  // Handle edge cases
-  if (purchasePrice <= 0) {
-    console.log(`BUY CHECK SKIPPED: Invalid purchase price (${purchasePrice}). Using current price as reference.`);
+  // Handle edge cases with minimal logging
+  if (purchasePrice <= 0 || cachedPrice.price <= 0) {
     return cachedPrice.price > 0;
   }
   
-  if (cachedPrice.price <= 0) {
-    console.log(`BUY CHECK FAILED: Invalid current price (${cachedPrice.price})`);
-    return false;
-  }
-  
+  // Calculate price drop percentage
   const percentDrop = ((purchasePrice - cachedPrice.price) / purchasePrice) * 100;
-  console.log(`BUY CHECK: Current: $${cachedPrice.price}, Purchase: $${purchasePrice}, Drop: ${percentDrop.toFixed(2)}%, Threshold: ${thresholdPercent}%`);
   
   // For buying, we want the price to have dropped by at least the threshold percentage
-  const shouldBuy = percentDrop >= thresholdPercent;
-  
-  if (shouldBuy) {
-    console.log(`BUY CONDITION MET: Price dropped by ${percentDrop.toFixed(2)}%, which is >= threshold of ${thresholdPercent}%`);
-  } else {
-    console.log(`BUY CONDITION NOT MET: ${percentDrop.toFixed(2)}% drop is less than threshold of ${thresholdPercent}%`);
-  }
-  
-  return shouldBuy;
+  return percentDrop >= thresholdPercent;
 }
 
 /**
@@ -147,112 +150,113 @@ export function shouldSellCrypto(
   const cachedPrice = getCachedPrice(symbol);
   if (!cachedPrice) return false;
   
-  // Handle edge cases
-  if (purchasePrice <= 0) {
-    console.log(`SELL CHECK SKIPPED: Invalid purchase price (${purchasePrice}). Using fallback comparison.`);
+  // Handle edge cases with minimal logging
+  if (purchasePrice <= 0 || cachedPrice.price <= 0) {
     return cachedPrice.price > 0;
   }
   
-  if (cachedPrice.price <= 0) {
-    console.log(`SELL CHECK FAILED: Invalid current price (${cachedPrice.price})`);
-    return false;
-  }
-  
+  // Calculate price gain percentage
   const percentGain = ((cachedPrice.price - purchasePrice) / purchasePrice) * 100;
-  console.log(`SELL CHECK: Current: $${cachedPrice.price}, Purchase: $${purchasePrice}, Gain: ${percentGain.toFixed(2)}%, Threshold: ${thresholdPercent}%`);
   
   // For selling, we want the price to have increased by at least the threshold percentage
-  const shouldSell = percentGain >= thresholdPercent;
-  
-  if (shouldSell) {
-    console.log(`SELL CONDITION MET: Price increased by ${percentGain.toFixed(2)}%, which is >= threshold of ${thresholdPercent}%`);
-  } else {
-    console.log(`SELL CONDITION NOT MET: ${percentGain.toFixed(2)}% gain is less than threshold of ${thresholdPercent}%`);
-  }
-  
-  return shouldSell;
+  return percentGain >= thresholdPercent;
 }
 
 /**
  * Evaluate trading conditions for a crypto based on cached prices
+ * Optimized for performance with minimal logging and early returns
+ * 
  * @param crypto The crypto object with trading settings
  * @param settings User settings with default thresholds
  * @returns Object with evaluation results
  */
 export function evaluateTradingConditions(crypto: any, settings: any) {
+  // Early returns for invalid inputs
   if (!crypto || !settings) return { shouldTrade: false };
   
   const cachedPrice = getCachedPrice(crypto.symbol);
   if (!cachedPrice) return { shouldTrade: false, reason: 'No price data available' };
   
-  // Get auto trade settings
-  const buyThreshold = crypto.autoTradeSettings?.buyThresholdPercent || settings.buyThresholdPercent;
-  const sellThreshold = crypto.autoTradeSettings?.sellThresholdPercent || settings.sellThresholdPercent;
-  const enableContinuous = crypto.autoTradeSettings?.enableContinuousTrading || false;
-  const oneTimeBuy = crypto.autoTradeSettings?.oneTimeBuy || false;
-  const oneTimeSell = crypto.autoTradeSettings?.oneTimeSell || false;
-  const nextAction = crypto.autoTradeSettings?.nextAction || 'buy';
+  // Get auto trade settings using destructuring for cleaner code
+  const {
+    autoTradeSettings = {},
+    autoBuy = false,
+    autoSell = false,
+    purchasePrice = 0,
+    symbol
+  } = crypto;
   
-  // Determine if we should buy or sell
-  let shouldTrade = false;
-  let action: 'buy' | 'sell' | null = null;
-  let reason = '';
-
-  // First check the nextAction from autoTradeSettings to determine which condition to evaluate first
-  if (nextAction === 'sell') {
-    // Check for auto sell conditions first
-    if (crypto.autoSell) {
-      if (shouldSellCrypto(crypto.symbol, crypto.purchasePrice, sellThreshold)) {
-        shouldTrade = true;
-        action = 'sell';
-        reason = `Price increased by ${((cachedPrice.price - crypto.purchasePrice) / crypto.purchasePrice * 100).toFixed(2)}%, exceeding threshold of ${sellThreshold}%`;
-      }
-    }
-    
-    // Only check buy conditions if sell conditions weren't met and oneTimeBuy is true
-    if (!shouldTrade && crypto.autoBuy && oneTimeBuy) {
-      if (shouldBuyCrypto(crypto.symbol, crypto.purchasePrice, buyThreshold)) {
-        shouldTrade = true;
-        action = 'buy';
-        reason = `Price dropped by ${((crypto.purchasePrice - cachedPrice.price) / crypto.purchasePrice * 100).toFixed(2)}%, exceeding threshold of ${buyThreshold}%`;
-      }
-    }
-  } else {
-    // Default case: nextAction is 'buy' or not specified
-    // Check for auto buy conditions first
-    if (crypto.autoBuy) {
-      if (shouldBuyCrypto(crypto.symbol, crypto.purchasePrice, buyThreshold)) {
-        shouldTrade = true;
-        action = 'buy';
-        reason = `Price dropped by ${((crypto.purchasePrice - cachedPrice.price) / crypto.purchasePrice * 100).toFixed(2)}%, exceeding threshold of ${buyThreshold}%`;
-      }
-    }
-    
-    // Only check sell conditions if buy conditions weren't met and oneTimeSell is true
-    if (!shouldTrade && crypto.autoSell && oneTimeSell) {
-      if (shouldSellCrypto(crypto.symbol, crypto.purchasePrice, sellThreshold)) {
-        shouldTrade = true;
-        action = 'sell';
-        reason = `Price increased by ${((cachedPrice.price - crypto.purchasePrice) / crypto.purchasePrice * 100).toFixed(2)}%, exceeding threshold of ${sellThreshold}%`;
-      }
-    }
-  }
-
-  return {
-    shouldTrade,
-    action,
-    reason,
+  const {
+    buyThresholdPercent: defaultBuyThreshold = 5,
+    sellThresholdPercent: defaultSellThreshold = 5
+  } = settings;
+  
+  const {
+    buyThresholdPercent = defaultBuyThreshold,
+    sellThresholdPercent = defaultSellThreshold,
+    enableContinuousTrading = false,
+    oneTimeBuy = false,
+    oneTimeSell = false,
+    nextAction = 'buy'
+  } = autoTradeSettings;
+  
+  // Prepare result object
+  let result = {
+    shouldTrade: false,
+    action: null as 'buy' | 'sell' | null,
+    reason: '',
     currentPrice: cachedPrice.price,
-    purchasePrice: crypto.purchasePrice,
+    purchasePrice,
     timestamp: cachedPrice.timestamp,
-    nextAction: nextAction, // Add the nextAction to the return value for display purposes
+    nextAction,
     settings: {
-      buyThreshold,
-      sellThreshold,
+      buyThreshold: buyThresholdPercent,
+      sellThreshold: sellThresholdPercent,
       nextAction,
       oneTimeBuy,
       oneTimeSell,
-      enableContinuous
+      enableContinuous: enableContinuousTrading
     }
   };
+
+  // Calculate percentages once for reuse
+  const percentDrop = purchasePrice > 0 ? ((purchasePrice - cachedPrice.price) / purchasePrice * 100) : 0;
+  const percentGain = purchasePrice > 0 ? ((cachedPrice.price - purchasePrice) / purchasePrice * 100) : 0;
+  
+  // Determine action based on nextAction setting
+  if (nextAction === 'sell') {
+    // Check sell conditions first
+    if (autoSell && percentGain >= sellThresholdPercent) {
+      result.shouldTrade = true;
+      result.action = 'sell';
+      result.reason = `Price increased by ${percentGain.toFixed(2)}%, exceeding threshold of ${sellThresholdPercent}%`;
+      return result;
+    }
+    
+    // Then check buy conditions if applicable
+    if (autoBuy && oneTimeBuy && percentDrop >= buyThresholdPercent) {
+      result.shouldTrade = true;
+      result.action = 'buy';
+      result.reason = `Price dropped by ${percentDrop.toFixed(2)}%, exceeding threshold of ${buyThresholdPercent}%`;
+      return result;
+    }
+  } else {
+    // Default: check buy conditions first
+    if (autoBuy && percentDrop >= buyThresholdPercent) {
+      result.shouldTrade = true;
+      result.action = 'buy';
+      result.reason = `Price dropped by ${percentDrop.toFixed(2)}%, exceeding threshold of ${buyThresholdPercent}%`;
+      return result;
+    }
+    
+    // Then check sell conditions if applicable
+    if (autoSell && oneTimeSell && percentGain >= sellThresholdPercent) {
+      result.shouldTrade = true;
+      result.action = 'sell';
+      result.reason = `Price increased by ${percentGain.toFixed(2)}%, exceeding threshold of ${sellThresholdPercent}%`;
+      return result;
+    }
+  }
+
+  return result;
 }

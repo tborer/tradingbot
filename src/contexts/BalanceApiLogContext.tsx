@@ -36,7 +36,7 @@ interface BalanceApiLogProviderProps {
 
 export const BalanceApiLogProvider: React.FC<BalanceApiLogProviderProps> = ({ children }) => {
   const [logs, setLogs] = useState<BalanceApiLog[]>([]);
-  const [isLoggingEnabled, setIsLoggingEnabled] = useState<boolean>(true);
+  const [isLoggingEnabled, setIsLoggingEnabled] = useState<boolean>(false);
 
   // Load logging preferences from localStorage on mount
   useEffect(() => {

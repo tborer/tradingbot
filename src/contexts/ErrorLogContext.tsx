@@ -120,13 +120,13 @@ export const ErrorLogProvider: React.FC<{ children: ReactNode }> = ({ children }
     if (typeof window !== 'undefined') {
       try {
         const savedEnabled = localStorage.getItem(ENABLED_STORAGE_KEY);
-        return savedEnabled ? JSON.parse(savedEnabled) : true;
+        return savedEnabled ? JSON.parse(savedEnabled) : false;
       } catch (e) {
         console.error('Failed to parse enabled state from localStorage', e);
-        return true;
+        return false;
       }
     }
-    return true;
+    return false;
   });
 
   // Save logs to localStorage whenever they change

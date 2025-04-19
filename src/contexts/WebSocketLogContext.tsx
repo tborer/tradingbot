@@ -48,8 +48,8 @@ interface WebSocketLogProviderProps {
 
 export const WebSocketLogProvider: React.FC<WebSocketLogProviderProps> = ({ children }) => {
   const [logs, setLogs] = useState<WebSocketLog[]>([]);
-  const [isLoggingEnabled, setIsLoggingEnabled] = useState<boolean>(true);
-  const [isErrorLoggingEnabled, setIsErrorLoggingEnabled] = useState<boolean>(true);
+  const [isLoggingEnabled, setIsLoggingEnabled] = useState<boolean>(false);
+  const [isErrorLoggingEnabled, setIsErrorLoggingEnabled] = useState<boolean>(false);
   const [errorSampleRate, setErrorSampleRate] = useState<number>(100); // 100% by default
   const [maxLogCount, setMaxLogCount] = useState<number>(100); // Default to 100 logs
   const errorCountRef = useRef<number>(0);

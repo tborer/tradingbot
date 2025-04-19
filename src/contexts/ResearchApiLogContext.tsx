@@ -36,7 +36,7 @@ interface ResearchApiLogProviderProps {
 
 export const ResearchApiLogProvider: React.FC<ResearchApiLogProviderProps> = ({ children }) => {
   const [logs, setLogs] = useState<ResearchApiLog[]>([]);
-  const [isLoggingEnabled, setIsLoggingEnabled] = useState<boolean>(true);
+  const [isLoggingEnabled, setIsLoggingEnabled] = useState<boolean>(false);
 
   // Load logging preferences from localStorage on mount
   useEffect(() => {

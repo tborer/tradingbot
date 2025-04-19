@@ -27,30 +27,63 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(405).json({ error: 'Method not allowed' });
     }
     
-    // Get all crypto transactions for the user, including failed ones and expired ones
+    // Get crypto transactions for the user, including failed ones and expired ones
     // We want to show all transactions, especially errors, regardless of expiration
     try {
       console.log('Fetching crypto transactions for user:', user.id);
       
-      const transactions = await prisma.$queryRaw`
-        SELECT 
-          ct.id, 
-          ct."cryptoId", 
-          c.symbol, 
-          ct.action, 
-          ct.shares, 
-          ct.price, 
-          ct."totalAmount", 
-          ct."apiRequest",
-          ct."apiResponse",
-          ct."logInfo",
-          ct."createdAt",
-          ct."expiresAt"
-        FROM "CryptoTransaction" ct
-        LEFT JOIN "Crypto" c ON ct."cryptoId" = c.id
-        WHERE ct."userId" = ${user.id}::uuid
-        ORDER BY ct."createdAt" DESC
-      `;
+      // Check if we're filtering for auto trade logs only
+      const type = req.query.type as string;
+      
+      let transactions;
+      
+      if (type === 'auto-trade-log') {
+        // Get only auto trade logs (entries with no API request/response but with logInfo)
+        transactions = await prisma.$queryRaw`
+          SELECT 
+            ct.id, 
+            ct."cryptoId", 
+            c.symbol, 
+            ct.action, 
+            ct.shares, 
+            ct.price, 
+            ct."totalAmount", 
+            ct."apiRequest",
+            ct."apiResponse",
+            ct."logInfo",
+            ct."createdAt",
+            ct."expiresAt"
+          FROM "CryptoTransaction" ct
+          LEFT JOIN "Crypto" c ON ct."cryptoId" = c.id
+          WHERE ct."userId" = ${user.id}::uuid
+          AND ct."apiRequest" IS NULL
+          AND ct."apiResponse" IS NULL
+          AND ct."logInfo" IS NOT NULL
+          ORDER BY ct."createdAt" DESC
+        `;
+      } else {
+        // Get actual transactions (entries with API request/response)
+        transactions = await prisma.$queryRaw`
+          SELECT 
+            ct.id, 
+            ct."cryptoId", 
+            c.symbol, 
+            ct.action, 
+            ct.shares, 
+            ct.price, 
+            ct."totalAmount", 
+            ct."apiRequest",
+            ct."apiResponse",
+            ct."logInfo",
+            ct."createdAt",
+            ct."expiresAt"
+          FROM "CryptoTransaction" ct
+          LEFT JOIN "Crypto" c ON ct."cryptoId" = c.id
+          WHERE ct."userId" = ${user.id}::uuid
+          AND (ct."apiRequest" IS NOT NULL OR ct."apiResponse" IS NOT NULL OR ct.action = 'error')
+          ORDER BY ct."createdAt" DESC
+        `;
+      }
       
       console.log(`Found ${transactions.length} transactions for user ${user.id}`);
       return res.status(200).json(transactions);

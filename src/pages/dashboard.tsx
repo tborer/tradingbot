@@ -29,6 +29,7 @@ import Research from "@/components/Research";
 import UserManagement from "@/components/UserManagement";
 import DataUploads from "@/components/DataUploads";
 import FixAutoTradeFlags from "@/components/FixAutoTradeFlags";
+import AutoTradeLogs from "@/components/AutoTradeLogs";
 import { Stock, StockWithPrice as StockWithCurrentPrice, Settings, Crypto, CryptoWithPrice } from "@/types/stock";
 import { useKrakenWebSocket } from "@/contexts/KrakenWebSocketContext";
 import { useAnalysis } from "@/contexts/AnalysisContext";
@@ -1235,6 +1236,48 @@ export default function Dashboard() {
       throw error;
     }
   };
+  
+  // Update crypto purchase price
+  const handleUpdateCryptoPurchasePrice = async (id: string, price: number) => {
+    try {
+      const crypto = cryptos.find(c => c.id === id);
+      if (!crypto) return;
+      
+      const response = await fetch(`/api/cryptos/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: crypto.symbol,
+          purchasePrice: price,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update purchase price");
+      }
+      
+      // Update the local state
+      setCryptos(prev => prev.map(crypto => 
+        crypto.id === id ? { ...crypto, purchasePrice: price } : crypto
+      ));
+      
+      toast({
+        title: "Success",
+        description: `Purchase price for ${crypto.symbol} updated to current market price.`,
+      });
+      
+      return await response.json();
+    } catch (error) {
+      console.error("Error updating purchase price:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to update purchase price. Please try again.",
+      });
+      throw error;
+    }
+  };
 
   // Add crypto to Research tab
   const { addItem } = useAnalysis();
@@ -1351,6 +1394,7 @@ export default function Dashboard() {
             <TabsTrigger value="research">Research</TabsTrigger>
             <TabsTrigger value="user-management">User Management</TabsTrigger>
             <TabsTrigger value="data-uploads">Data Uploads</TabsTrigger>
+            <TabsTrigger value="auto-trade-logs">Auto Trade Logs</TabsTrigger>
           </TabsList>
           
           <TabsContent value="portfolio" className="space-y-6">
@@ -1526,6 +1570,7 @@ export default function Dashboard() {
                   onToggleAutoBuy={handleToggleCryptoAutoBuy}
                   onTrade={handleCryptoTrade}
                   onUpdateShares={handleUpdateCryptoShares}
+                  onUpdatePurchasePrice={handleUpdateCryptoPurchasePrice}
                   onAddToResearch={handleAddCryptoToResearch}
                 />
               </CardContent>
@@ -1583,6 +1628,20 @@ export default function Dashboard() {
           
           <TabsContent value="data-uploads">
             <DataUploads />
+          </TabsContent>
+          
+          <TabsContent value="auto-trade-logs">
+            <Card>
+              <CardHeader>
+                <CardTitle>Auto Trade Logs</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  View logs of auto trading decisions and processes
+                </p>
+              </CardHeader>
+              <CardContent>
+                <AutoTradeLogs />
+              </CardContent>
+            </Card>
           </TabsContent>
           
           <TabsContent value="settings">

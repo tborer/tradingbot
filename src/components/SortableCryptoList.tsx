@@ -18,7 +18,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Trash2, GripVertical, ShoppingCart, DollarSign, PlusCircle, TrendingUp } from "lucide-react";
+import { Trash2, GripVertical, ShoppingCart, DollarSign, PlusCircle, TrendingUp, RefreshCw } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { CryptoWithPrice } from "@/types/stock";
@@ -39,6 +39,7 @@ interface SortableCryptoItemProps {
   onToggleAutoBuy: (id: string, value: boolean) => void;
   onRowClick: (id: string, symbol: string) => void;
   onUpdateShares: (id: string, shares: number) => Promise<void>;
+  onUpdatePurchasePrice: (id: string, price: number) => Promise<void>;
   onOpenAutoTradeModal: (id: string, symbol: string) => void;
   onAddToResearch: (symbol: string) => void;
   onOpenTrendsPopup: (symbol: string) => void;
@@ -52,6 +53,7 @@ function SortableCryptoItem({
   onToggleAutoBuy, 
   onRowClick,
   onUpdateShares,
+  onUpdatePurchasePrice,
   onOpenAutoTradeModal,
   onAddToResearch,
   onOpenTrendsPopup,
@@ -123,7 +125,27 @@ function SortableCryptoItem({
         </div>
       </TableCell>
       <TableCell className="font-medium">{crypto.symbol}</TableCell>
-      <TableCell>${formatDecimal(crypto.purchasePrice, 6)}</TableCell>
+      <TableCell>
+        <div className="flex items-center">
+          <span>${formatDecimal(crypto.purchasePrice, 6)}</span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 ml-1"
+            title="Update purchase price to current price"
+            data-no-row-click
+            onClick={(e) => {
+              e.stopPropagation();
+              if (crypto.currentPrice) {
+                onUpdatePurchasePrice(crypto.id, crypto.currentPrice);
+              }
+            }}
+            disabled={!crypto.currentPrice}
+          >
+            <RefreshCw className="h-3 w-3" />
+          </Button>
+        </div>
+      </TableCell>
       <TableCell>
         {isEditing ? (
           <Input
@@ -252,6 +274,7 @@ interface SortableCryptoListProps {
   onToggleAutoBuy?: (id: string, value: boolean) => Promise<void>;
   onTrade?: (id: string, symbol: string, action: 'buy' | 'sell', shares: number) => Promise<void>;
   onUpdateShares?: (id: string, shares: number) => Promise<void>;
+  onUpdatePurchasePrice?: (id: string, price: number) => Promise<void>;
   onAddToResearch?: (symbol: string) => void;
 }
 
@@ -263,6 +286,7 @@ export default function SortableCryptoList({
   onToggleAutoBuy,
   onTrade,
   onUpdateShares,
+  onUpdatePurchasePrice,
   onAddToResearch
 }: SortableCryptoListProps) {
   const { toast } = useToast();
@@ -642,6 +666,7 @@ export default function SortableCryptoList({
                     onToggleAutoBuy={handleToggleAutoBuy}
                     onRowClick={handleRowClick}
                     onUpdateShares={onUpdateShares || (async () => {})}
+                    onUpdatePurchasePrice={onUpdatePurchasePrice || (async () => {})}
                     onOpenAutoTradeModal={handleOpenAutoTradeModal}
                     onAddToResearch={onAddToResearch || (() => {})}
                     onOpenTrendsPopup={handleOpenTrendsPopup}

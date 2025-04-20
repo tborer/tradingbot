@@ -205,30 +205,60 @@ export async function executeKrakenOrderAndCreateTransaction(
       JSON.stringify(krakenResponse, null, 2)
     );
 
-    // Update the crypto's shares and purchase price in the database
+    // Update the crypto's shares, purchase price, and USD balance in the database
     try {
+      // Calculate total amount for the transaction
+      const totalAmount = shares * price;
+      
       if (action === 'buy') {
-        await prisma.crypto.update({
-          where: { id: cryptoId },
-          data: {
-            shares: { increment: shares },
-            purchasePrice: price, // Update purchase price to the new buy price
-            lastPrice: price
-          }
-        });
+        // For buy: update crypto shares and purchase price, and decrement USD balance
+        await prisma.$transaction([
+          // Update crypto record
+          prisma.crypto.update({
+            where: { id: cryptoId },
+            data: {
+              shares: { increment: shares },
+              purchasePrice: price, // Update purchase price to the new buy price
+              lastPrice: price
+            }
+          }),
+          // Decrement USD balance for purchases
+          prisma.user.update({
+            where: { id: userId },
+            data: {
+              usdBalance: {
+                decrement: totalAmount
+              }
+            }
+          })
+        ]);
+        console.log(`Updated crypto record for ${symbol} after ${action} transaction. Purchase price updated to ${price}. USD balance decreased by $${totalAmount.toFixed(2)}`);
       } else { // sell
-        await prisma.crypto.update({
-          where: { id: cryptoId },
-          data: {
-            shares: { decrement: shares },
-            purchasePrice: price, // Update purchase price to the new sell price
-            lastPrice: price
-          }
-        });
+        // For sell: update crypto shares and purchase price, and increment USD balance
+        await prisma.$transaction([
+          // Update crypto record
+          prisma.crypto.update({
+            where: { id: cryptoId },
+            data: {
+              shares: { decrement: shares },
+              purchasePrice: price, // Update purchase price to the new sell price
+              lastPrice: price
+            }
+          }),
+          // Increment USD balance for sales
+          prisma.user.update({
+            where: { id: userId },
+            data: {
+              usdBalance: {
+                increment: totalAmount
+              }
+            }
+          })
+        ]);
+        console.log(`Updated crypto record for ${symbol} after ${action} transaction. Purchase price updated to ${price}. USD balance increased by $${totalAmount.toFixed(2)}`);
       }
-      console.log(`Updated crypto record for ${symbol} after ${action} transaction. Purchase price updated to ${price}`);
     } catch (updateError) {
-      console.error(`Failed to update crypto record after transaction:`, updateError);
+      console.error(`Failed to update crypto record and USD balance after transaction:`, updateError);
       // Continue since the transaction was already created
     }
 

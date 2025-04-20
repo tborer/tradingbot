@@ -4,6 +4,8 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Button } from '@/components/ui/button';
+import { X } from 'lucide-react';
 import { 
   calculateSMA, 
   getSMAMessage, 
@@ -73,7 +75,7 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
   } | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [dataSource, setDataSource] = useState<string>('');
-  const { items, updateItem } = useAnalysis();
+  const { items, updateItem, removeItem } = useAnalysis();
   const [includedInPlan, setIncludedInPlan] = useState<boolean>(false);
   
   // Find the current item in the analysis context
@@ -425,6 +427,19 @@ const AnalysisCard: React.FC<AnalysisCardProps> = ({
               }}
             />
             <Label htmlFor={`include-in-plan-${symbol}`} className="text-sm">Include in Plan</Label>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-6 w-6 rounded-full" 
+              onClick={() => {
+                if (currentItem) {
+                  removeItem(currentItem.id);
+                }
+              }}
+              aria-label="Close analysis card"
+            >
+              <X className="h-4 w-4" />
+            </Button>
           </div>
         </div>
         <CardDescription>

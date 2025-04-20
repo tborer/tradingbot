@@ -29,6 +29,20 @@ interface AnalysisItem {
       medianDrawdown?: number;
       medianDrawup?: number;
     };
+    supportResistance?: {
+      supportLevels?: Array<{
+        price: number;
+        strength: number;
+        touches: number;
+        isOptimal: boolean;
+      }>;
+      resistanceLevels?: Array<{
+        price: number;
+        strength: number;
+        touches: number;
+        isOptimal: boolean;
+      }>;
+    };
   };
 }
 

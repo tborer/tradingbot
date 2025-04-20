@@ -18,7 +18,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Trash2, GripVertical, ShoppingCart, DollarSign, PlusCircle, TrendingUp, RefreshCw } from "lucide-react";
+import { Trash2, GripVertical, ShoppingCart, DollarSign, PlusCircle, TrendingUp, RefreshCw, Lightbulb } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { CryptoWithPrice } from "@/types/stock";
@@ -28,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import AutoTradeModal, { AutoTradeSettings } from "@/components/AutoTradeModal";
 import TrendsPopup from "@/components/TrendsPopup";
+import SupportResistancePopup from "@/components/SupportResistancePopup";
 import { Settings } from "@/icons/Settings";
 import { formatDecimal } from "@/util/number";
 import { useAnalysis } from "@/contexts/AnalysisContext";
@@ -43,7 +44,9 @@ interface SortableCryptoItemProps {
   onOpenAutoTradeModal: (id: string, symbol: string) => void;
   onAddToResearch: (symbol: string) => void;
   onOpenTrendsPopup: (symbol: string) => void;
+  onOpenSupportResistancePopup: (symbol: string) => void;
   hasAnalysisData: (symbol: string) => boolean;
+  hasSupportResistanceData: (symbol: string) => boolean;
 }
 
 function SortableCryptoItem({ 
@@ -57,7 +60,9 @@ function SortableCryptoItem({
   onOpenAutoTradeModal,
   onAddToResearch,
   onOpenTrendsPopup,
-  hasAnalysisData
+  onOpenSupportResistancePopup,
+  hasAnalysisData,
+  hasSupportResistanceData
 }: SortableCryptoItemProps) {
   const { 
     attributes, 
@@ -256,6 +261,21 @@ function SortableCryptoItem({
           data-no-row-click
           onClick={(e) => {
             e.stopPropagation();
+            onOpenSupportResistancePopup(crypto.symbol);
+          }}
+          className={hasSupportResistanceData(crypto.symbol) ? "text-yellow-500 hover:text-yellow-700" : "text-gray-400 hover:text-gray-600"}
+          title="View support/resistance analysis"
+        >
+          <Lightbulb className="h-4 w-4" />
+        </Button>
+      </TableCell>
+      <TableCell>
+        <Button
+          variant="ghost"
+          size="icon"
+          data-no-row-click
+          onClick={(e) => {
+            e.stopPropagation();
             onDelete(crypto.id, crypto.symbol);
           }}
         >
@@ -302,6 +322,8 @@ export default function SortableCryptoList({
   const [selectedAutoTradeStock, setSelectedAutoTradeStock] = useState<{ id: string; symbol: string } | null>(null);
   const [trendsPopupOpen, setTrendsPopupOpen] = useState(false);
   const [selectedTrendsSymbol, setSelectedTrendsSymbol] = useState<string>('');
+  const [supportResistancePopupOpen, setSupportResistancePopupOpen] = useState(false);
+  const [selectedSupportResistanceSymbol, setSelectedSupportResistanceSymbol] = useState<string>('');
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -460,6 +482,16 @@ export default function SortableCryptoList({
     return !!item;
   };
   
+  // Function to check if a crypto has support/resistance data available
+  const hasSupportResistanceData = (symbol: string) => {
+    const item = analysisItems.find(item => 
+      item.symbol.toLowerCase() === symbol.toLowerCase() && 
+      item.type === 'crypto' &&
+      item.analysisData?.supportResistance
+    );
+    return !!item;
+  };
+  
   // Function to open the trends popup
   const handleOpenTrendsPopup = async (symbol: string) => {
     setSelectedTrendsSymbol(symbol);
@@ -497,6 +529,47 @@ export default function SortableCryptoList({
         variant: "destructive",
         title: "Error",
         description: "Failed to fetch trend data. Please try again later.",
+      });
+    }
+  };
+  
+  // Function to open the support/resistance popup
+  const handleOpenSupportResistancePopup = async (symbol: string) => {
+    setSelectedSupportResistanceSymbol(symbol);
+    setSupportResistancePopupOpen(true);
+    
+    try {
+      // Get the API key from environment variables
+      const apiKey = process.env.NEXT_PUBLIC_COINDESK_API_KEY;
+      
+      if (!apiKey) {
+        console.error("CoinDesk API key not found in environment variables");
+        toast({
+          variant: "destructive",
+          title: "API Key Missing",
+          description: "CoinDesk API key is not configured. Please contact the administrator.",
+        });
+        return;
+      }
+      
+      // Fetch historical data (same as for trends analysis)
+      const response = await fetch(`/api/cryptos/historical?symbol=${symbol}&days=30`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch historical data: ${response.statusText}`);
+      }
+      
+      // Show loading toast
+      toast({
+        title: "Analyzing Support/Resistance",
+        description: `Analyzing support and resistance levels for ${symbol}...`,
+      });
+    } catch (error) {
+      console.error("Error fetching historical data for support/resistance:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to fetch historical data. Please try again later.",
       });
     }
   };
@@ -649,6 +722,7 @@ export default function SortableCryptoList({
                 <TableHead>Action</TableHead>
                 <TableHead>Plan</TableHead>
                 <TableHead>Trends</TableHead>
+                <TableHead>Support/Resistance</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -670,7 +744,9 @@ export default function SortableCryptoList({
                     onOpenAutoTradeModal={handleOpenAutoTradeModal}
                     onAddToResearch={onAddToResearch || (() => {})}
                     onOpenTrendsPopup={handleOpenTrendsPopup}
+                    onOpenSupportResistancePopup={handleOpenSupportResistancePopup}
                     hasAnalysisData={hasAnalysisData}
+                    hasSupportResistanceData={hasSupportResistanceData}
                   />
                 ))}
               </SortableContext>
@@ -766,6 +842,12 @@ export default function SortableCryptoList({
         isOpen={trendsPopupOpen}
         onClose={() => setTrendsPopupOpen(false)}
         symbol={selectedTrendsSymbol}
+      />
+      
+      <SupportResistancePopup
+        isOpen={supportResistancePopupOpen}
+        onClose={() => setSupportResistancePopupOpen(false)}
+        symbol={selectedSupportResistanceSymbol}
       />
     </>
   );

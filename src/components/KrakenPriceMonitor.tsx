@@ -11,6 +11,7 @@ import { useKrakenWebSocket } from '@/contexts/KrakenWebSocketContext';
 import { useThrottledPriceUpdates } from '@/hooks/useThrottledPriceUpdates';
 import { useCryptoPriceMonitor } from '@/hooks/useCryptoPriceMonitor';
 import { batchUpdatePriceCache } from '@/lib/priceCache';
+import * as priceBatchService from '@/lib/priceBatchService';
 
 interface KrakenPriceMonitorProps {
   symbols: string[];
@@ -696,6 +697,12 @@ export default function KrakenPriceMonitor({
   const [enableThrottling, setEnableThrottling] = useState<boolean>(true);
   const [throttleInterval, setThrottleInterval] = useState<number>(5000); // 5 seconds default
   
+  // Settings for non-auto-trading batch processing
+  const [enableBatchProcessing, setEnableBatchProcessing] = useState<boolean>(true);
+  const [batchInterval, setBatchInterval] = useState<number>(10000); // 10 seconds default
+  const [batchSize, setBatchSize] = useState<number>(20); // 20 updates per batch
+  const [batchPendingCount, setBatchPendingCount] = useState<number>(0);
+  
   // Initialize the throttled updates hook
   const { 
     addPriceUpdates, 
@@ -726,6 +733,22 @@ export default function KrakenPriceMonitor({
     if (savedThrottleInterval !== null) {
       setThrottleInterval(parseInt(savedThrottleInterval, 10));
     }
+    
+    // Load batch processing settings from localStorage
+    const savedEnableBatchProcessing = localStorage.getItem('kraken-batch-processing-enabled');
+    if (savedEnableBatchProcessing !== null) {
+      setEnableBatchProcessing(savedEnableBatchProcessing === 'true');
+    }
+    
+    const savedBatchInterval = localStorage.getItem('kraken-batch-processing-interval');
+    if (savedBatchInterval !== null) {
+      setBatchInterval(parseInt(savedBatchInterval, 10));
+    }
+    
+    const savedBatchSize = localStorage.getItem('kraken-batch-processing-size');
+    if (savedBatchSize !== null) {
+      setBatchSize(parseInt(savedBatchSize, 10));
+    }
   }, []);
   
   // The shared WebSocket context is already initialized above
@@ -749,6 +772,102 @@ export default function KrakenPriceMonitor({
     evaluateAllTradingConditions
   } = useCryptoPriceMonitor();
   
+  // Initialize the price batch service for non-auto-trading cryptocurrencies
+  useEffect(() => {
+    if (!user) return;
+    
+    // Define the batch processing function
+    const processBatchedPriceUpdates = async (updates: any[]) => {
+      if (!user || updates.length === 0 || !enableKrakenWebSocket || !enableBatchProcessing) {
+        return;
+      }
+      
+      try {
+        console.log(`Processing batch of ${updates.length} non-auto-trading crypto price updates`);
+        
+        // Log the batch processing
+        addLog('info', 'Processing batch of non-auto-trading price updates', { 
+          timestamp: Date.now(),
+          component: 'KrakenPriceMonitor',
+          updateCount: updates.length,
+          batchInterval,
+          batchSize
+        });
+        
+        // Prepare the updates array for the batch update
+        const batchUpdates = updates.map(update => ({
+          symbol: update.symbol,
+          lastPrice: update.price
+        }));
+        
+        // Send a batch update request
+        const response = await fetch('/api/cryptos/batch-update-prices', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ updates: batchUpdates }),
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Failed to update prices: ${errorData.error || response.statusText}`);
+        }
+        
+        const result = await response.json();
+        
+        // Log the successful batch update
+        addLog('success', 'Successfully processed batch of non-auto-trading price updates', { 
+          timestamp: Date.now(),
+          component: 'KrakenPriceMonitor',
+          processedCount: result.processedCount,
+          totalRequested: updates.length,
+          requestId: result.requestId,
+          duration: result.duration
+        });
+        
+        console.log(`Successfully processed batch of ${updates.length} non-auto-trading crypto price updates`);
+      } catch (error) {
+        console.error('Error processing batch of non-auto-trading price updates:', error);
+        
+        // Log the error
+        addLog('error', 'Error processing batch of non-auto-trading price updates', { 
+          timestamp: Date.now(),
+          component: 'KrakenPriceMonitor',
+          error: error instanceof Error ? error.message : String(error),
+          updateCount: updates.length
+        });
+      }
+    };
+    
+    // Initialize the batch service
+    priceBatchService.initializeBatchService(
+      batchInterval,
+      batchSize,
+      processBatchedPriceUpdates
+    );
+    
+    // Set the enabled state
+    priceBatchService.setEnabled(enableBatchProcessing);
+    
+    // Update the batch configuration when settings change
+    priceBatchService.updateBatchConfig({
+      interval: batchInterval,
+      batchSize: batchSize
+    });
+    
+    // Set up an interval to update the pending count
+    const pendingCountInterval = setInterval(() => {
+      setBatchPendingCount(priceBatchService.getPendingCount());
+    }, 1000);
+    
+    // Clean up on unmount
+    return () => {
+      priceBatchService.stopBatchProcessing();
+      clearInterval(pendingCountInterval);
+    };
+  }, [user, batchInterval, batchSize, enableBatchProcessing, enableKrakenWebSocket, addLog]);
+  
   // Process price updates from the shared context
   useEffect(() => {
     if (lastPrices.length > 0 && enableKrakenWebSocket) {
@@ -769,27 +888,68 @@ export default function KrakenPriceMonitor({
       // Update client-side state
       handleClientPriceUpdate(lastPrices);
       
-      if (enableThrottling) {
-        // Add to throttled batch instead of processing immediately for database updates
-        addPriceUpdates(lastPrices);
+      // Separate auto-trading cryptos from non-auto-trading cryptos
+      const autoTradingCryptos = cryptos.filter(c => c.autoBuy || c.autoSell);
+      const autoTradingSymbols = new Set(autoTradingCryptos.map(c => c.symbol));
+      
+      // Split price updates into auto-trading and non-auto-trading
+      const autoTradingPrices = lastPrices.filter(p => autoTradingSymbols.has(p.symbol));
+      const nonAutoTradingPrices = lastPrices.filter(p => !autoTradingSymbols.has(p.symbol));
+      
+      // Log the split
+      addLog('info', 'Split price updates by auto-trading status', { 
+        timestamp: Date.now(),
+        component: 'KrakenPriceMonitor',
+        autoTradingCount: autoTradingPrices.length,
+        nonAutoTradingCount: nonAutoTradingPrices.length,
+        autoTradingSymbols: Array.from(autoTradingSymbols)
+      });
+      
+      // We already imported the price batch service at the top of the file
+      
+      // Process auto-trading cryptos in real-time
+      if (autoTradingPrices.length > 0) {
+        console.log(`Processing ${autoTradingPrices.length} auto-trading crypto price updates in real-time`);
         
-        // Log the throttling
-        addLog('info', 'Added price updates to throttled batch', { 
+        if (enableThrottling) {
+          // Add to throttled batch for auto-trading cryptos
+          addPriceUpdates(autoTradingPrices);
+          
+          // Log the throttling for auto-trading cryptos
+          addLog('info', 'Added auto-trading price updates to throttled batch', { 
+            timestamp: Date.now(),
+            component: 'KrakenPriceMonitor',
+            updateCount: autoTradingPrices.length,
+            pendingCount: pendingCount,
+            isProcessing: isProcessing,
+            throttleInterval: throttleInterval
+          });
+        } else {
+          // Process immediately if throttling is disabled
+          handlePriceUpdate(autoTradingPrices);
+        }
+      }
+      
+      // Batch non-auto-trading cryptos for less frequent updates
+      if (nonAutoTradingPrices.length > 0) {
+        console.log(`Adding ${nonAutoTradingPrices.length} non-auto-trading crypto price updates to batch service`);
+        
+        // Add to the batch service
+        priceBatchService.addPriceUpdates(nonAutoTradingPrices);
+        
+        // Log the batching for non-auto-trading cryptos
+        addLog('info', 'Added non-auto-trading price updates to batch service', { 
           timestamp: Date.now(),
           component: 'KrakenPriceMonitor',
-          updateCount: lastPrices.length,
-          pendingCount: pendingCount,
-          isProcessing: isProcessing,
-          throttleInterval: throttleInterval
+          updateCount: nonAutoTradingPrices.length,
+          pendingCount: priceBatchService.getPendingCount(),
+          batchConfig: priceBatchService.getBatchConfig()
         });
-      } else {
-        // Process immediately if throttling is disabled
-        handlePriceUpdate(lastPrices);
       }
     } else if (lastPrices.length > 0 && !enableKrakenWebSocket) {
       console.log('Ignoring price updates because Kraken WebSocket is disabled');
     }
-  }, [lastPrices, handlePriceUpdate, handleClientPriceUpdate, enableKrakenWebSocket, enableThrottling, addPriceUpdates, pendingCount, isProcessing, throttleInterval, addLog]);
+  }, [lastPrices, handlePriceUpdate, handleClientPriceUpdate, enableKrakenWebSocket, enableThrottling, addPriceUpdates, pendingCount, isProcessing, throttleInterval, addLog, cryptos]);
   
   // Clear prices when symbols change
   useEffect(() => {
@@ -936,7 +1096,7 @@ export default function KrakenPriceMonitor({
               {enableThrottling && (
                 <div className="mt-4 p-3 bg-slate-100 dark:bg-slate-800 rounded-md">
                   <div className="flex justify-between items-center">
-                    <h4 className="text-sm font-medium">WebSocket Throttling</h4>
+                    <h4 className="text-sm font-medium">WebSocket Throttling (Auto-Trading Cryptos)</h4>
                     <Button 
                       variant="outline" 
                       size="sm"
@@ -983,10 +1143,84 @@ export default function KrakenPriceMonitor({
                     Enable Throttling
                   </Button>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Throttling batches WebSocket updates to reduce database load.
+                    Throttling batches WebSocket updates for auto-trading cryptos to reduce database load.
                   </p>
                 </div>
               )}
+              
+              {/* Batch Processing for Non-Auto-Trading Cryptos */}
+              <div className="mt-4 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-md">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-sm font-medium text-indigo-700 dark:text-indigo-300">Batch Processing (Non-Auto-Trading Cryptos)</h4>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className={enableBatchProcessing ? "bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-800 dark:hover:bg-indigo-700" : ""}
+                    onClick={() => {
+                      const newValue = !enableBatchProcessing;
+                      setEnableBatchProcessing(newValue);
+                      localStorage.setItem('kraken-batch-processing-enabled', newValue.toString());
+                      priceBatchService.setEnabled(newValue);
+                      addLog('info', `Batch processing for non-auto-trading cryptos ${newValue ? 'enabled' : 'disabled'}`, { 
+                        timestamp: Date.now(),
+                        component: 'KrakenPriceMonitor'
+                      });
+                    }}
+                  >
+                    {enableBatchProcessing ? 'Disable' : 'Enable'}
+                  </Button>
+                </div>
+                <div className="mt-2 text-xs text-indigo-700 dark:text-indigo-300">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>Batch Interval: {batchInterval / 1000}s</div>
+                    <div>Batch Size: {batchSize}</div>
+                    <div>Pending Updates: {batchPendingCount}</div>
+                    <div>Status: {enableBatchProcessing ? 'Active' : 'Disabled'}</div>
+                  </div>
+                  <p className="mt-2">
+                    Non-auto-trading cryptocurrencies are batched for less frequent database updates to optimize system performance.
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-800 dark:hover:bg-indigo-700"
+                      onClick={() => {
+                        // Process the batch immediately
+                        priceBatchService.processBatch();
+                        addLog('info', 'Manually triggered batch processing for non-auto-trading cryptos', { 
+                          timestamp: Date.now(),
+                          component: 'KrakenPriceMonitor',
+                          pendingCount: batchPendingCount
+                        });
+                      }}
+                    >
+                      Process Now
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-800 dark:hover:bg-indigo-700"
+                      onClick={() => {
+                        // Update the batch interval
+                        const newInterval = parseInt(prompt('Enter new batch interval in seconds:', (batchInterval / 1000).toString()) || '10') * 1000;
+                        if (newInterval > 0) {
+                          setBatchInterval(newInterval);
+                          localStorage.setItem('kraken-batch-processing-interval', newInterval.toString());
+                          priceBatchService.updateBatchConfig({ interval: newInterval });
+                          addLog('info', 'Updated batch interval for non-auto-trading cryptos', { 
+                            timestamp: Date.now(),
+                            component: 'KrakenPriceMonitor',
+                            newInterval
+                          });
+                        }
+                      }}
+                    >
+                      Change Interval
+                    </Button>
+                  </div>
+                </div>
+              </div>
               
               {contextLastUpdated && (
                 <p className="text-xs text-muted-foreground mt-4">

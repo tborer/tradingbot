@@ -190,7 +190,7 @@ const DataUploads: React.FC = () => {
       toast({
         variant: 'destructive',
         title: 'Invalid Max Batch Count',
-        description: 'Please enter a valid number for the maximum batch count.',
+        description: 'Please enter a valid positive number for the maximum batch count.',
       });
       setIsProcessing(false);
       return;
@@ -246,8 +246,24 @@ const DataUploads: React.FC = () => {
         // Keep track of the earliest timestamp we've seen
         let earliestTimestampSeen = Number.MAX_SAFE_INTEGER;
         
+        // Parse max batch count once outside the loop
+        const maxBatches = parseInt(maxBatchCount);
+        
         while (continueDataCollection) {
           batchCount++;
+          
+          // Check if we've reached the max batch count before making the request
+          if (collectFullDay && maxBatches > 0 && batchCount > maxBatches) {
+            console.log(`Reached maximum batch count (${maxBatches}). Stopping data collection.`);
+            continueDataCollection = false;
+            
+            toast({
+              variant: 'warning',
+              title: 'Data Collection Stopped',
+              description: `Reached maximum batch count (${maxBatches}) for ${symbol}`,
+            });
+            break;
+          }
           
           // Build URL with parameters
           const url = new URL(`/api/cryptos/historical-minutes`, window.location.origin);
@@ -462,15 +478,15 @@ const DataUploads: React.FC = () => {
                   title: 'Data Collection Stopped',
                   description: `Reached the limit of available data for ${symbol}`,
                 });
-              } else if (collectFullDay && batchCount >= parseInt(maxBatchCount)) {
+              } else if (collectFullDay && batchCount >= maxBatches) {
                 // User-defined batch limit reached
-                console.log(`Reached user-defined maximum batch count (${maxBatchCount}). Stopping data collection.`);
+                console.log(`Reached user-defined maximum batch count (${maxBatches}). Stopping data collection.`);
                 continueDataCollection = false;
                 
                 toast({
                   variant: 'warning',
                   title: 'Data Collection Stopped',
-                  description: `Reached maximum batch count (${maxBatchCount}) for ${symbol}`,
+                  description: `Reached maximum batch count (${maxBatches}) for ${symbol}`,
                 });
               }
             } else {

@@ -2,6 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
 import { PrismaClientInitializationError, PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { shouldWritePriceUpdate } from '@/lib/selectivePriceUpdates';
+import { updateUIPriceCache } from '@/lib/uiPriceCache';
 
 // Add connection retry logic
 const MAX_RETRIES = 3;
@@ -41,6 +43,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     console.log(`Processing update-last-price for ${symbol}: ${lastPrice}`);
     
+    // Always update the UI price cache regardless of whether we write to the database
+    updateUIPriceCache(symbol, Number(lastPrice));
+    
     // Find the crypto by symbol for this user with retry logic
     let crypto = null;
     let retries = 0;
@@ -52,6 +57,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             symbol: symbol,
             userId: user.id,
           },
+          include: {
+            autoTradeSettings: true
+          }
         });
         
         // If successful, break out of the retry loop
@@ -75,6 +83,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // This can happen if the WebSocket is receiving prices for symbols the user doesn't own
       console.log(`No crypto found with symbol ${symbol} for user ${user.id}`);
       return res.status(200).json({ message: `No crypto found with symbol ${symbol} for this user` });
+    }
+    
+    // Check if we should write this price update to the database
+    const shouldWrite = await shouldWritePriceUpdate(symbol, Number(lastPrice), crypto, user.id);
+    
+    if (!shouldWrite) {
+      console.log(`Skipping database update for ${symbol}: Not within threshold range or too frequent`);
+      return res.status(200).json({ 
+        message: `Price update for ${symbol} cached but not written to database`,
+        symbol,
+        lastPrice: Number(lastPrice),
+        cached: true,
+        written: false
+      });
     }
     
     // Update the lastPrice for the crypto with retry logic

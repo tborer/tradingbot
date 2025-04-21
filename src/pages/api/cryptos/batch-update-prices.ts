@@ -4,6 +4,8 @@ import prisma, { checkPrismaConnection, executeWithFallback } from '@/lib/prisma
 import { PrismaClientInitializationError, PrismaClientKnownRequestError, PrismaClientValidationError } from '@prisma/client/runtime/library';
 import * as connectionManager from '@/lib/connectionManager';
 import { createAndLogError, ErrorCategory, ErrorSeverity, DatabaseErrorCodes } from '@/lib/errorLogger';
+import { processSelectivePriceUpdates } from '@/lib/selectivePriceUpdates';
+import { batchUpdateUIPriceCache } from '@/lib/uiPriceCache';
 
 // Define types for better type safety
 interface PriceUpdate {
@@ -479,18 +481,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     console.log(`[${requestId}] Found ${validUpdates.length} valid updates out of ${updates.length} requested`);
     
-    // Prepare batch update data
-    const updateData = validUpdates.map(update => ({
-      id: cryptoMap.get(update.symbol),
-      lastPrice: Number(update.lastPrice),
-      symbol: update.symbol
+    // Prepare price update data for selective processing
+    const priceUpdates = validUpdates.map(update => ({
+      symbol: update.symbol,
+      price: Number(update.lastPrice),
+      timestamp: Date.now()
     }));
+    
+    // Always update the UI price cache regardless of whether we write to the database
+    console.log(`[${requestId}] Updating UI price cache for ${priceUpdates.length} cryptos`);
+    batchUpdateUIPriceCache(priceUpdates);
     
     // Create a transaction cache key
     const transactionCacheKey = `price-updates-${user.id}-${Date.now()}`;
-    
-    // Update the lastPrice for all cryptos in a single transaction with enhanced error handling
-    let updatedCount = 0;
     
     // If we're in partial degradation mode, we'll skip the database update
     // but still return a success response with the data we would have updated
@@ -498,7 +501,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log(`[${requestId}] Skipping database update due to partial degradation mode`);
       
       // Cache the update data for when the system recovers
-      connectionManager.cacheResponse(transactionCacheKey, updateData);
+      connectionManager.cacheResponse(transactionCacheKey, priceUpdates);
       
       createAndLogError(
         ErrorCategory.SYSTEM,
@@ -524,71 +527,56 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
     
-    // Use our enhanced executeWithFallback for the transaction
-    console.log(`[${requestId}] Executing database transaction with fallback for ${updateData.length} updates`);
+    // Use selective price updates to only write to the database when necessary
+    console.log(`[${requestId}] Processing selective price updates for ${priceUpdates.length} cryptos`);
     const transactionStartTime = Date.now();
     
-    // Log the database transaction attempt
+    // Log the selective update attempt
     createAndLogError(
       ErrorCategory.DATABASE,
       ErrorSeverity.INFO,
       3001,
-      `Starting database transaction for batch price update`,
+      `Starting selective price updates`,
       { 
         requestId,
         timestamp: Date.now(),
         userId: user.id,
-        updateCount: updateData.length,
-        symbols: updateData.map(d => d.symbol)
+        updateCount: priceUpdates.length,
+        symbols: priceUpdates.map(d => d.symbol)
       }
     );
     
     try {
-      const result = await executeWithFallback(
-        async () => {
-          // Use a transaction to ensure all updates succeed or fail together
-          await prisma.$transaction(async (prismaClient) => {
-            for (const data of updateData) {
-              await prismaClient.crypto.update({
-                where: { id: data.id },
-                data: { lastPrice: data.lastPrice },
-              });
-              updatedCount++;
-            }
-          });
-          
-          // Cache the successful result
-          connectionManager.cacheResponse(transactionCacheKey, {
-            updatedCount,
-            updateData
-          });
-          
-          return { updatedCount };
-        },
-        { updatedCount: 0 }, // Fallback data if all else fails
-        transactionCacheKey,
-        MAX_RETRIES
-      );
+      // Process selective price updates
+      const result = await processSelectivePriceUpdates(priceUpdates, user.id);
       
       const transactionDuration = Date.now() - transactionStartTime;
-      console.log(`[${requestId}] Database transaction completed in ${transactionDuration}ms, updated ${updatedCount} cryptos`);
+      console.log(`[${requestId}] Selective price updates completed in ${transactionDuration}ms, updated ${result.updated.length} cryptos, skipped ${result.skipped.length} cryptos`);
       
-      // Log successful transaction with detailed performance metrics
+      // Cache the successful result
+      connectionManager.cacheResponse(transactionCacheKey, {
+        updatedCount: result.updated.length,
+        skippedCount: result.skipped.length,
+        priceUpdates
+      });
+      
+      // Log successful updates with detailed performance metrics
       createAndLogError(
         ErrorCategory.DATABASE,
         ErrorSeverity.INFO,
         4014,
-        `Successfully updated crypto prices in batch`,
+        `Successfully processed selective price updates`,
         { 
           requestId,
           userId: user.id,
           timestamp: Date.now(),
-          updateCount: updatedCount,
+          updatedCount: result.updated.length,
+          skippedCount: result.skipped.length,
           transactionDuration,
           totalRequested: updates.length,
-          averageTimePerUpdate: updatedCount > 0 ? Math.round(transactionDuration / updatedCount) : 0,
-          symbols: updateData.map(d => d.symbol),
-          prices: updateData.map(d => ({ symbol: d.symbol, price: d.lastPrice })),
+          averageTimePerUpdate: result.updated.length > 0 ? Math.round(transactionDuration / result.updated.length) : 0,
+          updatedSymbols: result.updated,
+          skippedSymbols: result.skipped,
           cacheKey: transactionCacheKey
         }
       );
@@ -601,14 +589,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Trigger auto trade evaluation for the updated cryptos if auto trading is enabled
       if (settings?.enableAutoCryptoTrading) {
         try {
-          console.log(`[${requestId}] Triggering auto trade evaluation for ${updatedCount} cryptos`);
+          console.log(`[${requestId}] Triggering auto trade evaluation for ${result.updated.length} cryptos`);
           
-          // Create price objects in the format expected by processAutoCryptoTrades
-          const priceObjects = updateData.map(data => ({
-            symbol: data.symbol,
-            price: data.lastPrice,
-            timestamp: Date.now()
-          }));
+          // Use the price objects we already created
+          const priceObjects = priceUpdates;
           
           // Log that we're triggering auto trades
           createAndLogError(
@@ -620,8 +604,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               requestId,
               userId: user.id,
               timestamp: Date.now(),
-              updateCount: updatedCount,
-              symbols: updateData.map(d => d.symbol)
+              updateCount: result.updated.length,
+              symbols: priceUpdates.map(d => d.symbol)
             }
           );
           
@@ -700,8 +684,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const requestDuration = Date.now() - requestStartTime;
       
       return res.status(200).json({ 
-        message: `Successfully updated lastPrice for ${updatedCount} cryptos`,
-        processedCount: updatedCount,
+        message: `Successfully processed price updates for ${priceUpdates.length} cryptos`,
+        updatedCount: result.updated.length,
+        skippedCount: result.skipped.length,
         totalRequested: updates.length,
         status: 'success',
         requestId,

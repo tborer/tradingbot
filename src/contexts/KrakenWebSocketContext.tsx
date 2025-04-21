@@ -25,6 +25,15 @@ interface KrakenWebSocketContextType {
   setMaxDatabaseRetries: (retries: number) => void;
   compressionEnabled: boolean;
   setCompressionEnabled: (enabled: boolean) => void;
+  compressionStats?: {
+    messagesReceived: number;
+    compressedMessagesReceived: number;
+    totalBytesReceived: number;
+    compressedBytesReceived: number;
+    compressionRatio: number;
+    lastCompressionError: string | null;
+    compressionErrorCount: number;
+  };
 }
 
 const KrakenWebSocketContext = createContext<KrakenWebSocketContextType | null>(null);
@@ -39,12 +48,21 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
   initialSymbols = [] 
 }) => {
   const { addLog } = useWebSocketLogs();
-  const [status, setStatus] = useState<ConnectionStatus>({
+  const [status, setStatus] = useState<ConnectionStatus & { compressionStats?: any }>({
     isConnected: false,
     error: null,
     lastPingTime: null,
     lastPongTime: null,
-    compressionEnabled: false
+    compressionEnabled: false,
+    compressionStats: {
+      messagesReceived: 0,
+      compressedMessagesReceived: 0,
+      totalBytesReceived: 0,
+      compressedBytesReceived: 0,
+      compressionRatio: 0,
+      lastCompressionError: null,
+      compressionErrorCount: 0
+    }
   });
   const [lastMessage, setLastMessage] = useState<string | null>(null);
   const [lastPrices, setLastPrices] = useState<KrakenPrice[]>([]);
@@ -106,9 +124,22 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
   }, [addLog]);
 
   // Handle status changes
-  const handleStatusChange = useCallback((newStatus: ConnectionStatus) => {
+  const handleStatusChange = useCallback((newStatus: ConnectionStatus & { compressionStats?: any }) => {
     setStatus(newStatus);
-  }, []);
+    
+    // Log compression stats when they change
+    if (newStatus.compressionStats) {
+      const stats = newStatus.compressionStats;
+      if (stats.compressionErrorCount > 0) {
+        addLog('warning', 'WebSocket compression issues detected', {
+          errorCount: stats.compressionErrorCount,
+          lastError: stats.lastCompressionError,
+          compressionEnabled: newStatus.compressionEnabled,
+          suggestion: 'Consider disabling compression if errors persist'
+        });
+      }
+    }
+  }, [addLog]);
 
   // Initialize the WebSocket connection
   useEffect(() => {
@@ -316,10 +347,19 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
     setCompressionEnabled(value);
     localStorage.setItem('kraken-websocket-compression', value.toString());
     
-    // Log the change
+    // Log the change with more details
     addLog('info', `WebSocket compression ${value ? 'enabled' : 'disabled'}`, {
-      compressionEnabled: value
+      compressionEnabled: value,
+      previousState: compressionEnabled,
+      timestamp: new Date().toISOString()
     });
+    
+    // Add warning if enabling compression
+    if (value) {
+      addLog('info', 'WebSocket compression enabled - monitoring for potential issues', {
+        note: 'If connection stability issues occur, consider disabling compression'
+      });
+    }
     
     // We need to recreate the socket when compression setting changes
     if (krakenSocket) {
@@ -329,7 +369,7 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
       // Force recreation of the socket on next render
       setKrakenSocket(null);
     }
-  }, [krakenSocket, addLog]);
+  }, [krakenSocket, addLog, compressionEnabled]);
 
   const value = {
     isConnected: status.isConnected,
@@ -352,7 +392,8 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
     maxDatabaseRetries,
     setMaxDatabaseRetries: handleMaxDatabaseRetriesChange,
     compressionEnabled,
-    setCompressionEnabled: handleCompressionEnabledChange
+    setCompressionEnabled: handleCompressionEnabledChange,
+    compressionStats: status.compressionStats
   };
 
   return (

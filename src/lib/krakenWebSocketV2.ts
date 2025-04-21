@@ -37,7 +37,17 @@ export class KrakenWebSocket {
     isConnected: false,
     error: null,
     lastPingTime: null,
-    lastPongTime: null
+    lastPongTime: null,
+    compressionEnabled: false
+  };
+  private compressionStats = {
+    messagesReceived: 0,
+    compressedMessagesReceived: 0,
+    totalBytesReceived: 0,
+    compressedBytesReceived: 0,
+    compressionRatio: 0,
+    lastCompressionError: null as string | null,
+    compressionErrorCount: 0
   };
   private pingCounter = 100; // Starting counter for req_id
   private options: KrakenWebSocketOptions;
@@ -118,19 +128,37 @@ export class KrakenWebSocket {
       // Add compression parameter if enabled
       if (this.enableCompression) {
         wsUrl += '&compression=true';
+        this.log('info', 'Enabling WebSocket compression via URL parameter', { 
+          url: wsUrl,
+          compressionEnabled: this.enableCompression
+        });
       }
       
       this.log('info', 'Connecting to Kraken WebSocket', { 
         url: wsUrl, 
-        compressionEnabled: this.enableCompression 
+        compressionEnabled: this.enableCompression,
+        compressionStats: this.compressionStats
       });
       
       // Create WebSocket connection
       this.socket = new WebSocket(wsUrl);
       
+      // Reset compression stats when creating a new connection
+      this.compressionStats = {
+        messagesReceived: 0,
+        compressedMessagesReceived: 0,
+        totalBytesReceived: 0,
+        compressedBytesReceived: 0,
+        compressionRatio: 0,
+        lastCompressionError: null,
+        compressionErrorCount: 0
+      };
+      
       // Log compression status
       if (this.enableCompression) {
-        this.log('info', 'WebSocket created with compression enabled via URL parameter', {});
+        this.log('info', 'WebSocket created with compression enabled via URL parameter', {
+          extensions: this.socket.extensions || 'none'
+        });
       }
       
       this.socket.onopen = this.handleOpen.bind(this);
@@ -361,11 +389,25 @@ export class KrakenWebSocket {
     // Check if compression is actually enabled in the connection
     const compressionEnabled = this.socket?.extensions?.includes('permessage-deflate') || false;
     
+    // Log detailed information about the connection
     this.log('success', 'WebSocket connected successfully', { 
       url: KRAKEN_WEBSOCKET_URL,
       compressionEnabled,
-      extensions: this.socket?.extensions || 'none'
+      extensions: this.socket?.extensions || 'none',
+      requestedCompression: this.enableCompression,
+      compressionActive: compressionEnabled,
+      protocol: this.socket?.protocol || 'none',
+      binaryType: this.socket?.binaryType || 'unknown'
     });
+    
+    // Update compression stats
+    if (compressionEnabled !== this.enableCompression) {
+      this.log('warning', 'WebSocket compression state mismatch', {
+        requestedCompression: this.enableCompression,
+        actualCompression: compressionEnabled,
+        extensions: this.socket?.extensions || 'none'
+      });
+    }
     
     // Reset connection state
     this.isConnecting = false;
@@ -447,7 +489,41 @@ export class KrakenWebSocket {
   }
 
   private handleMessage(event: MessageEvent): void {
-    if (typeof event.data !== 'string') {
+    // Update compression stats
+    this.compressionStats.messagesReceived++;
+    
+    // Check if this is a binary message (likely compressed)
+    const isBinary = typeof event.data !== 'string';
+    const messageSize = isBinary 
+      ? (event.data instanceof Blob ? event.data.size : event.data.byteLength) 
+      : event.data.length;
+    
+    this.compressionStats.totalBytesReceived += messageSize;
+    
+    if (isBinary) {
+      this.compressionStats.compressedMessagesReceived++;
+      this.compressionStats.compressedBytesReceived += messageSize;
+      
+      // Calculate compression ratio if we have received both types of messages
+      if (this.compressionStats.totalBytesReceived > 0 && this.compressionStats.compressedBytesReceived > 0) {
+        this.compressionStats.compressionRatio = this.compressionStats.compressedBytesReceived / this.compressionStats.totalBytesReceived;
+      }
+      
+      this.log('info', 'Received binary (compressed) message', { 
+        size: messageSize,
+        compressionStats: this.compressionStats
+      });
+      
+      // We can't process binary data directly, so log an error and return
+      this.log('error', 'Cannot process binary message', {
+        binaryType: this.socket?.binaryType || 'unknown',
+        dataType: event.data instanceof Blob ? 'Blob' : 'ArrayBuffer',
+        size: messageSize
+      });
+      
+      this.compressionStats.lastCompressionError = 'Received binary message that cannot be processed';
+      this.compressionStats.compressionErrorCount++;
+      
       return;
     }
     
@@ -456,7 +532,12 @@ export class KrakenWebSocket {
       const truncatedMessage = event.data.length > 200 
         ? event.data.substring(0, 200) + "..." 
         : event.data;
-      this.log('info', 'Received raw message', { message: truncatedMessage });
+      this.log('info', 'Received raw message', { 
+        message: truncatedMessage,
+        size: event.data.length,
+        compressionEnabled: this.enableCompression,
+        compressionActive: this.socket?.extensions?.includes('permessage-deflate') || false
+      });
       
       // Check if this is our optimized format with shortened field names
       if (event.data.includes('"s":') && event.data.includes('"lp":')) {
@@ -545,7 +626,28 @@ export class KrakenWebSocket {
   }
 
   private handleError(event: Event): void {
-    this.log('error', 'WebSocket error', { event: 'error', timestamp: Date.now() });
+    // Get detailed error information if available
+    const errorDetails = {
+      event: 'error',
+      timestamp: Date.now(),
+      compressionEnabled: this.enableCompression,
+      compressionActive: this.socket?.extensions?.includes('permessage-deflate') || false,
+      compressionStats: this.compressionStats,
+      readyState: this.socket ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][this.socket.readyState] : 'NOT_INITIALIZED',
+      extensions: this.socket?.extensions || 'none',
+      protocol: this.socket?.protocol || 'none',
+      binaryType: this.socket?.binaryType || 'unknown'
+    };
+    
+    this.log('error', 'WebSocket error', errorDetails);
+    
+    // If compression is enabled and we've had errors, log a specific warning
+    if (this.enableCompression && this.compressionStats.compressionErrorCount > 0) {
+      this.log('warning', 'WebSocket error with compression enabled', {
+        ...errorDetails,
+        suggestion: 'Consider disabling compression if errors persist'
+      });
+    }
     
     const error = new Error('WebSocket connection error');
     
@@ -570,12 +672,32 @@ export class KrakenWebSocket {
       this.connectionTimeoutId = null;
     }
     
-    this.log('warning', 'WebSocket closed', {
+    // Log detailed close information
+    const closeDetails = {
       code: event.code,
       reason: event.reason || 'No reason provided',
       wasClean: event.wasClean,
-      manualDisconnect: this.manualDisconnect
-    });
+      manualDisconnect: this.manualDisconnect,
+      compressionEnabled: this.enableCompression,
+      compressionActive: this.socket?.extensions?.includes('permessage-deflate') || false,
+      compressionStats: this.compressionStats,
+      reconnectAttempts: this.reconnectAttempts,
+      timestamp: Date.now()
+    };
+    
+    this.log('warning', 'WebSocket closed', closeDetails);
+    
+    // Add specific logging for compression-related close codes
+    if (event.code === 1002 || event.code === 1007 || event.code === 1009) {
+      this.log('error', 'WebSocket closed with protocol error - may be compression related', {
+        ...closeDetails,
+        suggestion: 'Consider disabling compression if this error persists'
+      });
+      
+      // Update compression stats
+      this.compressionStats.lastCompressionError = `WebSocket closed with code ${event.code}: ${event.reason || 'No reason provided'}`;
+      this.compressionStats.compressionErrorCount++;
+    }
     
     // Reset connection state
     this.isConnecting = false;
@@ -755,7 +877,10 @@ export class KrakenWebSocket {
     
     // Call onStatusChange callback if provided
     if (this.options.onStatusChange) {
-      this.options.onStatusChange(this.status);
+      this.options.onStatusChange({
+        ...this.status,
+        compressionStats: this.compressionStats
+      });
     }
   }
 

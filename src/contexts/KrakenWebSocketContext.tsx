@@ -23,6 +23,8 @@ interface KrakenWebSocketContextType {
   manuallyDisconnected: boolean;
   maxDatabaseRetries: number;
   setMaxDatabaseRetries: (retries: number) => void;
+  compressionEnabled: boolean;
+  setCompressionEnabled: (enabled: boolean) => void;
 }
 
 const KrakenWebSocketContext = createContext<KrakenWebSocketContextType | null>(null);
@@ -41,7 +43,8 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
     isConnected: false,
     error: null,
     lastPingTime: null,
-    lastPongTime: null
+    lastPongTime: null,
+    compressionEnabled: false
   });
   const [lastMessage, setLastMessage] = useState<string | null>(null);
   const [lastPrices, setLastPrices] = useState<KrakenPrice[]>([]);
@@ -57,6 +60,8 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
   const [manuallyDisconnected, setManuallyDisconnected] = useState<boolean>(false);
   // Maximum number of database connection attempts before pausing
   const [maxDatabaseRetries, setMaxDatabaseRetries] = useState<number>(5);
+  // WebSocket compression setting
+  const [compressionEnabled, setCompressionEnabled] = useState<boolean>(false);
 
   // Load auto-connect setting from localStorage
   useEffect(() => {
@@ -120,7 +125,10 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
       }
       
       console.log('Initializing Kraken WebSocket with symbols:', formattedSymbols);
-      addLog('info', 'Initializing Kraken WebSocket', { symbols: formattedSymbols });
+      addLog('info', 'Initializing Kraken WebSocket', { 
+        symbols: formattedSymbols,
+        compressionEnabled
+      });
       
       // Create a new KrakenWebSocket instance
       const socket = new KrakenWebSocket({
@@ -129,7 +137,8 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
         onStatusChange: handleStatusChange,
         autoConnect: false, // Don't auto-connect here, we'll handle it separately
         reconnectDelay,
-        addLog
+        addLog,
+        enableCompression: compressionEnabled
       });
       
       setKrakenSocket(socket);
@@ -227,7 +236,7 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
 
   // These state variables are already declared above, so we don't need to declare them again
   
-  // Load enableKrakenWebSocket setting from localStorage
+  // Load settings from localStorage
   useEffect(() => {
     const savedEnableKrakenWebSocket = localStorage.getItem('kraken-websocket-enabled');
     if (savedEnableKrakenWebSocket !== null) {
@@ -244,6 +253,12 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
     const savedMaxDatabaseRetries = localStorage.getItem('kraken-max-database-retries');
     if (savedMaxDatabaseRetries !== null) {
       setMaxDatabaseRetries(parseInt(savedMaxDatabaseRetries, 10));
+    }
+    
+    // Load compression setting from localStorage
+    const savedCompressionEnabled = localStorage.getItem('kraken-websocket-compression');
+    if (savedCompressionEnabled !== null) {
+      setCompressionEnabled(savedCompressionEnabled === 'true');
     }
   }, []);
   
@@ -295,6 +310,26 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
     setMaxDatabaseRetries(value);
     localStorage.setItem('kraken-max-database-retries', value.toString());
   }, []);
+  
+  // Save compression setting to localStorage when it changes
+  const handleCompressionEnabledChange = useCallback((value: boolean) => {
+    setCompressionEnabled(value);
+    localStorage.setItem('kraken-websocket-compression', value.toString());
+    
+    // Log the change
+    addLog('info', `WebSocket compression ${value ? 'enabled' : 'disabled'}`, {
+      compressionEnabled: value
+    });
+    
+    // We need to recreate the socket when compression setting changes
+    if (krakenSocket) {
+      // Disconnect the current socket
+      krakenSocket.disconnect();
+      
+      // Force recreation of the socket on next render
+      setKrakenSocket(null);
+    }
+  }, [krakenSocket, addLog]);
 
   const value = {
     isConnected: status.isConnected,
@@ -315,7 +350,9 @@ export const KrakenWebSocketProvider: React.FC<KrakenWebSocketProviderProps> = (
     setReconnectDelay: handleReconnectDelayChange,
     manuallyDisconnected,
     maxDatabaseRetries,
-    setMaxDatabaseRetries: handleMaxDatabaseRetriesChange
+    setMaxDatabaseRetries: handleMaxDatabaseRetriesChange,
+    compressionEnabled,
+    setCompressionEnabled: handleCompressionEnabledChange
   };
 
   return (

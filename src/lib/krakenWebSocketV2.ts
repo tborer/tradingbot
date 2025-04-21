@@ -17,6 +17,7 @@ export interface KrakenWebSocketOptions {
   autoConnect?: boolean;
   reconnectDelay?: number; // Base delay in ms for reconnection attempts
   addLog?: (level: 'info' | 'warning' | 'error' | 'success', message: string, details?: Record<string, any>, errorCode?: string) => void;
+  enableCompression?: boolean; // Whether to enable WebSocket compression
 }
 
 export interface ConnectionStatus {
@@ -24,6 +25,7 @@ export interface ConnectionStatus {
   error: Error | null;
   lastPingTime: Date | null;
   lastPongTime: Date | null;
+  compressionEnabled?: boolean;
 }
 
 export class KrakenWebSocket {
@@ -44,6 +46,7 @@ export class KrakenWebSocket {
   private isConnecting: boolean = false; // Flag to track connection in progress
   private connectionTimeoutId: NodeJS.Timeout | null = null;
   private manualDisconnect: boolean = false; // Flag to track if disconnect was called manually
+  private enableCompression: boolean = false; // Flag to track if compression is enabled
 
   constructor(options: KrakenWebSocketOptions) {
     this.options = options;
@@ -59,6 +62,12 @@ export class KrakenWebSocket {
     }
     
     this.reconnectBaseDelay = options.reconnectDelay || DEFAULT_RECONNECT_BASE_DELAY;
+    
+    // Set compression flag
+    this.enableCompression = options.enableCompression || false;
+    this.log('info', `WebSocket compression ${this.enableCompression ? 'enabled' : 'disabled'}`, {
+      enableCompression: this.enableCompression
+    });
     
     // Auto-connect if enabled
     if (options.autoConnect) {
@@ -104,11 +113,29 @@ export class KrakenWebSocket {
       
       // Add timestamp to prevent caching
       const timestamp = Date.now();
-      const wsUrl = `${KRAKEN_WEBSOCKET_URL}?t=${timestamp}`;
+      let wsUrl = `${KRAKEN_WEBSOCKET_URL}?t=${timestamp}`;
       
-      this.log('info', 'Connecting to Kraken WebSocket', { url: wsUrl });
+      // Add compression parameter if enabled
+      if (this.enableCompression) {
+        wsUrl += '&compression=true';
+      }
       
-      this.socket = new WebSocket(wsUrl);
+      this.log('info', 'Connecting to Kraken WebSocket', { 
+        url: wsUrl, 
+        compressionEnabled: this.enableCompression 
+      });
+      
+      // Create WebSocket with compression if enabled
+      if (this.enableCompression && 'WebSocket' in window) {
+        // Use permessage-deflate extension for compression
+        this.socket = new WebSocket(wsUrl, ['permessage-deflate']);
+        this.log('info', 'WebSocket created with compression support', {});
+      } else {
+        this.socket = new WebSocket(wsUrl);
+        if (this.enableCompression) {
+          this.log('warning', 'WebSocket compression requested but not supported by browser', {});
+        }
+      }
       
       this.socket.onopen = this.handleOpen.bind(this);
       this.socket.onmessage = this.handleMessage.bind(this);
@@ -335,7 +362,14 @@ export class KrakenWebSocket {
       this.connectionTimeoutId = null;
     }
     
-    this.log('success', 'WebSocket connected successfully', { url: KRAKEN_WEBSOCKET_URL });
+    // Check if compression is actually enabled in the connection
+    const compressionEnabled = this.socket?.extensions?.includes('permessage-deflate') || false;
+    
+    this.log('success', 'WebSocket connected successfully', { 
+      url: KRAKEN_WEBSOCKET_URL,
+      compressionEnabled,
+      extensions: this.socket?.extensions || 'none'
+    });
     
     // Reset connection state
     this.isConnecting = false;
@@ -710,7 +744,8 @@ export class KrakenWebSocket {
   private updateStatus(partialStatus: Partial<ConnectionStatus>): void {
     this.status = {
       ...this.status,
-      ...partialStatus
+      ...partialStatus,
+      compressionEnabled: this.enableCompression
     };
     
     // Call onStatusChange callback if provided

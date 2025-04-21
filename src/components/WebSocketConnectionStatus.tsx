@@ -18,6 +18,7 @@ interface WebSocketConnectionStatusProps {
   lastPongTime?: Date | null;
   autoConnect?: boolean;
   onAutoConnectChange?: (autoConnect: boolean) => void;
+  compressionEnabled?: boolean;
 }
 
 const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
@@ -31,7 +32,8 @@ const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
   lastPingTime,
   lastPongTime,
   autoConnect,
-  onAutoConnectChange
+  onAutoConnectChange,
+  compressionEnabled
 }) => {
   const [connectionDuration, setConnectionDuration] = useState<string>('');
   const [connectionStartTime, setConnectionStartTime] = useState<Date | null>(null);
@@ -112,6 +114,20 @@ const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
             <div className="font-medium">Status:</div>
             <div className={isConnected ? "text-green-500" : "text-red-500"}>
               {isConnected ? 'Connected' : 'Disconnected'}
+            </div>
+            
+            <div className="font-medium">Compression:</div>
+            <div className="flex items-center">
+              {compressionEnabled ? (
+                <span className="text-green-500 flex items-center">
+                  Enabled
+                  <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </span>
+              ) : (
+                <span className="text-gray-500">Disabled</span>
+              )}
             </div>
             
             {isConnected && connectionDuration && (

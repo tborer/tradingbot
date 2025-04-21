@@ -17,11 +17,13 @@ interface KrakenWebSocketSettingsProps {
   enableKrakenWebSocket?: boolean;
   reconnectDelay?: number;
   maxDatabaseRetries?: number;
+  compressionEnabled?: boolean;
   onEnableManualCryptoTradingChange: (enabled: boolean) => void;
   onAutoConnectWebSocketChange: (enabled: boolean) => void;
   onEnableKrakenWebSocketChange?: (enabled: boolean) => void;
   onReconnectDelayChange?: (delay: number) => void;
   onMaxDatabaseRetriesChange?: (retries: number) => void;
+  onCompressionEnabledChange?: (enabled: boolean) => void;
 }
 
 const KrakenWebSocketSettings: React.FC<KrakenWebSocketSettingsProps> = ({
@@ -31,11 +33,13 @@ const KrakenWebSocketSettings: React.FC<KrakenWebSocketSettingsProps> = ({
   enableKrakenWebSocket = true,
   reconnectDelay = 1000,
   maxDatabaseRetries = MAX_DATABASE_RETRIES,
+  compressionEnabled = false,
   onEnableManualCryptoTradingChange,
   onAutoConnectWebSocketChange,
   onEnableKrakenWebSocketChange,
   onReconnectDelayChange,
-  onMaxDatabaseRetriesChange
+  onMaxDatabaseRetriesChange,
+  onCompressionEnabledChange
 }) => {
   return (
     <div className="border-t pt-4 mt-4">
@@ -68,6 +72,21 @@ const KrakenWebSocketSettings: React.FC<KrakenWebSocketSettingsProps> = ({
             id="enableKrakenWebSocket"
             checked={enableKrakenWebSocket}
             onCheckedChange={onEnableKrakenWebSocketChange}
+          />
+        </div>
+        
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="compressionEnabled">Enable WebSocket Compression</Label>
+            <p className="text-sm text-muted-foreground">
+              Use compression to reduce WebSocket data transfer (requires reconnection)
+            </p>
+          </div>
+          <Switch
+            id="compressionEnabled"
+            checked={compressionEnabled}
+            onCheckedChange={onCompressionEnabledChange}
+            disabled={!enableKrakenWebSocket}
           />
         </div>
         
@@ -151,6 +170,10 @@ const KrakenWebSocketSettings: React.FC<KrakenWebSocketSettingsProps> = ({
             <p className="text-muted-foreground mt-2">
               When database connection issues occur, the system will attempt to reconnect up to the maximum number of attempts.
               After that, automatic reconnection will be paused to reduce error logs, but you can manually reconnect at any time.
+            </p>
+            <p className="text-muted-foreground mt-2">
+              WebSocket compression can significantly reduce data transfer, especially for high-frequency updates.
+              This feature requires server-side support and will reconnect the WebSocket when enabled or disabled.
             </p>
           </div>
         </div>

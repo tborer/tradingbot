@@ -62,7 +62,9 @@ export default function KrakenPriceMonitor({
     enableKrakenWebSocket: contextEnableKrakenWebSocket,
     setEnableKrakenWebSocket: setContextEnableKrakenWebSocket,
     maxDatabaseRetries: contextMaxDatabaseRetries,
-    setMaxDatabaseRetries: setContextMaxDatabaseRetries
+    setMaxDatabaseRetries: setContextMaxDatabaseRetries,
+    compressionEnabled,
+    setCompressionEnabled
   } = useKrakenWebSocket();
   
   // Use context maxDatabaseRetries if available, otherwise use prop or default
@@ -995,6 +997,7 @@ export default function KrakenPriceMonitor({
         lastPongTime={lastPongTime}
         autoConnect={contextAutoConnect}
         onAutoConnectChange={setContextAutoConnect}
+        compressionEnabled={compressionEnabled}
       />
       
       <Card>
@@ -1093,6 +1096,38 @@ export default function KrakenPriceMonitor({
                 Monitoring {symbols.length} cryptocurrencies for price updates.
               </p>
               
+              {/* WebSocket Compression Status */}
+              <div className="mt-4 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-md">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-sm font-medium text-purple-700 dark:text-purple-300">WebSocket Compression</h4>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className={compressionEnabled ? "bg-purple-100 hover:bg-purple-200 dark:bg-purple-800 dark:hover:bg-purple-700" : ""}
+                    onClick={() => {
+                      const newValue = !compressionEnabled;
+                      setCompressionEnabled(newValue);
+                      addLog('info', `WebSocket compression ${newValue ? 'enabled' : 'disabled'}`, { 
+                        timestamp: Date.now(),
+                        component: 'KrakenPriceMonitor'
+                      });
+                    }}
+                  >
+                    {compressionEnabled ? 'Disable' : 'Enable'}
+                  </Button>
+                </div>
+                <div className="mt-2 text-xs text-purple-700 dark:text-purple-300">
+                  <p>
+                    {compressionEnabled 
+                      ? "Compression is enabled, reducing WebSocket data transfer size." 
+                      : "Compression is disabled. Enable to reduce data transfer size."}
+                  </p>
+                  <p className="mt-1">
+                    WebSocket compression can significantly reduce bandwidth usage, especially for high-frequency price updates.
+                  </p>
+                </div>
+              </div>
+
               {enableThrottling && (
                 <div className="mt-4 p-3 bg-slate-100 dark:bg-slate-800 rounded-md">
                   <div className="flex justify-between items-center">

@@ -1,8 +1,12 @@
 // Types for Kraken WebSocket API
 export interface KrakenPrice {
-  symbol: string;
-  price: number;
+  symbol: string;  // Will also support 's' as shortened field name
+  price: number;   // Will also support 'lp' as shortened field name
   timestamp: number;
+  
+  // Optional shortened field names
+  s?: string;      // Shortened version of symbol
+  lp?: number;     // Shortened version of lastPrice
 }
 
 export interface KrakenTickerMessage {
@@ -35,6 +39,31 @@ export const parseKrakenMessage = (message: string): KrakenPrice[] => {
     }
     
     const parsed = JSON.parse(message);
+    
+    // Check for optimized format with shortened field names
+    if (parsed.s && parsed.lp !== undefined) {
+      // This is our optimized format with shortened field names
+      return [{
+        symbol: parsed.s,
+        price: parsed.lp,
+        timestamp: parsed.t || Date.now(),
+        // Include shortened fields for compatibility
+        s: parsed.s,
+        lp: parsed.lp
+      }];
+    }
+    
+    // Check for array of optimized format
+    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].s && parsed[0].lp !== undefined) {
+      return parsed.map(item => ({
+        symbol: item.s,
+        price: item.lp,
+        timestamp: item.t || Date.now(),
+        // Include shortened fields for compatibility
+        s: item.s,
+        lp: item.lp
+      }));
+    }
     
     // Use a Map to define message type handlers for better lookup performance
     const messageTypeHandlers = new Map<string, () => KrakenPrice[]>([

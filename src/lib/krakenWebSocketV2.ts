@@ -125,16 +125,12 @@ export class KrakenWebSocket {
         compressionEnabled: this.enableCompression 
       });
       
-      // Create WebSocket with compression if enabled
-      if (this.enableCompression && 'WebSocket' in window) {
-        // Use permessage-deflate extension for compression
-        this.socket = new WebSocket(wsUrl, ['permessage-deflate']);
-        this.log('info', 'WebSocket created with compression support', {});
-      } else {
-        this.socket = new WebSocket(wsUrl);
-        if (this.enableCompression) {
-          this.log('warning', 'WebSocket compression requested but not supported by browser', {});
-        }
+      // Create WebSocket connection
+      this.socket = new WebSocket(wsUrl);
+      
+      // Log compression status
+      if (this.enableCompression) {
+        this.log('info', 'WebSocket created with compression enabled via URL parameter', {});
       }
       
       this.socket.onopen = this.handleOpen.bind(this);
@@ -461,6 +457,15 @@ export class KrakenWebSocket {
         ? event.data.substring(0, 200) + "..." 
         : event.data;
       this.log('info', 'Received raw message', { message: truncatedMessage });
+      
+      // Check if this is our optimized format with shortened field names
+      if (event.data.includes('"s":') && event.data.includes('"lp":')) {
+        // This is likely our optimized format, pass it directly to the callback
+        if (this.options.onMessage) {
+          this.options.onMessage(event.data);
+        }
+        return;
+      }
       
       const data = JSON.parse(event.data);
       

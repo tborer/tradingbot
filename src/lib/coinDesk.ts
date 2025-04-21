@@ -52,13 +52,15 @@ export interface CoinDeskHistoricalResponse {
  * @param apiKey CoinDesk API key
  * @param days Number of days of historical data to fetch (default: 30)
  * @param logFunction Optional function to log API requests and responses
+ * @param toTimestamp Optional end date for the data in YYYY-MM-DD format
  * @returns Promise with historical data
  */
 export async function fetchCoinDeskHistoricalData(
   symbol: string,
   apiKey: string,
   days: number = 30,
-  logFunction?: (url: string, method: string, requestBody: any, response?: any, status?: number, error?: string, duration?: number) => void
+  logFunction?: (url: string, method: string, requestBody: any, response?: any, status?: number, error?: string, duration?: number) => void,
+  toTimestamp?: string
 ): Promise<CoinDeskHistoricalResponse | null> {
   try {
     // Format the symbol for CoinDesk API (e.g., BTC-USD)
@@ -78,6 +80,28 @@ export async function fetchCoinDeskHistoricalData(
       "apply_mapping": "true",
       "response_format": "JSON"
     };
+    
+    // Add toTimestamp parameter if provided
+    if (toTimestamp) {
+      try {
+        // Validate the timestamp format (YYYY-MM-DD)
+        if (/^\d{4}-\d{2}-\d{2}$/.test(toTimestamp)) {
+          // Convert to Unix timestamp (seconds since epoch)
+          const date = new Date(toTimestamp);
+          if (!isNaN(date.getTime())) {
+            // Add end_ts parameter (Unix timestamp in seconds)
+            params["end_ts"] = Math.floor(date.getTime() / 1000).toString();
+            console.log(`Using end timestamp: ${toTimestamp} (${params["end_ts"]})`);
+          } else {
+            console.warn(`Invalid date format for toTimestamp: ${toTimestamp}, ignoring`);
+          }
+        } else {
+          console.warn(`Invalid format for toTimestamp: ${toTimestamp}, expected YYYY-MM-DD`);
+        }
+      } catch (error) {
+        console.error(`Error processing toTimestamp: ${error}`);
+      }
+    }
     
     // Create URL with parameters using URLSearchParams as shown in the documentation
     const url = new URL(baseUrl);
@@ -501,12 +525,14 @@ export function formatCoinDeskDataForAnalysis(data: CoinDeskHistoricalResponse |
  * @param symbol Cryptocurrency symbol (e.g., BTC)
  * @param apiKey CoinDesk API key
  * @param days Number of days of historical data to fetch (default: 30)
+ * @param toTimestamp Optional end date for the data in YYYY-MM-DD format
  * @returns Promise with analysis results
  */
 export async function fetchAndAnalyzeTrends(
   symbol: string,
   apiKey: string,
-  days: number = 30
+  days: number = 30,
+  toTimestamp?: string
 ): Promise<DrawdownDrawupAnalysis | null> {
   const analysisId = `analysis-${symbol}-${Date.now()}`;
   console.log(`[${analysisId}] Starting trend analysis for ${symbol} over ${days} days`);
@@ -514,7 +540,7 @@ export async function fetchAndAnalyzeTrends(
   try {
     // Fetch historical data
     console.log(`[${analysisId}] Fetching historical data from CoinDesk API`);
-    const historicalData = await fetchCoinDeskHistoricalData(symbol, apiKey, days);
+    const historicalData = await fetchCoinDeskHistoricalData(symbol, apiKey, days, undefined, toTimestamp);
     
     if (!historicalData) {
       console.error(`[${analysisId}] Failed to fetch historical data for ${symbol}`);

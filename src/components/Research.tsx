@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CheckCircledIcon, CrossCircledIcon } from '@radix-ui/react-icons';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
 import { fetchHistoricalData } from '@/lib/alphaVantage';
 import { fetchCoinDeskHistoricalData, formatCoinDeskDataForAnalysis } from '@/lib/coinDesk';
@@ -26,6 +27,9 @@ const Research: React.FC = () => {
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const [historicalData, setHistoricalData] = useState<any>(null);
+  const [selectedApi, setSelectedApi] = useState<'coindesk' | 'alphavantage'>('coindesk'); // Default to CoinDesk
+  const [limit, setLimit] = useState<string>('30'); // Default to 30 days
+  const [toTimestamp, setToTimestamp] = useState<string>(''); // Empty by default
   const { toast } = useToast();
   const { user } = useAuth();
   const { addLog } = useResearchApiLogs();
@@ -565,10 +569,20 @@ const Research: React.FC = () => {
       return;
     }
 
-    if (!alphaVantageApiKey && !coinDeskApiKey) {
+    // Check if the selected API key is available
+    if (selectedApi === 'alphavantage' && !alphaVantageApiKey) {
       toast({
-        title: "API Keys Missing",
-        description: "Please add at least one API key (AlphaVantage or CoinDesk) in the settings tab",
+        title: "AlphaVantage API Key Missing",
+        description: "Please add your AlphaVantage API key in the settings tab or switch to CoinDesk",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (selectedApi === 'coindesk' && !coinDeskApiKey) {
+      toast({
+        title: "CoinDesk API Key Missing",
+        description: "Please add your CoinDesk API key in the settings tab or switch to AlphaVantage",
         variant: "destructive"
       });
       return;
@@ -588,17 +602,23 @@ const Research: React.FC = () => {
     addLog({
       url: "Research Request",
       method: "INFO",
-      requestBody: { symbol: symbol.trim(), market },
+      requestBody: { 
+        symbol: symbol.trim(), 
+        market,
+        api: selectedApi,
+        limit,
+        toTimestamp: toTimestamp || 'current'
+      },
       response: "Starting historical data request"
     });
 
     try {
-      // If AlphaVantage API key is available, try it first
-      if (alphaVantageApiKey) {
+      if (selectedApi === 'alphavantage') {
+        // Use AlphaVantage API
         const data = await fetchHistoricalData(
           symbol.trim(), 
           market, 
-          alphaVantageApiKey,
+          alphaVantageApiKey!,
           // Pass the logging function to the API call
           (url, method, requestBody, response, status, error, duration) => {
             addLog({
@@ -617,13 +637,13 @@ const Research: React.FC = () => {
         if (data && data['Meta Data'] && (data['Time Series (Digital Currency Daily)'] || data['Time Series (Digital Currency Monthly)'])) {
           // AlphaVantage success
           setHistoricalData(data);
-          processAndAddToAnalysis(data, 'alphavantage', 'Unknown');
-          setLoading(false); // Make sure to set loading to false
-          return; // Exit early on success
+          processAndAddToAnalysis(data, 'alphavantage', symbol.trim());
         } else {
-          // AlphaVantage failed, log the error but don't show it to the user
+          // AlphaVantage failed, log the error and show it to the user
+          let errorMessage = "Failed to fetch data from AlphaVantage.";
+          
           if (data && data.Error) {
-            console.error(`AlphaVantage API error: ${data.Error}`);
+            errorMessage = `AlphaVantage error: ${data.Error}`;
             addLog({
               url: "AlphaVantage Error",
               method: "ERROR",
@@ -632,7 +652,7 @@ const Research: React.FC = () => {
               error: data.Error
             });
           } else if (data && data.Note) {
-            console.error(`AlphaVantage API limit: ${data.Note}`);
+            errorMessage = `AlphaVantage API limit reached: ${data.Note}`;
             addLog({
               url: "AlphaVantage Limit",
               method: "ERROR",
@@ -641,7 +661,7 @@ const Research: React.FC = () => {
               error: data.Note
             });
           } else if (data && data.Information) {
-            console.error(`AlphaVantage API key issue: ${data.Information}`);
+            errorMessage = `AlphaVantage API key issue: ${data.Information}`;
             addLog({
               url: "AlphaVantage Key Issue",
               method: "ERROR",
@@ -650,7 +670,6 @@ const Research: React.FC = () => {
               error: data.Information
             });
           } else {
-            console.error("Unexpected AlphaVantage API response format", data);
             addLog({
               url: "AlphaVantage Unexpected Format",
               method: "ERROR",
@@ -659,61 +678,111 @@ const Research: React.FC = () => {
               error: "Unexpected response format"
             });
           }
+          
+          setResult({
+            success: false,
+            message: errorMessage
+          });
         }
       } else {
-        // Log that we're skipping AlphaVantage because no API key is available
-        addLog({
-          url: "AlphaVantage Skipped",
-          method: "INFO",
-          requestBody: { symbol: symbol.trim(), market },
-          response: "AlphaVantage API key not available, skipping to CoinDesk",
-          status: 200
-        });
+        // Use CoinDesk API
+        const limitValue = parseInt(limit) || 30; // Default to 30 if not a valid number
+        
+        const coinDeskData = await fetchCoinDeskHistoricalData(
+          symbol.trim(), 
+          coinDeskApiKey!,
+          limitValue, // Use the limit value from the input
+          // Pass the logging function
+          (url, method, requestBody, response, status, error, duration) => {
+            addLog({
+              url,
+              method,
+              requestBody,
+              response,
+              status,
+              error,
+              duration
+            });
+          },
+          toTimestamp // Pass the toTimestamp value
+        );
+        
+        // Check for all possible data formats from CoinDesk API
+        const hasOldFormat = coinDeskData && coinDeskData.data && coinDeskData.data.entries && coinDeskData.data.entries.length > 0;
+        const hasNestedDataFormat = coinDeskData && coinDeskData.data && coinDeskData.data.Data && Array.isArray(coinDeskData.data.Data) && coinDeskData.data.Data.length > 0;
+        const hasTopLevelDataFormat = coinDeskData && coinDeskData.Data && Array.isArray(coinDeskData.Data) && coinDeskData.Data.length > 0;
+        
+        if (hasOldFormat || hasNestedDataFormat || hasTopLevelDataFormat) {
+          try {
+            // Format the CoinDesk data for analysis
+            const formattedData = formatCoinDeskDataForAnalysis(coinDeskData);
+            
+            if (formattedData) {
+              console.log('Successfully formatted CoinDesk data for analysis');
+              // Process the formatted CoinDesk data
+              processAndAddToAnalysis(formattedData, 'coindesk', symbol.trim());
+            } else {
+              console.warn('Failed to format CoinDesk data, attempting to use raw data');
+              // Try to use the raw data as a fallback
+              processAndAddToAnalysis(coinDeskData, 'coindesk', symbol.trim());
+            }
+          } catch (formatError) {
+            console.error('Error formatting CoinDesk data:', formatError);
+            
+            // Log the formatting error
+            addLog({
+              url: "CoinDesk Format Error",
+              method: "ERROR",
+              requestBody: { instrument: `${symbol.trim()}-USD`, market: 'cadli' },
+              error: formatError instanceof Error ? formatError.message : "Unknown error during formatting"
+            });
+            
+            setResult({
+              success: false,
+              message: `Error processing CoinDesk data: ${formatError instanceof Error ? formatError.message : "Unknown error"}`
+            });
+          }
+        } else {
+          console.error('CoinDesk API returned data but in an unexpected format:', coinDeskData);
+          
+          // Log the unexpected format
+          addLog({
+            url: "CoinDesk Format Error",
+            method: "ERROR",
+            requestBody: { instrument: `${symbol.trim()}-USD`, market: 'cadli' },
+            response: coinDeskData,
+            error: "Unexpected data format from CoinDesk API"
+          });
+          
+          setResult({
+            success: false,
+            message: `Symbol ${symbol.trim()} not found in CoinDesk API or returned in an unexpected format.`
+          });
+        }
       }
-      
-      // Try with CoinDesk (either as fallback or primary if AlphaVantage key is not available)
-      await tryWithCoinDesk();
     } catch (error) {
-      console.error('Error in API request:', error);
+      console.error(`Error fetching ${selectedApi} data:`, error);
       
-      // Log the error
+      // Log error
       addLog({
-        url: alphaVantageApiKey 
+        url: selectedApi === 'alphavantage' 
           ? `https://www.alphavantage.co/query?function=DIGITAL_CURRENCY_DAILY&symbol=${symbol.trim()}&market=${market}`
-          : "API Error",
-        method: "ERROR",
-        requestBody: { symbol: symbol.trim(), market },
+          : `https://data-api.coindesk.com/index/cc/v1/historical/days?market=cadli&instrument=${symbol.trim()}-USD`,
+        method: "GET",
+        requestBody: { 
+          symbol: symbol.trim(), 
+          market: selectedApi === 'alphavantage' ? market : 'cadli',
+          api: selectedApi
+        },
         error: error instanceof Error ? error.message : "Unknown error"
       });
       
-      // If error occurred with AlphaVantage, try CoinDesk as fallback
-      if (alphaVantageApiKey) {
-        try {
-          await tryWithCoinDesk();
-        } catch (coinDeskError) {
-          console.error('Error in CoinDesk fallback:', coinDeskError);
-          addLog({
-            url: "CoinDesk Fallback Error",
-            method: "ERROR",
-            requestBody: { symbol: symbol.trim(), market },
-            error: coinDeskError instanceof Error ? coinDeskError.message : "Unknown error"
-          });
-          
-          // Ensure loading state is reset
-          setResult({
-            success: false,
-            message: "Both APIs failed. Please try a different symbol or try again later."
-          });
-          setLoading(false);
-        }
-      } else {
-        // If we're already trying CoinDesk as primary, show error
-        setResult({
-          success: false,
-          message: "Failed to fetch data. Please try again later."
-        });
-        setLoading(false);
-      }
+      setResult({
+        success: false,
+        message: `Failed to fetch data from ${selectedApi === 'alphavantage' ? 'AlphaVantage' : 'CoinDesk'}. Please try again later.`
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -777,12 +846,47 @@ const Research: React.FC = () => {
               </Alert>
             )}
             
-            <Button 
-              type="submit" 
-              disabled={loading || (!alphaVantageApiKey && !coinDeskApiKey)}
-            >
-              {loading ? "Loading..." : "Get Historical Data & Analyze"}
-            </Button>
+            <div className="flex flex-col md:flex-row gap-4 items-end">
+              <div className="flex items-center space-x-2">
+                <Label htmlFor="api-toggle">AlphaVantage</Label>
+                <Switch 
+                  id="api-toggle" 
+                  checked={selectedApi === 'coindesk'} 
+                  onCheckedChange={(checked) => setSelectedApi(checked ? 'coindesk' : 'alphavantage')}
+                />
+                <Label htmlFor="api-toggle">CoinDesk</Label>
+              </div>
+              
+              <div className="space-y-2 w-full md:w-24">
+                <Label htmlFor="limit">Limit</Label>
+                <Input
+                  id="limit"
+                  type="number"
+                  placeholder="30"
+                  value={limit}
+                  onChange={(e) => setLimit(e.target.value)}
+                />
+              </div>
+              
+              <div className="space-y-2 w-full md:w-auto">
+                <Label htmlFor="toTimestamp">To Timestamp</Label>
+                <Input
+                  id="toTimestamp"
+                  type="text"
+                  placeholder="YYYY-MM-DD"
+                  value={toTimestamp}
+                  onChange={(e) => setToTimestamp(e.target.value)}
+                />
+              </div>
+              
+              <Button 
+                type="submit" 
+                disabled={loading || (selectedApi === 'alphavantage' && !alphaVantageApiKey) || (selectedApi === 'coindesk' && !coinDeskApiKey)}
+                className="w-full md:w-auto"
+              >
+                {loading ? "Loading..." : "Get Historical Data & Analyze"}
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>

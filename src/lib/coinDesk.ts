@@ -52,7 +52,7 @@ export interface CoinDeskHistoricalResponse {
  * @param apiKey CoinDesk API key
  * @param days Number of days of historical data to fetch (default: 30)
  * @param logFunction Optional function to log API requests and responses
- * @param toTimestamp Optional end date for the data in YYYY-MM-DD format
+ * @param toTimestamp Optional end date for the data in YYYY-MM-DD format or Unix timestamp
  * @returns Promise with historical data
  */
 export async function fetchCoinDeskHistoricalData(
@@ -66,8 +66,8 @@ export async function fetchCoinDeskHistoricalData(
     // Format the symbol for CoinDesk API (e.g., BTC-USD)
     const formattedSymbol = `${symbol}-USD`;
     
-    // Base URL for the CoinDesk API
-    const baseUrl = 'https://data-api.coindesk.com/index/cc/v1/historical/days';
+    // Base URL for the CoinDesk API - using hourly data
+    const baseUrl = 'https://data-api.coindesk.com/index/cc/v1/historical/hours';
     
     // Construct parameters according to the documentation
     const params: Record<string, string> = {
@@ -84,19 +84,25 @@ export async function fetchCoinDeskHistoricalData(
     // Add toTimestamp parameter if provided
     if (toTimestamp) {
       try {
+        // Check if the timestamp is already in Unix format (all digits)
+        if (/^\d+$/.test(toTimestamp)) {
+          // Already in Unix timestamp format, use directly
+          params["to_ts"] = toTimestamp;
+          console.log(`Using provided Unix timestamp: ${toTimestamp}`);
+        } 
         // Validate the timestamp format (YYYY-MM-DD)
-        if (/^\d{4}-\d{2}-\d{2}$/.test(toTimestamp)) {
+        else if (/^\d{4}-\d{2}-\d{2}$/.test(toTimestamp)) {
           // Convert to Unix timestamp (seconds since epoch)
           const date = new Date(toTimestamp);
           if (!isNaN(date.getTime())) {
-            // Add end_ts parameter (Unix timestamp in seconds)
-            params["end_ts"] = Math.floor(date.getTime() / 1000).toString();
-            console.log(`Using end timestamp: ${toTimestamp} (${params["end_ts"]})`);
+            // Add to_ts parameter (Unix timestamp in seconds)
+            params["to_ts"] = Math.floor(date.getTime() / 1000).toString();
+            console.log(`Using end timestamp: ${toTimestamp} (${params["to_ts"]})`);
           } else {
             console.warn(`Invalid date format for toTimestamp: ${toTimestamp}, ignoring`);
           }
         } else {
-          console.warn(`Invalid format for toTimestamp: ${toTimestamp}, expected YYYY-MM-DD`);
+          console.warn(`Invalid format for toTimestamp: ${toTimestamp}, expected YYYY-MM-DD or Unix timestamp`);
         }
       } catch (error) {
         console.error(`Error processing toTimestamp: ${error}`);
@@ -163,7 +169,7 @@ export async function fetchCoinDeskHistoricalData(
     console.error('Error fetching CoinDesk historical data:', error);
     
     // Create a URL for logging purposes
-    const baseUrl = 'https://data-api.coindesk.com/index/cc/v1/historical/days';
+    const baseUrl = 'https://data-api.coindesk.com/index/cc/v1/historical/hours';
     const params = {
       "market": "cadli",
       "instrument": `${symbol}-USD`,
@@ -525,7 +531,7 @@ export function formatCoinDeskDataForAnalysis(data: CoinDeskHistoricalResponse |
  * @param symbol Cryptocurrency symbol (e.g., BTC)
  * @param apiKey CoinDesk API key
  * @param days Number of days of historical data to fetch (default: 30)
- * @param toTimestamp Optional end date for the data in YYYY-MM-DD format
+ * @param toTimestamp Optional end date for the data in YYYY-MM-DD format or Unix timestamp
  * @returns Promise with analysis results
  */
 export async function fetchAndAnalyzeTrends(

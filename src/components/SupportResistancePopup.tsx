@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAnalysis } from "@/contexts/AnalysisContext";
 import { useToast } from "@/components/ui/use-toast";
+import SupportResistanceLevelCard from './SupportResistanceLevelCard';
 
 interface SupportResistancePopupProps {
   isOpen: boolean;
@@ -17,6 +18,17 @@ interface SupportResistanceLevel {
   strength: number;
   touches: number;
   isOptimal: boolean;
+  scores?: {
+    cleanTouches: number;
+    touchPrecision: number;
+    approachSpeed: number;
+    candleBehavior: number;
+    nearbyPriceHistory: number;
+    potentialRR: number;
+    marketContext: number;
+    totalScore: number;
+    probability: 'HIGH' | 'MEDIUM' | 'LOW';
+  };
 }
 
 interface SupportResistanceData {
@@ -200,24 +212,7 @@ const SupportResistancePopup: React.FC<SupportResistancePopupProps> = ({ isOpen,
                   {analysisData.supportResistance.supportLevels.length > 0 ? (
                     <div className="space-y-3">
                       {analysisData.supportResistance.supportLevels.map((level, index) => (
-                        <div key={index} className="border rounded-md p-3">
-                          <div className="flex justify-between items-center">
-                            <span className="font-medium">${level.price.toFixed(2)}</span>
-                            <span className={`px-2 py-1 rounded text-xs ${level.isOptimal ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'}`}>
-                              {level.isOptimal ? 'Optimal' : 'Standard'}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
-                            <div>
-                              <span className="text-muted-foreground">Strength:</span>
-                              <span className="ml-1">{level.strength.toFixed(1)}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Touches:</span>
-                              <span className="ml-1">{level.touches}</span>
-                            </div>
-                          </div>
-                        </div>
+                        <SupportResistanceLevelCard key={index} level={level} />
                       ))}
                     </div>
                   ) : (
@@ -233,24 +228,7 @@ const SupportResistancePopup: React.FC<SupportResistancePopupProps> = ({ isOpen,
                   {analysisData.supportResistance.resistanceLevels.length > 0 ? (
                     <div className="space-y-3">
                       {analysisData.supportResistance.resistanceLevels.map((level, index) => (
-                        <div key={index} className="border rounded-md p-3">
-                          <div className="flex justify-between items-center">
-                            <span className="font-medium">${level.price.toFixed(2)}</span>
-                            <span className={`px-2 py-1 rounded text-xs ${level.isOptimal ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'}`}>
-                              {level.isOptimal ? 'Optimal' : 'Standard'}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
-                            <div>
-                              <span className="text-muted-foreground">Strength:</span>
-                              <span className="ml-1">{level.strength.toFixed(1)}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Touches:</span>
-                              <span className="ml-1">{level.touches}</span>
-                            </div>
-                          </div>
-                        </div>
+                        <SupportResistanceLevelCard key={index} level={level} />
                       ))}
                     </div>
                   ) : (

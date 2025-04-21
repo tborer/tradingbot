@@ -3,6 +3,9 @@ import { createClient } from '@/util/supabase/api';
 import { 
   analyzeSupportResistanceLevels
 } from '@/lib/supportResistanceAnalysis';
+import {
+  analyzeAdvancedSupportResistanceLevels
+} from '@/lib/advancedSupportResistanceAnalysis';
 import { 
   ErrorCategory, 
   ErrorSeverity, 
@@ -320,7 +323,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     // Calculate support and resistance levels
     console.log(`[${requestId}] Calculating support and resistance levels for ${priceData.length} price points`);
-    const analysis = analyzeSupportResistanceLevels(priceData);
+    
+    // Use the advanced analysis with scoring
+    const analysis = analyzeAdvancedSupportResistanceLevels(priceData);
     
     if (!analysis) {
       const errorDetails = createAndLogError(

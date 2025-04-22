@@ -80,6 +80,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           enabled: Boolean(settings.enabled),
           sellPercentage: Number(settings.sellPercentage) || 0.5,
           tradeByShares: Number(settings.tradeByShares) || 0,
+          tradeByValue: Boolean(settings.tradeByValue),
+          totalValue: Number(settings.totalValue) || 0,
           websocketProvider: ['kraken', 'coinbase'].includes(settings.websocketProvider) 
             ? settings.websocketProvider 
             : 'kraken',
@@ -98,6 +100,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             enabled: validatedSettings.enabled,
             sellPercentage: validatedSettings.sellPercentage,
             tradeByShares: validatedSettings.tradeByShares,
+            tradeByValue: validatedSettings.tradeByValue,
+            totalValue: validatedSettings.totalValue,
             websocketProvider: validatedSettings.websocketProvider,
             tradingPlatform: validatedSettings.tradingPlatform,
             processingStatus: validatedSettings.processingStatus,
@@ -108,6 +112,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             enabled: validatedSettings.enabled,
             sellPercentage: validatedSettings.sellPercentage,
             tradeByShares: validatedSettings.tradeByShares,
+            tradeByValue: validatedSettings.tradeByValue,
+            totalValue: validatedSettings.totalValue,
             websocketProvider: validatedSettings.websocketProvider,
             tradingPlatform: validatedSettings.tradingPlatform,
             processingStatus: 'idle'

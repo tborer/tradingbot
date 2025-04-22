@@ -37,9 +37,20 @@ export async function processMicroBuy(cryptoId: string, symbol: string, userId: 
         data: { processingStatus: 'buying' }
       });
 
-      // Execute the buy transaction
-      const shares = settings.tradeByShares;
-      const totalAmount = shares * currentPrice;
+      // Calculate shares and total amount based on settings
+      let shares: number;
+      let totalAmount: number;
+      
+      if (settings.tradeByValue) {
+        // If trading by value, calculate shares based on current price
+        totalAmount = settings.totalValue;
+        shares = totalAmount / currentPrice;
+        autoTradeLogger.log(`Micro processing: Trading by value - $${totalAmount} worth of ${symbol} at $${currentPrice} per share = ${shares} shares`);
+      } else {
+        // If trading by shares, use the specified number of shares
+        shares = settings.tradeByShares;
+        totalAmount = shares * currentPrice;
+      }
 
       // Check if user has enough USD balance
       const user = await prisma.user.findUnique({

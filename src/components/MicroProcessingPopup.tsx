@@ -12,6 +12,8 @@ export interface MicroProcessingSettings {
   enabled: boolean;
   sellPercentage: number;
   tradeByShares: number;
+  tradeByValue: boolean;
+  totalValue: number;
   websocketProvider: 'kraken' | 'coinbase';
   tradingPlatform: 'kraken' | 'coinbase';
 }
@@ -41,6 +43,8 @@ export default function MicroProcessingPopup({
     enabled: false,
     sellPercentage: 0.5, // Default to 0.5%
     tradeByShares: 0,
+    tradeByValue: false,
+    totalValue: 0,
     websocketProvider: 'kraken',
     tradingPlatform: 'kraken'
   };
@@ -51,6 +55,8 @@ export default function MicroProcessingPopup({
     enabled: initialSettings?.enabled ?? defaultSettings.enabled,
     sellPercentage: Number(initialSettings?.sellPercentage) || defaultSettings.sellPercentage,
     tradeByShares: Number(initialSettings?.tradeByShares) || defaultSettings.tradeByShares,
+    tradeByValue: initialSettings?.tradeByValue ?? defaultSettings.tradeByValue,
+    totalValue: Number(initialSettings?.totalValue) || defaultSettings.totalValue,
     websocketProvider: initialSettings?.websocketProvider || defaultSettings.websocketProvider,
     tradingPlatform: initialSettings?.tradingPlatform || defaultSettings.tradingPlatform
   }));
@@ -62,18 +68,29 @@ export default function MicroProcessingPopup({
       enabled: initialSettings?.enabled ?? defaultSettings.enabled,
       sellPercentage: Number(initialSettings?.sellPercentage) || defaultSettings.sellPercentage,
       tradeByShares: Number(initialSettings?.tradeByShares) || defaultSettings.tradeByShares,
+      tradeByValue: initialSettings?.tradeByValue ?? defaultSettings.tradeByValue,
+      totalValue: Number(initialSettings?.totalValue) || defaultSettings.totalValue,
       websocketProvider: initialSettings?.websocketProvider || defaultSettings.websocketProvider,
       tradingPlatform: initialSettings?.tradingPlatform || defaultSettings.tradingPlatform
     });
   }, [initialSettings]);
   
   const handleSave = async () => {
-    // Validate settings before saving
-    if (settings.tradeByShares <= 0) {
+    // Validate settings based on trade type
+    if (!settings.tradeByValue && settings.tradeByShares <= 0) {
       toast({
         variant: "destructive",
         title: "Invalid Input",
         description: "Please enter a valid number of shares greater than 0.",
+      });
+      return;
+    }
+    
+    if (settings.tradeByValue && settings.totalValue <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Input",
+        description: "Please enter a valid total value greater than 0.",
       });
       return;
     }
@@ -83,6 +100,8 @@ export default function MicroProcessingPopup({
       enabled: Boolean(settings.enabled),
       sellPercentage: Number(settings.sellPercentage) || 0.5,
       tradeByShares: Number(settings.tradeByShares) || 0,
+      tradeByValue: Boolean(settings.tradeByValue),
+      totalValue: Number(settings.totalValue) || 0,
       websocketProvider: settings.websocketProvider || 'kraken',
       tradingPlatform: settings.tradingPlatform || 'kraken'
     };
@@ -151,24 +170,71 @@ export default function MicroProcessingPopup({
             </p>
           </div>
           
-          {/* Trade By Shares */}
+          {/* Trade Method Selection */}
           <div className="space-y-2">
-            <Label htmlFor="trade-by-shares" className="text-sm font-medium">
-              Trade By Shares
-            </Label>
-            <Input
-              id="trade-by-shares"
-              type="number"
-              min="0.00000001"
-              step="0.00000001"
-              value={settings.tradeByShares}
-              onChange={(e) => setSettings({...settings, tradeByShares: Number(e.target.value)})}
-              placeholder="Enter number of shares"
-            />
+            <Label className="text-sm font-medium">Trade Method</Label>
+            <RadioGroup
+              value={settings.tradeByValue ? "value" : "shares"}
+              onValueChange={(value) => 
+                setSettings({...settings, tradeByValue: value === "value"})
+              }
+              className="flex space-x-4"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="shares" id="trade-by-shares-option" />
+                <Label htmlFor="trade-by-shares-option">Trade by Shares</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="value" id="trade-by-value-option" />
+                <Label htmlFor="trade-by-value-option">Trade by Value</Label>
+              </div>
+            </RadioGroup>
             <p className="text-xs text-muted-foreground">
-              Number of shares to trade in each micro processing cycle.
+              Choose whether to trade a fixed number of shares or a fixed USD value.
             </p>
           </div>
+          
+          {/* Trade By Shares (shown when tradeByValue is false) */}
+          {!settings.tradeByValue && (
+            <div className="space-y-2">
+              <Label htmlFor="trade-by-shares" className="text-sm font-medium">
+                Number of Shares
+              </Label>
+              <Input
+                id="trade-by-shares"
+                type="number"
+                min="0.00000001"
+                step="0.00000001"
+                value={settings.tradeByShares}
+                onChange={(e) => setSettings({...settings, tradeByShares: Number(e.target.value)})}
+                placeholder="Enter number of shares"
+              />
+              <p className="text-xs text-muted-foreground">
+                Number of shares to trade in each micro processing cycle.
+              </p>
+            </div>
+          )}
+          
+          {/* Trade By Value (shown when tradeByValue is true) */}
+          {settings.tradeByValue && (
+            <div className="space-y-2">
+              <Label htmlFor="total-value" className="text-sm font-medium">
+                Total Value (USD)
+              </Label>
+              <Input
+                id="total-value"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={settings.totalValue}
+                onChange={(e) => setSettings({...settings, totalValue: Number(e.target.value)})}
+                placeholder="Enter total value in USD"
+              />
+              <p className="text-xs text-muted-foreground">
+                Total USD value to trade in each micro processing cycle. The number of shares will be calculated based on the current price.
+              </p>
+            </div>
+          )}
           
           {/* WebSocket Provider */}
           <div className="space-y-2">

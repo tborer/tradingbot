@@ -415,6 +415,8 @@ export default function SortableCryptoList({
         enabled: false,
         sellPercentage: 0.5,
         tradeByShares: 0,
+        tradeByValue: false,
+        totalValue: 0,
         websocketProvider: 'kraken',
         tradingPlatform: 'kraken'
       };
@@ -439,6 +441,8 @@ export default function SortableCryptoList({
               enabled: Boolean(data.microProcessingSettings.enabled),
               sellPercentage: Number(data.microProcessingSettings.sellPercentage) || 0.5,
               tradeByShares: Number(data.microProcessingSettings.tradeByShares) || 0,
+              tradeByValue: Boolean(data.microProcessingSettings.tradeByValue),
+              totalValue: Number(data.microProcessingSettings.totalValue) || 0,
               websocketProvider: data.microProcessingSettings.websocketProvider || 'kraken',
               tradingPlatform: data.microProcessingSettings.tradingPlatform || 'kraken',
             });

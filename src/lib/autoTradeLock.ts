@@ -21,7 +21,7 @@ interface AutoTradeLockStatus {
 const autoTradeLocks = new Map<string, AutoTradeLockStatus>();
 
 /**
- * Acquires a lock for auto trading on a specific crypto
+ * Acquires a lock for auto trading on a specific crypto using a two-phase locking approach
  * Returns true if the lock was acquired, false if it was already locked
  */
 export async function acquireAutoTradeLock(
@@ -31,7 +31,10 @@ export async function acquireAutoTradeLock(
   action: 'buy' | 'sell'
 ): Promise<boolean> {
   try {
-    // First check the in-memory lock
+    // Generate a unique lock ID for this attempt
+    const lockAttemptId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    
+    // First check the in-memory lock (fast check to avoid unnecessary DB calls)
     if (autoTradeLocks.has(cryptoId)) {
       const lockInfo = autoTradeLocks.get(cryptoId);
       
@@ -55,61 +58,91 @@ export async function acquireAutoTradeLock(
       return false;
     }
     
-    // Check if there's a database lock record
-    const existingLock = await prisma.cryptoAutoTradeLock.findUnique({
-      where: { cryptoId }
-    });
-    
-    if (existingLock && !isLockExpired(existingLock.lockedAt)) {
-      // Log that we found an existing lock in the database
-      await logAutoTradeEvent(
-        userId,
-        AutoTradeLogType.INFO,
-        `Auto trade already in progress for ${symbol} (database lock)`,
-        {
-          cryptoId,
-          symbol,
-          action,
-          existingLock: {
-            lockedAt: existingLock.lockedAt,
-            lockedBy: existingLock.lockedBy,
-            action: existingLock.action
-          }
-        }
-      );
-      
-      return false;
-    }
-    
-    // If there's an expired lock, we'll overwrite it
-    const now = new Date();
-    
-    // Create or update the lock in the database
-    await prisma.cryptoAutoTradeLock.upsert({
-      where: { cryptoId },
-      update: {
-        lockedAt: now,
-        lockedBy: userId,
-        action
-      },
-      create: {
-        cryptoId,
-        lockedAt: now,
-        lockedBy: userId,
-        action,
-        symbol
-      }
-    });
-    
-    // Also set the in-memory lock
+    // Set a temporary in-memory lock to prevent race conditions during DB check
+    // This helps prevent the scenario where two processes both check and find no lock
     autoTradeLocks.set(cryptoId, {
       isLocked: true,
-      lockedAt: now,
-      lockedBy: userId,
+      lockedAt: new Date(),
+      lockedBy: `${userId}-${lockAttemptId}`,
       cryptoId,
       symbol,
-      action
+      action,
+      temporary: true // Mark as temporary until DB lock is confirmed
     });
+    
+    try {
+      // Use a transaction to ensure atomicity of the lock check and creation
+      const lockResult = await prisma.$transaction(async (tx) => {
+        // Check if there's a database lock record with pessimistic locking
+        const existingLock = await tx.cryptoAutoTradeLock.findUnique({
+          where: { cryptoId }
+        });
+        
+        if (existingLock && !isLockExpired(existingLock.lockedAt)) {
+          // Log that we found an existing lock in the database
+          await logAutoTradeEvent(
+            userId,
+            AutoTradeLogType.INFO,
+            `Auto trade already in progress for ${symbol} (database lock)`,
+            {
+              cryptoId,
+              symbol,
+              action,
+              existingLock: {
+                lockedAt: existingLock.lockedAt,
+                lockedBy: existingLock.lockedBy,
+                action: existingLock.action
+              }
+            }
+          );
+          
+          return { acquired: false, existingLock };
+        }
+        
+        // If there's an expired lock, we'll overwrite it
+        const now = new Date();
+        
+        // Create or update the lock in the database
+        const dbLock = await tx.cryptoAutoTradeLock.upsert({
+          where: { cryptoId },
+          update: {
+            lockedAt: now,
+            lockedBy: `${userId}-${lockAttemptId}`,
+            action
+          },
+          create: {
+            cryptoId,
+            lockedAt: now,
+            lockedBy: `${userId}-${lockAttemptId}`,
+            action,
+            symbol
+          }
+        });
+        
+        return { acquired: true, dbLock };
+      });
+      
+      // If we couldn't acquire the lock, remove our temporary in-memory lock
+      if (!lockResult.acquired) {
+        autoTradeLocks.delete(cryptoId);
+        return false;
+      }
+      
+      // Update the in-memory lock to be permanent
+      autoTradeLocks.set(cryptoId, {
+        isLocked: true,
+        lockedAt: lockResult.dbLock.lockedAt,
+        lockedBy: lockResult.dbLock.lockedBy,
+        cryptoId,
+        symbol,
+        action,
+        temporary: false
+      });
+    } catch (txError) {
+      // If the transaction fails, remove our temporary in-memory lock
+      autoTradeLocks.delete(cryptoId);
+      throw txError;
+    }
     
     // Log that we acquired the lock
     await logAutoTradeEvent(

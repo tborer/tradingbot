@@ -615,55 +615,94 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           // Import the auto trade service function
           const { processAutoCryptoTrades } = require('@/lib/autoTradeService');
           
-          // Process auto trades asynchronously without waiting for the result
-          // This prevents the price update API from being slowed down
-          processAutoCryptoTrades(priceObjects, user.id)
-            .then(results => {
-              const successfulTrades = results.filter(r => r.success && r.action);
-              
-              if (successfulTrades.length > 0) {
-                console.log(`[${requestId}] Successfully executed ${successfulTrades.length} auto trades:`, 
-                  successfulTrades.map(t => `${t.action} ${t.symbol}`).join(', '));
+          // Create a unique batch ID for this set of price updates
+          const batchId = `batch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+          
+          // Process auto trades with rate limiting to prevent overwhelming the system
+          // We'll use a simple debounce mechanism to prevent multiple evaluations in quick succession
+          const autoTradeDebounceKey = `auto-trade-${user.id}-${Date.now()}`;
+          
+          // Check if we've recently processed auto trades for this user
+          const recentAutoTradeCheck = connectionManager.getCachedResponse(`auto-trade-debounce-${user.id}`);
+          
+          if (recentAutoTradeCheck && (Date.now() - recentAutoTradeCheck.timestamp) < 2000) {
+            // If we've processed auto trades for this user in the last 2 seconds, skip this batch
+            console.log(`[${requestId}] Skipping auto trade processing due to recent evaluation (${Date.now() - recentAutoTradeCheck.timestamp}ms ago)`);
+            
+            createAndLogError(
+              ErrorCategory.API,
+              ErrorSeverity.INFO,
+              4025,
+              `Skipped auto trade processing due to rate limiting`,
+              { 
+                requestId,
+                userId: user.id,
+                timestamp: Date.now(),
+                lastProcessedMs: Date.now() - recentAutoTradeCheck.timestamp,
+                batchId
+              }
+            );
+          } else {
+            // Cache this auto trade check timestamp
+            connectionManager.cacheResponse(`auto-trade-debounce-${user.id}`, {
+              timestamp: Date.now(),
+              batchId
+            });
+            
+            // Process auto trades with additional safety checks
+            console.log(`[${requestId}] Processing auto trades with batch ID ${batchId}`);
+            
+            // Process auto trades asynchronously but with additional safety measures
+            processAutoCryptoTrades(priceObjects, user.id)
+              .then(results => {
+                const successfulTrades = results.filter(r => r.success && r.action);
+                
+                if (successfulTrades.length > 0) {
+                  console.log(`[${requestId}] Successfully executed ${successfulTrades.length} auto trades:`, 
+                    successfulTrades.map(t => `${t.action} ${t.symbol}`).join(', '));
+                  
+                  createAndLogError(
+                    ErrorCategory.API,
+                    ErrorSeverity.INFO,
+                    4021,
+                    `Successfully executed auto trades after price update`,
+                    { 
+                      requestId,
+                      userId: user.id,
+                      timestamp: Date.now(),
+                      batchId,
+                      successCount: successfulTrades.length,
+                      trades: successfulTrades.map(t => ({ 
+                        symbol: t.symbol, 
+                        action: t.action, 
+                        shares: t.shares,
+                        price: t.price
+                      }))
+                    }
+                  );
+                } else {
+                  console.log(`[${requestId}] No auto trades executed after price update`);
+                }
+              })
+              .catch(error => {
+                console.error(`[${requestId}] Error processing auto trades:`, error);
                 
                 createAndLogError(
                   ErrorCategory.API,
-                  ErrorSeverity.INFO,
-                  4021,
-                  `Successfully executed auto trades after price update`,
+                  ErrorSeverity.ERROR,
+                  4022,
+                  `Error processing auto trades after price update`,
                   { 
                     requestId,
                     userId: user.id,
                     timestamp: Date.now(),
-                    successCount: successfulTrades.length,
-                    trades: successfulTrades.map(t => ({ 
-                      symbol: t.symbol, 
-                      action: t.action, 
-                      shares: t.shares,
-                      price: t.price
-                    }))
+                    batchId,
+                    error: error.message,
+                    stack: error.stack
                   }
                 );
-              } else {
-                console.log(`[${requestId}] No auto trades executed after price update`);
-              }
-            })
-            .catch(error => {
-              console.error(`[${requestId}] Error processing auto trades:`, error);
-              
-              createAndLogError(
-                ErrorCategory.API,
-                ErrorSeverity.ERROR,
-                4022,
-                `Error processing auto trades after price update`,
-                { 
-                  requestId,
-                  userId: user.id,
-                  timestamp: Date.now(),
-                  error: error.message,
-                  stack: error.stack
-                }
-              );
-            });
+              });
+          }
         } catch (error) {
           console.error(`[${requestId}] Error triggering auto trades:`, error);
           

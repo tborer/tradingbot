@@ -234,6 +234,16 @@ export async function executeKrakenOrderAndCreateTransaction(
         ]);
         console.log(`Updated crypto record for ${symbol} after ${action} transaction. Purchase price updated to ${price}. USD balance decreased by $${totalAmount.toFixed(2)}`);
       } else { // sell
+        // For sell: first verify we have enough shares to sell
+        const currentCrypto = await prisma.crypto.findUnique({
+          where: { id: cryptoId },
+          select: { shares: true }
+        });
+        
+        if (!currentCrypto || currentCrypto.shares < shares) {
+          throw new Error(`Insufficient shares for ${symbol}. Attempted to sell ${shares} but only have ${currentCrypto?.shares || 0}`);
+        }
+        
         // For sell: update crypto shares and purchase price, and increment USD balance
         await prisma.$transaction([
           // Update crypto record

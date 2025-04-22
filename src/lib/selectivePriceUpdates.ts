@@ -279,6 +279,12 @@ export async function processSelectivePriceUpdates(
     // This ensures trades are executed in near real-time when thresholds are met
     if (autoTradingEnabled) {
       try {
+        // For sell actions, verify there are shares available before evaluating
+        if (crypto.autoSell && crypto.autoTradeSettings?.nextAction === 'sell' && crypto.shares <= 0) {
+          console.log(`Skipping auto trade check for ${price.symbol}: No shares available to sell (current shares: ${crypto.shares})`);
+          continue;
+        }
+        
         // Import the auto trade service function
         const { checkCryptoForAutoTrade } = require('./autoTradeService');
         

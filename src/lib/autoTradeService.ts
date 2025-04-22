@@ -125,6 +125,30 @@ export async function processAutoCryptoTrades(
         continue;
       }
 
+      // Check if there are enough shares for a sell action
+      if (crypto.autoSell && crypto.shares <= 0) {
+        console.log(`Skipping auto trade check for ${crypto.symbol}: No shares available to sell (current shares: ${crypto.shares})`);
+        await logAutoTradeEvent(
+          userId,
+          AutoTradeLogType.WARNING,
+          `Skipping auto trade check for ${crypto.symbol}: No shares available to sell`,
+          {
+            cryptoId: crypto.id,
+            symbol: crypto.symbol,
+            shares: crypto.shares
+          }
+        );
+        
+        results.push({
+          success: false,
+          message: `Cannot sell ${crypto.symbol}: No shares available`,
+          cryptoId: crypto.id,
+          symbol: crypto.symbol
+        });
+        
+        continue; // Skip to the next crypto
+      }
+      
       // Determine if we should buy or sell
       let shouldTrade = false;
       let action: 'buy' | 'sell' | null = null;

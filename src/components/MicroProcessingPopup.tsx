@@ -45,21 +45,30 @@ export default function MicroProcessingPopup({
     tradingPlatform: 'kraken'
   };
   
-  // Merge initial settings with defaults
-  const [settings, setSettings] = useState<MicroProcessingSettings>({
+  // Merge initial settings with defaults, ensuring all values are of the correct type
+  const [settings, setSettings] = useState<MicroProcessingSettings>(() => ({
     ...defaultSettings,
-    ...initialSettings
-  });
+    enabled: initialSettings?.enabled ?? defaultSettings.enabled,
+    sellPercentage: Number(initialSettings?.sellPercentage) || defaultSettings.sellPercentage,
+    tradeByShares: Number(initialSettings?.tradeByShares) || defaultSettings.tradeByShares,
+    websocketProvider: initialSettings?.websocketProvider || defaultSettings.websocketProvider,
+    tradingPlatform: initialSettings?.tradingPlatform || defaultSettings.tradingPlatform
+  }));
   
   // Update settings when initialSettings change
   useEffect(() => {
     setSettings({
       ...defaultSettings,
-      ...initialSettings
+      enabled: initialSettings?.enabled ?? defaultSettings.enabled,
+      sellPercentage: Number(initialSettings?.sellPercentage) || defaultSettings.sellPercentage,
+      tradeByShares: Number(initialSettings?.tradeByShares) || defaultSettings.tradeByShares,
+      websocketProvider: initialSettings?.websocketProvider || defaultSettings.websocketProvider,
+      tradingPlatform: initialSettings?.tradingPlatform || defaultSettings.tradingPlatform
     });
   }, [initialSettings]);
   
   const handleSave = async () => {
+    // Validate settings before saving
     if (settings.tradeByShares <= 0) {
       toast({
         variant: "destructive",
@@ -69,9 +78,18 @@ export default function MicroProcessingPopup({
       return;
     }
     
+    // Ensure all values are of the correct type
+    const validatedSettings: MicroProcessingSettings = {
+      enabled: Boolean(settings.enabled),
+      sellPercentage: Number(settings.sellPercentage) || 0.5,
+      tradeByShares: Number(settings.tradeByShares) || 0,
+      websocketProvider: settings.websocketProvider || 'kraken',
+      tradingPlatform: settings.tradingPlatform || 'kraken'
+    };
+    
     setIsSubmitting(true);
     try {
-      await onSave(settings);
+      await onSave(validatedSettings);
       onClose();
       toast({
         title: "Settings Saved",

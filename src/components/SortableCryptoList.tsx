@@ -410,61 +410,79 @@ export default function SortableCryptoList({
     try {
       console.log(`Fetching micro processing settings for crypto: ${symbol} (${id})`);
       
+      // Default settings to use if we can't fetch or if there are no existing settings
+      const defaultSettings = {
+        enabled: false,
+        sellPercentage: 0.5,
+        tradeByShares: 0,
+        websocketProvider: 'kraken',
+        tradingPlatform: 'kraken'
+      };
+      
       // Fetch the current micro processing settings for this specific crypto
       const response = await fetch(`/api/cryptos/micro-processing-settings?cryptoId=${id}`, {
         method: "GET",
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       
       if (response.ok) {
-        const data = await response.json();
-        console.log(`Received settings data:`, data);
-        
-        if (data.microProcessingSettings) {
-          // Use the fetched settings
-          setCurrentMicroProcessingSettings({
-            enabled: data.microProcessingSettings.enabled,
-            sellPercentage: data.microProcessingSettings.sellPercentage,
-            tradeByShares: data.microProcessingSettings.tradeByShares,
-            websocketProvider: data.microProcessingSettings.websocketProvider,
-            tradingPlatform: data.microProcessingSettings.tradingPlatform,
-          });
-          console.log(`Successfully loaded existing settings for ${symbol}`);
-        } else {
-          console.log(`No existing settings found for ${symbol}, using defaults`);
-          // Reset to default settings if none exist for this crypto
-          setCurrentMicroProcessingSettings({
-            enabled: false,
-            sellPercentage: 0.5,
-            tradeByShares: 0,
-            websocketProvider: 'kraken',
-            tradingPlatform: 'kraken'
+        try {
+          const data = await response.json();
+          console.log(`Received settings data:`, data);
+          
+          if (data.microProcessingSettings) {
+            // Use the fetched settings
+            setCurrentMicroProcessingSettings({
+              enabled: Boolean(data.microProcessingSettings.enabled),
+              sellPercentage: Number(data.microProcessingSettings.sellPercentage) || 0.5,
+              tradeByShares: Number(data.microProcessingSettings.tradeByShares) || 0,
+              websocketProvider: data.microProcessingSettings.websocketProvider || 'kraken',
+              tradingPlatform: data.microProcessingSettings.tradingPlatform || 'kraken',
+            });
+            console.log(`Successfully loaded existing settings for ${symbol}`);
+          } else {
+            console.log(`No existing settings found for ${symbol}, using defaults`);
+            // Reset to default settings if none exist for this crypto
+            setCurrentMicroProcessingSettings(defaultSettings);
+          }
+        } catch (jsonError) {
+          console.error("Error parsing JSON response:", jsonError);
+          setCurrentMicroProcessingSettings(defaultSettings);
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to parse settings data. Default settings will be used.",
           });
         }
       } else {
         // Try to get more detailed error information
         let errorMessage = "Failed to load micro processing settings";
         try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorData.details || errorMessage;
-          console.error("API error details:", errorData);
+          const contentType = response.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorData.details || errorMessage;
+            console.error("API error details:", errorData);
+          } else {
+            // If not JSON, log the status
+            console.error(`API returned non-JSON response with status ${response.status}`);
+            errorMessage = `Server error (${response.status})`;
+          }
         } catch (parseError) {
           console.error("Could not parse error response:", parseError);
         }
         
         // Reset to default settings if there was an error
-        setCurrentMicroProcessingSettings({
-          enabled: false,
-          sellPercentage: 0.5,
-          tradeByShares: 0,
-          websocketProvider: 'kraken',
-          tradingPlatform: 'kraken'
-        });
+        setCurrentMicroProcessingSettings(defaultSettings);
         
         console.error(`Failed to fetch micro processing settings: ${errorMessage}`);
         toast({
           variant: "destructive",
           title: "Error",
-          description: `Failed to load micro processing settings: ${errorMessage}. Default settings will be used.`,
+          description: `Failed to load micro processing settings. Default settings will be used.`,
         });
       }
     } catch (error) {
@@ -480,7 +498,7 @@ export default function SortableCryptoList({
       toast({
         variant: "destructive",
         title: "Error",
-        description: `Failed to load micro processing settings: ${error.message}. Default settings will be used.`,
+        description: `Failed to load micro processing settings. Default settings will be used.`,
       });
     }
     

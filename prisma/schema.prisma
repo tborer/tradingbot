@@ -49,6 +49,7 @@ model Settings {
   coinDeskApiKey    String?
   openAIApiKey      String?
   anthropicApiKey   String?
+  googleApiKey      String?
   researchApiPreference String @default("openai") // Values: "openai" or "anthropic"
   enableAutoStockTrading Boolean @default(false)
   enableAutoCryptoTrading Boolean @default(false)

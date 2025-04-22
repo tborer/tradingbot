@@ -175,6 +175,49 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
     
+    // POST - Update specific settings (used by GoogleAISettings component)
+    if (req.method === 'POST') {
+      console.log(`[${requestId}] Processing POST request to update specific settings`);
+      
+      const { googleApiKey } = req.body;
+      
+      try {
+        // Update only the specific field
+        const updateData: any = {};
+        
+        if (googleApiKey !== undefined) updateData['googleApiKey'] = googleApiKey;
+        
+        // Ensure we have at least one field to update
+        if (Object.keys(updateData).length === 0) {
+          console.error(`[${requestId}] No valid fields provided for update`);
+          return res.status(400).json({ error: 'No valid fields provided for update' });
+        }
+        
+        console.log(`[${requestId}] Attempting to upsert specific settings`);
+        
+        const settings = await prisma.settings.upsert({
+          where: { userId: user.id },
+          update: updateData,
+          create: {
+            userId: user.id,
+            sellThresholdPercent: 5.0, // Default values
+            buyThresholdPercent: 5.0,
+            checkFrequencySeconds: 60,
+            ...updateData
+          },
+        });
+        
+        console.log(`[${requestId}] Settings updated successfully`);
+        return res.status(200).json(settings);
+      } catch (updateError) {
+        console.error(`[${requestId}] Error updating settings:`, updateError);
+        return res.status(500).json({ 
+          error: 'Failed to update settings',
+          details: updateError instanceof Error ? updateError.message : 'Unknown error'
+        });
+      }
+    }
+    
     console.log(`[${requestId}] Method not allowed: ${req.method}`);
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {

@@ -2,7 +2,8 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@/util/supabase/api';
 import { 
   calculateDrawdownDrawup,
-  extractPriceDataFromCoinDesk
+  extractPriceDataFromCoinDesk,
+  calculateMinProfitableChange
 } from '@/lib/trendAnalysis';
 import { 
   ErrorCategory, 

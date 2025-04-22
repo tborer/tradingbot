@@ -254,6 +254,10 @@ export function calculateDrawdownDrawup(historicalData: number[]): DrawdownDrawu
         const percentChange = ((lastPrice - firstPrice) / firstPrice) * 100;
         const absChange = Math.abs(percentChange);
         
+        // Calculate minimum profitable change with default fee rate
+        const defaultFeeRate = 0.004; // 0.4% fee rate
+        const minProfitableChange = calculateMinProfitableChange(lastPrice, defaultFeeRate);
+        
         // Use the overall price change as a fallback
         return {
           maxDrawdown: percentChange < 0 ? absChange : 1.5,
@@ -267,7 +271,8 @@ export function calculateDrawdownDrawup(historicalData: number[]): DrawdownDrawu
           stdDevDrawdown: 0,
           stdDevDrawup: 0,
           medianDrawdown: percentChange < 0 ? absChange : 0,
-          medianDrawup: percentChange > 0 ? absChange : 0
+          medianDrawup: percentChange > 0 ? absChange : 0,
+          minProfitableChange: minProfitableChange !== null ? minProfitableChange : 0.8
         };
       }
     }
@@ -285,9 +290,15 @@ export function calculateDrawdownDrawup(historicalData: number[]): DrawdownDrawu
       stdDevDrawdown: 0.3,
       stdDevDrawup: 0.4,
       medianDrawdown: 0.7,
-      medianDrawup: 0.9
+      medianDrawup: 0.9,
+      minProfitableChange: 0.8 // Default minimum profitable change
     };
   }
+
+  // Calculate minimum profitable change with default fee rate
+  const defaultFeeRate = 0.004; // 0.4% fee rate
+  const currentPrice = historicalData[historicalData.length - 1]; // Use the most recent price
+  const minProfitableChange = calculateMinProfitableChange(currentPrice, defaultFeeRate);
 
   return {
     maxDrawdown,
@@ -301,7 +312,8 @@ export function calculateDrawdownDrawup(historicalData: number[]): DrawdownDrawu
     stdDevDrawdown,
     stdDevDrawup,
     medianDrawdown,
-    medianDrawup
+    medianDrawup,
+    minProfitableChange: minProfitableChange !== null ? minProfitableChange : 0.8
   };
 }
 

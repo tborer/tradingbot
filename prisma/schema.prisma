@@ -88,6 +88,7 @@ model Crypto {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions CryptoTransaction[]
   autoTradeSettings CryptoAutoTradeSettings?
+  microProcessingSettings MicroProcessingSettings?
 
   @@unique([userId, symbol])
 }
@@ -152,4 +153,21 @@ model CryptoAutoTradeLock {
   lockedAt     DateTime @default(now())
   lockedBy     String   @db.Uuid
   action       String   // 'buy' or 'sell'
+}
+
+model MicroProcessingSettings {
+  id                String   @id @default(uuid())
+  cryptoId          String   @unique
+  crypto            Crypto   @relation(fields: [cryptoId], references: [id], onDelete: Cascade)
+  enabled           Boolean  @default(false)
+  sellPercentage    Float    @default(0.5)
+  tradeByShares     Float    @default(0)
+  websocketProvider String   @default("kraken") // 'kraken' or 'coinbase'
+  tradingPlatform   String   @default("kraken") // 'kraken' or 'coinbase'
+  lastBuyPrice      Float?
+  lastBuyShares     Float?
+  lastBuyTimestamp  DateTime?
+  processingStatus  String?  // 'buying', 'selling', 'idle'
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }

@@ -18,7 +18,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Trash2, GripVertical, ShoppingCart, DollarSign, PlusCircle, TrendingUp, RefreshCw, Lightbulb } from "lucide-react";
+import { Trash2, GripVertical, ShoppingCart, DollarSign, PlusCircle, TrendingUp, RefreshCw, Lightbulb, Search } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { CryptoWithPrice } from "@/types/stock";
@@ -29,6 +29,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import AutoTradeModal, { AutoTradeSettings } from "@/components/AutoTradeModal";
 import TrendsPopup from "@/components/TrendsPopup";
 import SupportResistancePopup from "@/components/SupportResistancePopup";
+import MicroProcessingPopup, { MicroProcessingSettings } from "@/components/MicroProcessingPopup";
 import { Settings } from "@/icons/Settings";
 import { formatDecimal } from "@/util/number";
 import { useAnalysis } from "@/contexts/AnalysisContext";
@@ -42,6 +43,7 @@ interface SortableCryptoItemProps {
   onUpdateShares: (id: string, shares: number) => Promise<void>;
   onUpdatePurchasePrice: (id: string, price: number) => Promise<void>;
   onOpenAutoTradeModal: (id: string, symbol: string) => void;
+  onOpenMicroProcessingModal: (id: string, symbol: string) => void;
   onAddToResearch: (symbol: string) => void;
   onOpenTrendsPopup: (symbol: string) => void;
   onOpenSupportResistancePopup: (symbol: string) => void;
@@ -58,6 +60,7 @@ function SortableCryptoItem({
   onUpdateShares,
   onUpdatePurchasePrice,
   onOpenAutoTradeModal,
+  onOpenMicroProcessingModal,
   onAddToResearch,
   onOpenTrendsPopup,
   onOpenSupportResistancePopup,
@@ -276,6 +279,20 @@ function SortableCryptoItem({
           data-no-row-click
           onClick={(e) => {
             e.stopPropagation();
+            onOpenMicroProcessingModal(crypto.id, crypto.symbol);
+          }}
+          title="Micro Processing"
+        >
+          <Search className="h-4 w-4" />
+        </Button>
+      </TableCell>
+      <TableCell>
+        <Button
+          variant="ghost"
+          size="icon"
+          data-no-row-click
+          onClick={(e) => {
+            e.stopPropagation();
             onDelete(crypto.id, crypto.symbol);
           }}
         >
@@ -324,6 +341,9 @@ export default function SortableCryptoList({
   const [selectedTrendsSymbol, setSelectedTrendsSymbol] = useState<string>('');
   const [supportResistancePopupOpen, setSupportResistancePopupOpen] = useState(false);
   const [selectedSupportResistanceSymbol, setSelectedSupportResistanceSymbol] = useState<string>('');
+  const [microProcessingPopupOpen, setMicroProcessingPopupOpen] = useState(false);
+  const [selectedMicroProcessingCrypto, setSelectedMicroProcessingCrypto] = useState<{ id: string; symbol: string } | null>(null);
+  const [currentMicroProcessingSettings, setCurrentMicroProcessingSettings] = useState<Partial<MicroProcessingSettings>>({});
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -385,6 +405,127 @@ export default function SortableCryptoList({
   };
   
   const [currentAutoTradeSettings, setCurrentAutoTradeSettings] = useState<Partial<AutoTradeSettings>>({});
+  
+  const handleOpenMicroProcessingModal = async (id: string, symbol: string) => {
+    try {
+      // Fetch the current micro processing settings for this specific crypto
+      const response = await fetch(`/api/cryptos/micro-processing-settings?cryptoId=${id}`, {
+        method: "GET",
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.microProcessingSettings) {
+          // Use the fetched settings
+          setCurrentMicroProcessingSettings({
+            enabled: data.microProcessingSettings.enabled,
+            sellPercentage: data.microProcessingSettings.sellPercentage,
+            tradeByShares: data.microProcessingSettings.tradeByShares,
+            websocketProvider: data.microProcessingSettings.websocketProvider,
+            tradingPlatform: data.microProcessingSettings.tradingPlatform,
+          });
+        } else {
+          // Reset to default settings if none exist for this crypto
+          setCurrentMicroProcessingSettings({
+            enabled: false,
+            sellPercentage: 0.5,
+            tradeByShares: 0,
+            websocketProvider: 'kraken',
+            tradingPlatform: 'kraken'
+          });
+        }
+      } else {
+        // Reset to default settings if there was an error
+        setCurrentMicroProcessingSettings({
+          enabled: false,
+          sellPercentage: 0.5,
+          tradeByShares: 0,
+          websocketProvider: 'kraken',
+          tradingPlatform: 'kraken'
+        });
+        console.error("Failed to fetch micro processing settings");
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load micro processing settings for this cryptocurrency. Default settings will be used.",
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching micro processing settings:", error);
+      // Reset to default settings if there was an error
+      setCurrentMicroProcessingSettings({
+        enabled: false,
+        sellPercentage: 0.5,
+        tradeByShares: 0,
+        websocketProvider: 'kraken',
+        tradingPlatform: 'kraken'
+      });
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load micro processing settings for this cryptocurrency. Default settings will be used.",
+      });
+    }
+    
+    setSelectedMicroProcessingCrypto({ id, symbol });
+    setMicroProcessingPopupOpen(true);
+  };
+  
+  const handleSaveMicroProcessingSettings = async (settings: MicroProcessingSettings) => {
+    if (!selectedMicroProcessingCrypto) return;
+    
+    try {
+      // Save the micro processing settings to the backend
+      const response = await fetch(`/api/cryptos/micro-processing-settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cryptoId: selectedMicroProcessingCrypto.id,
+          settings
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to save micro processing settings");
+      }
+      
+      toast({
+        title: "Micro Processing Settings Saved",
+        description: `Settings for ${selectedMicroProcessingCrypto.symbol} have been updated.`,
+      });
+      
+      // Trigger micro processing if enabled
+      if (settings.enabled) {
+        try {
+          const processResponse = await fetch('/api/cryptos/process-micro-processing', {
+            method: 'POST'
+          });
+          
+          if (processResponse.ok) {
+            toast({
+              title: "Micro Processing Started",
+              description: "Micro processing has been initiated for enabled cryptocurrencies.",
+            });
+          }
+        } catch (processError) {
+          console.error("Error starting micro processing:", processError);
+          toast({
+            variant: "destructive",
+            title: "Warning",
+            description: "Micro processing settings were saved, but there was an error starting the process.",
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Error saving micro processing settings:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to save micro processing settings. Please try again.",
+      });
+    }
+  };
   
   const handleOpenAutoTradeModal = async (id: string, symbol: string) => {
     try {
@@ -723,6 +864,7 @@ export default function SortableCryptoList({
                 <TableHead>Plan</TableHead>
                 <TableHead>Trends</TableHead>
                 <TableHead>Support/Resistance</TableHead>
+                <TableHead>Micro Processing</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -743,6 +885,7 @@ export default function SortableCryptoList({
                     onUpdatePurchasePrice={onUpdatePurchasePrice || (async () => {})}
                     onOpenAutoTradeModal={handleOpenAutoTradeModal}
                     onAddToResearch={onAddToResearch || (() => {})}
+                    onOpenMicroProcessingModal={handleOpenMicroProcessingModal}
                     onOpenTrendsPopup={handleOpenTrendsPopup}
                     onOpenSupportResistancePopup={handleOpenSupportResistancePopup}
                     hasAnalysisData={hasAnalysisData}
@@ -848,6 +991,15 @@ export default function SortableCryptoList({
         isOpen={supportResistancePopupOpen}
         onClose={() => setSupportResistancePopupOpen(false)}
         symbol={selectedSupportResistanceSymbol}
+      />
+      
+      <MicroProcessingPopup
+        isOpen={microProcessingPopupOpen}
+        onClose={() => setMicroProcessingPopupOpen(false)}
+        onSave={handleSaveMicroProcessingSettings}
+        cryptoId={selectedMicroProcessingCrypto?.id || ""}
+        symbol={selectedMicroProcessingCrypto?.symbol || ""}
+        initialSettings={currentMicroProcessingSettings}
       />
     </>
   );

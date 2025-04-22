@@ -435,23 +435,21 @@ export default function SortableCryptoList({
           const data = await response.json();
           console.log(`Received settings data:`, data);
           
-          if (data.microProcessingSettings) {
-            // Use the fetched settings
-            setCurrentMicroProcessingSettings({
-              enabled: Boolean(data.microProcessingSettings.enabled),
-              sellPercentage: Number(data.microProcessingSettings.sellPercentage) || 0.5,
-              tradeByShares: Number(data.microProcessingSettings.tradeByShares) || 0,
-              tradeByValue: Boolean(data.microProcessingSettings.tradeByValue),
-              totalValue: Number(data.microProcessingSettings.totalValue) || 0,
-              websocketProvider: data.microProcessingSettings.websocketProvider || 'kraken',
-              tradingPlatform: data.microProcessingSettings.tradingPlatform || 'kraken',
-            });
-            console.log(`Successfully loaded existing settings for ${symbol}`);
-          } else {
-            console.log(`No existing settings found for ${symbol}, using defaults`);
-            // Reset to default settings if none exist for this crypto
-            setCurrentMicroProcessingSettings(defaultSettings);
-          }
+          // Ensure we have a valid settings object
+          const settings = data.microProcessingSettings || defaultSettings;
+          
+          // Use the fetched settings with proper type conversion
+          setCurrentMicroProcessingSettings({
+            enabled: Boolean(settings.enabled),
+            sellPercentage: Number(settings.sellPercentage) || 0.5,
+            tradeByShares: Number(settings.tradeByShares) || 0,
+            tradeByValue: Boolean(settings.tradeByValue),
+            totalValue: Number(settings.totalValue) || 0,
+            websocketProvider: settings.websocketProvider || 'kraken',
+            tradingPlatform: settings.tradingPlatform || 'kraken',
+          });
+          
+          console.log(`Successfully loaded settings for ${symbol}`);
         } catch (jsonError) {
           console.error("Error parsing JSON response:", jsonError);
           setCurrentMicroProcessingSettings(defaultSettings);
@@ -514,19 +512,37 @@ export default function SortableCryptoList({
     if (!selectedMicroProcessingCrypto) return;
     
     try {
+      // Validate settings before sending to API
+      const validatedSettings = {
+        enabled: Boolean(settings.enabled),
+        sellPercentage: Number(settings.sellPercentage) || 0.5,
+        tradeByShares: Number(settings.tradeByShares) || 0,
+        tradeByValue: Boolean(settings.tradeByValue),
+        totalValue: Number(settings.totalValue) || 0,
+        websocketProvider: settings.websocketProvider || 'kraken',
+        tradingPlatform: settings.tradingPlatform || 'kraken',
+        processingStatus: 'idle' // Always reset to idle when saving
+      };
+      
       // Save the micro processing settings to the backend
       const response = await fetch(`/api/cryptos/micro-processing-settings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cryptoId: selectedMicroProcessingCrypto.id,
-          settings
+          settings: validatedSettings
         }),
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to save micro processing settings");
+        let errorMessage = "Failed to save micro processing settings";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.details || errorMessage;
+        } catch (parseError) {
+          console.error("Could not parse error response:", parseError);
+        }
+        throw new Error(errorMessage);
       }
       
       toast({

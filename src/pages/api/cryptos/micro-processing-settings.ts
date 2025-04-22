@@ -44,18 +44,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log(`Fetched micro processing settings for cryptoId: ${cryptoId}`, 
                     microProcessingSettings ? 'Settings found' : 'No settings found');
         
-        // Return empty settings object if none found to avoid null/undefined errors
+        // Return settings object if found, or a default settings object if none found
+        // This ensures we always return a valid object structure
+        const defaultSettings = {
+          enabled: false,
+          sellPercentage: 0.5,
+          tradeByShares: 0,
+          tradeByValue: false,
+          totalValue: 0,
+          websocketProvider: 'kraken',
+          tradingPlatform: 'kraken',
+          processingStatus: 'idle'
+        };
+        
         return res.status(200).json({ 
-          microProcessingSettings: microProcessingSettings || {
-            enabled: false,
-            sellPercentage: 0.5,
-            tradeByShares: 0,
-            tradeByValue: false,
-            totalValue: 0,
-            websocketProvider: 'kraken',
-            tradingPlatform: 'kraken',
-            processingStatus: 'idle'
-          } 
+          microProcessingSettings: microProcessingSettings || defaultSettings
         });
       } catch (error) {
         console.error('Error fetching micro processing settings:', error);
@@ -70,8 +73,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'POST') {
       const { cryptoId, settings } = req.body;
       
-      if (!cryptoId || !settings) {
-        return res.status(400).json({ error: 'Missing cryptoId or settings in request body' });
+      if (!cryptoId) {
+        return res.status(400).json({ error: 'Missing cryptoId in request body' });
+      }
+      
+      if (!settings || typeof settings !== 'object') {
+        return res.status(400).json({ error: 'Missing or invalid settings in request body' });
       }
       
       try {
@@ -87,20 +94,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           return res.status(404).json({ error: 'Crypto not found' });
         }
         
-        // Validate settings before saving
+        // Create default settings
+        const defaultSettings = {
+          enabled: false,
+          sellPercentage: 0.5,
+          tradeByShares: 0,
+          tradeByValue: false,
+          totalValue: 0,
+          websocketProvider: 'kraken',
+          tradingPlatform: 'kraken',
+          processingStatus: 'idle'
+        };
+        
+        // Validate settings before saving, ensuring all values are of the correct type
+        // and falling back to defaults if values are missing or invalid
         const validatedSettings = {
-          enabled: Boolean(settings.enabled),
-          sellPercentage: Number(settings.sellPercentage) || 0.5,
-          tradeByShares: Number(settings.tradeByShares) || 0,
-          tradeByValue: Boolean(settings.tradeByValue),
-          totalValue: Number(settings.totalValue) || 0,
-          websocketProvider: ['kraken', 'coinbase'].includes(settings.websocketProvider) 
+          enabled: settings.enabled !== undefined ? Boolean(settings.enabled) : defaultSettings.enabled,
+          sellPercentage: settings.sellPercentage !== undefined ? Number(settings.sellPercentage) || defaultSettings.sellPercentage : defaultSettings.sellPercentage,
+          tradeByShares: settings.tradeByShares !== undefined ? Number(settings.tradeByShares) || defaultSettings.tradeByShares : defaultSettings.tradeByShares,
+          tradeByValue: settings.tradeByValue !== undefined ? Boolean(settings.tradeByValue) : defaultSettings.tradeByValue,
+          totalValue: settings.totalValue !== undefined ? Number(settings.totalValue) || defaultSettings.totalValue : defaultSettings.totalValue,
+          websocketProvider: settings.websocketProvider && ['kraken', 'coinbase'].includes(settings.websocketProvider) 
             ? settings.websocketProvider 
-            : 'kraken',
-          tradingPlatform: ['kraken', 'coinbase'].includes(settings.tradingPlatform) 
+            : defaultSettings.websocketProvider,
+          tradingPlatform: settings.tradingPlatform && ['kraken', 'coinbase'].includes(settings.tradingPlatform) 
             ? settings.tradingPlatform 
-            : 'kraken',
-          processingStatus: settings.processingStatus || 'idle'
+            : defaultSettings.tradingPlatform,
+          processingStatus: settings.processingStatus || defaultSettings.processingStatus
         };
         
         // Upsert the micro processing settings

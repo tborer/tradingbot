@@ -44,7 +44,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log(`Fetched micro processing settings for cryptoId: ${cryptoId}`, 
                     microProcessingSettings ? 'Settings found' : 'No settings found');
         
-        return res.status(200).json({ microProcessingSettings });
+        // Return empty settings object if none found to avoid null/undefined errors
+        return res.status(200).json({ 
+          microProcessingSettings: microProcessingSettings || {
+            enabled: false,
+            sellPercentage: 0.5,
+            tradeByShares: 0,
+            tradeByValue: false,
+            totalValue: 0,
+            websocketProvider: 'kraken',
+            tradingPlatform: 'kraken',
+            processingStatus: 'idle'
+          } 
+        });
       } catch (error) {
         console.error('Error fetching micro processing settings:', error);
         return res.status(500).json({ 

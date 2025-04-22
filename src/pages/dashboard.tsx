@@ -24,12 +24,14 @@ import FinnHubWebSocketSettings from "@/components/FinnHubWebSocketSettings";
 import AlphaVantageSettings from "@/components/AlphaVantageSettings";
 import CoinDeskSettings from "@/components/CoinDeskSettings";
 import OpenAISettings from "@/components/OpenAISettings";
+import GoogleAISettings from "@/components/GoogleAISettings";
 import WebSocketLogger from "@/components/WebSocketLogger";
 import Research from "@/components/Research";
 import UserManagement from "@/components/UserManagement";
 import DataUploads from "@/components/DataUploads";
 import FixAutoTradeFlags from "@/components/FixAutoTradeFlags";
 import AutoTradeLogs from "@/components/AutoTradeLogs";
+import AIAgent from "@/components/AIAgent";
 import { Stock, StockWithPrice as StockWithCurrentPrice, Settings, Crypto, CryptoWithPrice } from "@/types/stock";
 import { useKrakenWebSocket } from "@/contexts/KrakenWebSocketContext";
 import { useAnalysis } from "@/contexts/AnalysisContext";
@@ -1395,6 +1397,7 @@ export default function Dashboard() {
             <TabsTrigger value="user-management">User Management</TabsTrigger>
             <TabsTrigger value="data-uploads">Data Uploads</TabsTrigger>
             <TabsTrigger value="auto-trade-logs">Auto Trade Logs</TabsTrigger>
+            <TabsTrigger value="ai-agent">AI Agent</TabsTrigger>
           </TabsList>
           
           <TabsContent value="portfolio" className="space-y-6">
@@ -1644,6 +1647,10 @@ export default function Dashboard() {
             </Card>
           </TabsContent>
           
+          <TabsContent value="ai-agent">
+            <AIAgent />
+          </TabsContent>
+          
           <TabsContent value="settings">
             <Card>
               <CardHeader>
@@ -1883,6 +1890,9 @@ export default function Dashboard() {
                           setSettings({ ...settings, researchApiPreference: preference })
                         }
                       />
+                      
+                      {/* Google AI Settings */}
+                      <GoogleAISettings />
                     </div>
                     
                     <Button onClick={handleUpdateSettings}>Save Settings</Button>

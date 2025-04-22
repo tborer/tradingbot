@@ -330,74 +330,72 @@ export const createKrakenSubscription = (symbols: string[]): any => {
 };
 
 // Check if a crypto should be sold based on current price and threshold
+// Optimized for performance and real-time trading
 export const shouldSellCrypto = (
   currentPrice: number, 
   purchasePrice: number, 
   thresholdPercent: number
 ): boolean => {
-  // Handle edge cases with more detailed logging
-  if (purchasePrice <= 0) {
-    console.log(`SELL CHECK SKIPPED: Invalid purchase price (${purchasePrice}). Using fallback comparison.`);
-    // For sell, if purchase price is invalid, we can still check if the current price is above a minimum threshold
-    // This allows selling even if purchase price data is missing
-    return currentPrice > 0;
-  }
-  
+  // Fast path for invalid inputs
   if (currentPrice <= 0) {
     console.log(`SELL CHECK FAILED: Invalid current price (${currentPrice})`);
     return false;
   }
   
+  // Handle missing purchase price
+  if (purchasePrice <= 0) {
+    console.log(`SELL CHECK SKIPPED: Invalid purchase price (${purchasePrice}). Using fallback comparison.`);
+    // For sell, if purchase price is invalid, we can still check if the current price is above a minimum threshold
+    return currentPrice > 0;
+  }
+  
+  // Calculate percentage gain with minimal operations
   const percentGain = ((currentPrice - purchasePrice) / purchasePrice) * 100;
-  console.log(`SELL CHECK: Current: $${currentPrice}, Purchase: $${purchasePrice}, Gain: ${percentGain.toFixed(2)}%, Threshold: ${thresholdPercent}%`);
   
-  // Ensure the price change meets or exceeds the threshold percentage
-  // For selling, we want the price to have increased by at least the threshold percentage
+  // Immediate decision with minimal branching
   const shouldSell = percentGain >= thresholdPercent;
-  console.log(`Should sell? ${shouldSell ? 'YES' : 'NO'} (Gain: ${percentGain.toFixed(2)}% >= Threshold: ${thresholdPercent}%: ${percentGain >= thresholdPercent})`);
   
-  // Add additional logging for debugging
+  // Only log if needed (reduces processing overhead)
+  console.log(`SELL CHECK: Current: $${currentPrice}, Purchase: $${purchasePrice}, Gain: ${percentGain.toFixed(2)}%, Threshold: ${thresholdPercent}%, Decision: ${shouldSell ? 'YES' : 'NO'}`);
+  
   if (shouldSell) {
     console.log(`SELL CONDITION MET: Price increased by ${percentGain.toFixed(2)}%, which is >= threshold of ${thresholdPercent}%`);
-  } else {
-    console.log(`SELL CONDITION NOT MET: ${percentGain.toFixed(2)}% gain is less than threshold of ${thresholdPercent}%`);
   }
   
   return shouldSell;
 };
 
 // Check if a crypto should be bought based on current price and threshold
+// Optimized for performance and real-time trading
 export const shouldBuyCrypto = (
   currentPrice: number, 
   purchasePrice: number, 
   thresholdPercent: number
 ): boolean => {
-  // Handle edge cases with more detailed logging
-  if (purchasePrice <= 0) {
-    console.log(`BUY CHECK SKIPPED: Invalid purchase price (${purchasePrice}). Using current price as reference.`);
-    // For buy, if purchase price is invalid, we can use the current price as a reference point
-    // This allows buying even if purchase price data is missing
-    return currentPrice > 0;
-  }
-  
+  // Fast path for invalid inputs
   if (currentPrice <= 0) {
     console.log(`BUY CHECK FAILED: Invalid current price (${currentPrice})`);
     return false;
   }
   
+  // Handle missing purchase price
+  if (purchasePrice <= 0) {
+    console.log(`BUY CHECK SKIPPED: Invalid purchase price (${purchasePrice}). Using current price as reference.`);
+    // For buy, if purchase price is invalid, we can use the current price as a reference point
+    return currentPrice > 0;
+  }
+  
+  // Calculate percentage drop with minimal operations
   const percentDrop = ((purchasePrice - currentPrice) / purchasePrice) * 100;
-  console.log(`BUY CHECK: Current: $${currentPrice}, Purchase: $${purchasePrice}, Drop: ${percentDrop.toFixed(2)}%, Threshold: ${thresholdPercent}%`);
   
-  // Ensure the price change meets or exceeds the threshold percentage
-  // For buying, we want the price to have dropped by at least the threshold percentage
+  // Immediate decision with minimal branching
   const shouldBuy = percentDrop >= thresholdPercent;
-  console.log(`Should buy? ${shouldBuy ? 'YES' : 'NO'} (Drop: ${percentDrop.toFixed(2)}% >= Threshold: ${thresholdPercent}%: ${percentDrop >= thresholdPercent})`);
   
-  // Add additional logging for debugging
+  // Only log if needed (reduces processing overhead)
+  console.log(`BUY CHECK: Current: $${currentPrice}, Purchase: $${purchasePrice}, Drop: ${percentDrop.toFixed(2)}%, Threshold: ${thresholdPercent}%, Decision: ${shouldBuy ? 'YES' : 'NO'}`);
+  
   if (shouldBuy) {
     console.log(`BUY CONDITION MET: Price dropped by ${percentDrop.toFixed(2)}%, which is >= threshold of ${thresholdPercent}%`);
-  } else {
-    console.log(`BUY CONDITION NOT MET: ${percentDrop.toFixed(2)}% drop is less than threshold of ${thresholdPercent}%`);
   }
   
   return shouldBuy;

@@ -214,9 +214,10 @@ export async function shouldWritePriceUpdate(
 export async function processSelectivePriceUpdates(
   prices: KrakenPrice[],
   userId: string
-): Promise<{ updated: string[], skipped: string[] }> {
+): Promise<{ updated: string[], skipped: string[], evaluated: string[] }> {
   const updated: string[] = [];
   const skipped: string[] = [];
+  const evaluated: string[] = []; // Track cryptos that were evaluated for auto-trading
   
   // Get all auto-traded cryptos for this user
   const autoTradedCryptos = await prisma.crypto.findMany({
@@ -235,6 +236,12 @@ export async function processSelectivePriceUpdates(
   // Create a map for faster lookups
   const cryptoMap = new Map(autoTradedCryptos.map(crypto => [crypto.symbol, crypto]));
   
+  // Check if auto trading is enabled for this user (do this once to avoid repeated DB calls)
+  const settings = await prisma.settings.findUnique({
+    where: { userId }
+  });
+  const autoTradingEnabled = settings?.enableAutoCryptoTrading || false;
+  
   // Process each price update
   for (const price of prices) {
     const crypto = cryptoMap.get(price.symbol);
@@ -245,9 +252,13 @@ export async function processSelectivePriceUpdates(
       continue;
     }
     
-    // Check if we should write this update
+    // Always update the in-memory cache regardless of whether we write to the database
+    updatePriceCache(price.symbol, price.price);
+    
+    // Check if we should write this update to the database
     const shouldWrite = await shouldWritePriceUpdate(price.symbol, price.price, crypto, userId);
     
+    // Update the database if needed
     if (shouldWrite) {
       try {
         // Update the price in the database
@@ -257,32 +268,34 @@ export async function processSelectivePriceUpdates(
         });
         
         updated.push(price.symbol);
-        
-        // Check if auto trading is enabled for this user
-        const settings = await prisma.settings.findUnique({
-          where: { userId }
-        });
-        
-        // If auto trading is enabled, trigger auto trade evaluation
-        if (settings?.enableAutoCryptoTrading) {
-          try {
-            // Import the auto trade service function
-            const { checkCryptoForAutoTrade } = require('./autoTradeService');
-            
-            // Process auto trade
-            console.log(`Executing auto trade check for ${price.symbol} (ID: ${crypto.id}) at price ${price.price}`);
-            await checkCryptoForAutoTrade(crypto.id, price.price, userId);
-          } catch (error) {
-            console.error(`Error triggering auto trade for ${price.symbol}:`, error);
-          }
-        }
       } catch (error) {
         console.error(`Error updating price for ${price.symbol}:`, error);
       }
     } else {
       skipped.push(price.symbol);
     }
+    
+    // IMPORTANT: Always evaluate auto-trade conditions regardless of database write
+    // This ensures trades are executed in near real-time when thresholds are met
+    if (autoTradingEnabled) {
+      try {
+        // Import the auto trade service function
+        const { checkCryptoForAutoTrade } = require('./autoTradeService');
+        
+        // Process auto trade
+        console.log(`Executing auto trade check for ${price.symbol} (ID: ${crypto.id}) at price ${price.price}`);
+        const tradeResult = await checkCryptoForAutoTrade(crypto.id, price.price, userId);
+        
+        if (tradeResult.success) {
+          console.log(`Auto trade executed for ${price.symbol}: ${tradeResult.action} at ${price.price}`);
+        }
+        
+        evaluated.push(price.symbol);
+      } catch (error) {
+        console.error(`Error triggering auto trade for ${price.symbol}:`, error);
+      }
+    }
   }
   
-  return { updated, skipped };
+  return { updated, skipped, evaluated };
 }

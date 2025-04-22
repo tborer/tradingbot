@@ -551,12 +551,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const result = await processSelectivePriceUpdates(priceUpdates, user.id);
       
       const transactionDuration = Date.now() - transactionStartTime;
-      console.log(`[${requestId}] Selective price updates completed in ${transactionDuration}ms, updated ${result.updated.length} cryptos, skipped ${result.skipped.length} cryptos`);
+      console.log(`[${requestId}] Selective price updates completed in ${transactionDuration}ms, updated ${result.updated.length} cryptos, skipped ${result.skipped.length} cryptos, evaluated ${result.evaluated.length} for auto-trading`);
       
       // Cache the successful result
       connectionManager.cacheResponse(transactionCacheKey, {
         updatedCount: result.updated.length,
         skippedCount: result.skipped.length,
+        evaluatedCount: result.evaluated.length,
         priceUpdates
       });
       
@@ -572,11 +573,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           timestamp: Date.now(),
           updatedCount: result.updated.length,
           skippedCount: result.skipped.length,
+          evaluatedCount: result.evaluated.length,
           transactionDuration,
           totalRequested: updates.length,
           averageTimePerUpdate: result.updated.length > 0 ? Math.round(transactionDuration / result.updated.length) : 0,
           updatedSymbols: result.updated,
           skippedSymbols: result.skipped,
+          evaluatedSymbols: result.evaluated,
           cacheKey: transactionCacheKey
         }
       );
@@ -687,6 +690,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         message: `Successfully processed price updates for ${priceUpdates.length} cryptos`,
         updatedCount: result.updated.length,
         skippedCount: result.skipped.length,
+        evaluatedCount: result.evaluated.length,
         totalRequested: updates.length,
         status: 'success',
         requestId,

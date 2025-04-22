@@ -6,11 +6,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     // Get the user from Supabase auth
     const supabase = createClient({ req, res });
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data } = await supabase.auth.getUser();
     
-    if (!user) {
+    if (!data || !data.user) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    
+    const user = data.user;
     
     // Handle GET request to fetch settings
     if (req.method === 'GET') {
@@ -54,6 +56,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           totalValue: 0,
           websocketProvider: 'kraken',
           tradingPlatform: 'kraken',
+          purchasePrice: null,
           processingStatus: 'idle'
         };
         
@@ -103,6 +106,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           totalValue: 0,
           websocketProvider: 'kraken',
           tradingPlatform: 'kraken',
+          purchasePrice: null,
           processingStatus: 'idle'
         };
         
@@ -120,6 +124,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           tradingPlatform: settings.tradingPlatform && ['kraken', 'coinbase'].includes(settings.tradingPlatform) 
             ? settings.tradingPlatform 
             : defaultSettings.tradingPlatform,
+          purchasePrice: settings.purchasePrice !== undefined && !isNaN(Number(settings.purchasePrice)) ? 
+            Number(settings.purchasePrice) : null,
           processingStatus: settings.processingStatus || defaultSettings.processingStatus
         };
         
@@ -136,6 +142,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             totalValue: validatedSettings.totalValue,
             websocketProvider: validatedSettings.websocketProvider,
             tradingPlatform: validatedSettings.tradingPlatform,
+            purchasePrice: validatedSettings.purchasePrice,
             processingStatus: validatedSettings.processingStatus,
             updatedAt: new Date()
           },
@@ -148,6 +155,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             totalValue: validatedSettings.totalValue,
             websocketProvider: validatedSettings.websocketProvider,
             tradingPlatform: validatedSettings.tradingPlatform,
+            purchasePrice: validatedSettings.purchasePrice,
             processingStatus: 'idle'
           }
         });

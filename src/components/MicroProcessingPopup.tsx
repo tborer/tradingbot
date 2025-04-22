@@ -16,6 +16,7 @@ export interface MicroProcessingSettings {
   totalValue: number;
   websocketProvider: 'kraken' | 'coinbase';
   tradingPlatform: 'kraken' | 'coinbase';
+  purchasePrice?: number;
 }
 
 interface MicroProcessingPopupProps {
@@ -46,7 +47,8 @@ export default function MicroProcessingPopup({
     tradeByValue: false,
     totalValue: 0,
     websocketProvider: 'kraken',
-    tradingPlatform: 'kraken'
+    tradingPlatform: 'kraken',
+    purchasePrice: undefined
   };
   
   // Merge initial settings with defaults, ensuring all values are of the correct type
@@ -58,7 +60,8 @@ export default function MicroProcessingPopup({
     tradeByValue: initialSettings?.tradeByValue ?? defaultSettings.tradeByValue,
     totalValue: Number(initialSettings?.totalValue) || defaultSettings.totalValue,
     websocketProvider: initialSettings?.websocketProvider || defaultSettings.websocketProvider,
-    tradingPlatform: initialSettings?.tradingPlatform || defaultSettings.tradingPlatform
+    tradingPlatform: initialSettings?.tradingPlatform || defaultSettings.tradingPlatform,
+    purchasePrice: initialSettings?.purchasePrice
   }));
   
   // Update settings when initialSettings change
@@ -71,7 +74,8 @@ export default function MicroProcessingPopup({
       tradeByValue: initialSettings?.tradeByValue ?? defaultSettings.tradeByValue,
       totalValue: Number(initialSettings?.totalValue) || defaultSettings.totalValue,
       websocketProvider: initialSettings?.websocketProvider || defaultSettings.websocketProvider,
-      tradingPlatform: initialSettings?.tradingPlatform || defaultSettings.tradingPlatform
+      tradingPlatform: initialSettings?.tradingPlatform || defaultSettings.tradingPlatform,
+      purchasePrice: initialSettings?.purchasePrice
     });
   }, [initialSettings]);
   
@@ -103,7 +107,9 @@ export default function MicroProcessingPopup({
       tradeByValue: Boolean(settings.tradeByValue),
       totalValue: Number(settings.totalValue) || 0,
       websocketProvider: settings.websocketProvider || 'kraken',
-      tradingPlatform: settings.tradingPlatform || 'kraken'
+      tradingPlatform: settings.tradingPlatform || 'kraken',
+      purchasePrice: settings.purchasePrice !== undefined && !isNaN(Number(settings.purchasePrice)) ? 
+        Number(settings.purchasePrice) : undefined
     };
     
     setIsSubmitting(true);
@@ -276,6 +282,25 @@ export default function MicroProcessingPopup({
                 <Label htmlFor="platform-coinbase">Coinbase</Label>
               </div>
             </RadioGroup>
+          </div>
+          
+          {/* Purchase Price */}
+          <div className="space-y-2">
+            <Label htmlFor="purchase-price" className="text-sm font-medium">
+              Purchase Price (USD)
+            </Label>
+            <Input
+              id="purchase-price"
+              type="number"
+              min="0.00000001"
+              step="0.00000001"
+              value={settings.purchasePrice || ''}
+              onChange={(e) => setSettings({...settings, purchasePrice: Number(e.target.value) || undefined})}
+              placeholder="Enter purchase price (optional)"
+            />
+            <p className="text-xs text-muted-foreground">
+              The purchase price to use for sell calculations. If not set, the last buy price will be used.
+            </p>
           </div>
         </div>
         

@@ -155,9 +155,11 @@ export async function processMicroSell(cryptoId: string, symbol: string, userId:
       return;
     }
 
-    // Check if we have a last buy price to compare against
-    if (!settings.lastBuyPrice || !settings.lastBuyShares) {
-      autoTradeLogger.log(`Micro processing: No last buy information for ${symbol}. Resetting to idle state.`);
+    // Check if we have a price to compare against (either purchase price or last buy price)
+    const referencePrice = settings.purchasePrice || settings.lastBuyPrice;
+    
+    if (!referencePrice || !settings.lastBuyShares) {
+      autoTradeLogger.log(`Micro processing: No reference price or buy shares information for ${symbol}. Resetting to idle state.`);
       await prisma.microProcessingSettings.update({
         where: { cryptoId },
         data: { processingStatus: 'idle' }
@@ -165,8 +167,8 @@ export async function processMicroSell(cryptoId: string, symbol: string, userId:
       return;
     }
 
-    // Calculate the current percentage change from the last buy
-    const percentChange = ((currentPrice - settings.lastBuyPrice) / settings.lastBuyPrice) * 100;
+    // Calculate the current percentage change from the reference price
+    const percentChange = ((currentPrice - referencePrice) / referencePrice) * 100;
 
     // Check if we've reached the sell percentage threshold
     if (percentChange < settings.sellPercentage) {
@@ -205,6 +207,10 @@ export async function processMicroSell(cryptoId: string, symbol: string, userId:
       // Calculate the total amount
       const totalAmount = sharesToSell * currentPrice;
 
+      // Calculate profit based on the reference price that was used
+      const referencePrice = settings.purchasePrice || settings.lastBuyPrice;
+      const profit = (currentPrice - referencePrice) * sharesToSell;
+      
       // Create the transaction
       const transaction = await prisma.cryptoTransaction.create({
         data: {
@@ -214,7 +220,7 @@ export async function processMicroSell(cryptoId: string, symbol: string, userId:
           price: currentPrice,
           totalAmount,
           userId,
-          logInfo: `Micro processing sell: ${sharesToSell} shares at $${currentPrice}. Profit: ${(currentPrice - settings.lastBuyPrice) * sharesToSell}`
+          logInfo: `Micro processing sell: ${sharesToSell} shares at $${currentPrice}. Reference price: $${referencePrice}. Profit: ${profit.toFixed(2)}`
         }
       });
 
@@ -250,8 +256,8 @@ export async function processMicroSell(cryptoId: string, symbol: string, userId:
           processingStatus: 'idle' // Reset to idle state for next cycle
         }
       });
-
-      autoTradeLogger.log(`Micro processing: Successfully sold ${sharesToSell} shares of ${symbol} at $${currentPrice}. Total: $${totalAmount}. Profit: ${(currentPrice - settings.lastBuyPrice) * sharesToSell}. Transaction ID: ${transaction.id}`);
+      
+      autoTradeLogger.log(`Micro processing: Successfully sold ${sharesToSell} shares of ${symbol} at $${currentPrice}. Total: $${totalAmount}. Profit: ${profit.toFixed(2)}. Reference price: $${referencePrice}. Transaction ID: ${transaction.id}`);
     } finally {
       // Release the lock
       await autoTradeLock.releaseLock(cryptoId);

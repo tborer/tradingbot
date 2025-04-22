@@ -16,6 +16,27 @@ export interface DrawdownDrawupAnalysis {
   stdDevDrawup?: number;   // Added standard deviation
   medianDrawdown?: number; // Added median
   medianDrawup?: number;   // Added median
+  minProfitableChange?: number; // Added minimum profitable change
+}
+
+/**
+ * Calculates the minimum percentage price change required to be profitable
+ * when the same fee rate applies to both buying and selling.
+ * 
+ * @param buyPrice The price at which the cryptocurrency was bought.
+ * @param feeRate The fee rate for both buying and selling (e.g., 0.004 for 0.4%).
+ * @returns The minimum percentage price change required for profit.
+ *          Returns null if the fee rate is invalid.
+ */
+export function calculateMinProfitableChange(buyPrice: number, feeRate: number): number | null {
+  if (!(0 <= feeRate && feeRate < 1)) {
+    return null; // Invalid fee rate
+  }
+
+  const minSellPrice = (buyPrice * (1 + feeRate)) / (1 - feeRate);
+  const minPercentageChange = ((minSellPrice - buyPrice) / buyPrice) * 100;
+
+  return minPercentageChange;
 }
 
 /**

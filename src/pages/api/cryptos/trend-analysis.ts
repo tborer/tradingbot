@@ -318,6 +318,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log(`[${requestId}] Calculating drawdown and drawup analysis for ${priceData.length} price points`);
     const analysis = calculateDrawdownDrawup(priceData);
     
+    // Calculate minimum profitable change with default fee rate of 0.4%
+    const defaultFeeRate = 0.004; // 0.4% fee rate
+    const currentPrice = priceData[priceData.length - 1]; // Use the most recent price
+    const minProfitableChange = calculateMinProfitableChange(currentPrice, defaultFeeRate);
+    
+    // Add minimum profitable change to analysis results
+    if (analysis && minProfitableChange !== null) {
+      analysis.minProfitableChange = minProfitableChange;
+    }
+    
     if (!analysis) {
       const errorDetails = createAndLogError(
         ErrorCategory.API,

@@ -24,6 +24,7 @@ interface DrawdownDrawupData {
   stdDevDrawup: number;
   medianDrawdown: number;
   medianDrawup: number;
+  minProfitableChange?: number;
 }
 
 interface AnalysisData {
@@ -98,7 +99,8 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
             stdDevDrawdown: analysis.stdDevDrawdown,
             stdDevDrawup: analysis.stdDevDrawup,
             medianDrawdown: analysis.medianDrawdown,
-            medianDrawup: analysis.medianDrawup
+            medianDrawup: analysis.medianDrawup,
+            minProfitableChange: analysis.minProfitableChange
           }
         };
         
@@ -208,6 +210,19 @@ const TrendsPopup: React.FC<TrendsPopupProps> = ({ isOpen, onClose, symbol }) =>
                 <CardContent className="pt-6">
                   <h3 className="text-lg font-medium mb-2">Drawdown & Drawup Analysis</h3>
                   <div className="grid grid-cols-2 gap-4">
+                    {/* Minimum Profitable Change Indicator - New Section */}
+                    {analysisData.drawdownDrawup?.minProfitableChange !== undefined && (
+                      <div className="col-span-2 mb-2 p-3 bg-muted rounded-md border border-muted-foreground/20">
+                        <h4 className="text-sm font-medium mb-1">Minimum Profitable Change (0.4% fee)</h4>
+                        <p className="text-xl font-semibold text-primary">
+                          {analysisData.drawdownDrawup.minProfitableChange.toFixed(4)}%
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Minimum price increase needed for a profitable trade with 0.4% fee on both buy and sell
+                        </p>
+                      </div>
+                    )}
+                    
                     <div>
                       <p className="text-sm text-muted-foreground">Max Drawdown</p>
                       <p className="text-lg font-medium">

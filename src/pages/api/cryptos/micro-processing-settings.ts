@@ -29,20 +29,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
       
       if (!crypto) {
+        console.error(`Crypto not found for id: ${cryptoId} and userId: ${user.id}`);
         return res.status(404).json({ error: 'Crypto not found' });
       }
       
       // Get the micro processing settings
-      const microProcessingSettings = await prisma.microProcessingSettings.findFirst({
+      const microProcessingSettings = await prisma.microProcessingSettings.findUnique({
         where: {
           cryptoId: cryptoId
         }
       });
       
+      console.log(`Fetched micro processing settings for cryptoId: ${cryptoId}`, 
+                  microProcessingSettings ? 'Settings found' : 'No settings found');
+      
       return res.status(200).json({ microProcessingSettings });
     } catch (error) {
       console.error('Error fetching micro processing settings:', error);
-      return res.status(500).json({ error: 'Failed to fetch micro processing settings' });
+      return res.status(500).json({ error: 'Failed to fetch micro processing settings', details: error.message });
     }
   }
   

@@ -408,6 +408,8 @@ export default function SortableCryptoList({
   
   const handleOpenMicroProcessingModal = async (id: string, symbol: string) => {
     try {
+      console.log(`Fetching micro processing settings for crypto: ${symbol} (${id})`);
+      
       // Fetch the current micro processing settings for this specific crypto
       const response = await fetch(`/api/cryptos/micro-processing-settings?cryptoId=${id}`, {
         method: "GET",
@@ -415,6 +417,8 @@ export default function SortableCryptoList({
       
       if (response.ok) {
         const data = await response.json();
+        console.log(`Received settings data:`, data);
+        
         if (data.microProcessingSettings) {
           // Use the fetched settings
           setCurrentMicroProcessingSettings({
@@ -424,7 +428,9 @@ export default function SortableCryptoList({
             websocketProvider: data.microProcessingSettings.websocketProvider,
             tradingPlatform: data.microProcessingSettings.tradingPlatform,
           });
+          console.log(`Successfully loaded existing settings for ${symbol}`);
         } else {
+          console.log(`No existing settings found for ${symbol}, using defaults`);
           // Reset to default settings if none exist for this crypto
           setCurrentMicroProcessingSettings({
             enabled: false,
@@ -435,6 +441,16 @@ export default function SortableCryptoList({
           });
         }
       } else {
+        // Try to get more detailed error information
+        let errorMessage = "Failed to load micro processing settings";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.details || errorMessage;
+          console.error("API error details:", errorData);
+        } catch (parseError) {
+          console.error("Could not parse error response:", parseError);
+        }
+        
         // Reset to default settings if there was an error
         setCurrentMicroProcessingSettings({
           enabled: false,
@@ -443,11 +459,12 @@ export default function SortableCryptoList({
           websocketProvider: 'kraken',
           tradingPlatform: 'kraken'
         });
-        console.error("Failed to fetch micro processing settings");
+        
+        console.error(`Failed to fetch micro processing settings: ${errorMessage}`);
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Failed to load micro processing settings for this cryptocurrency. Default settings will be used.",
+          description: `Failed to load micro processing settings: ${errorMessage}. Default settings will be used.`,
         });
       }
     } catch (error) {
@@ -463,7 +480,7 @@ export default function SortableCryptoList({
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to load micro processing settings for this cryptocurrency. Default settings will be used.",
+        description: `Failed to load micro processing settings: ${error.message}. Default settings will be used.`,
       });
     }
     

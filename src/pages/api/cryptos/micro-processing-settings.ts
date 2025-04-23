@@ -60,9 +60,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           processingStatus: 'idle'
         };
         
-        return res.status(200).json({ 
-          microProcessingSettings: microProcessingSettings || defaultSettings
-        });
+        // Return the settings directly without nesting them in a microProcessingSettings property
+        return res.status(200).json(microProcessingSettings || defaultSettings);
       } catch (error) {
         console.error('Error fetching micro processing settings:', error);
         return res.status(500).json({ 
@@ -118,10 +117,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           tradeByShares: settings.tradeByShares !== undefined ? Number(settings.tradeByShares) || defaultSettings.tradeByShares : defaultSettings.tradeByShares,
           tradeByValue: settings.tradeByValue !== undefined ? Boolean(settings.tradeByValue) : defaultSettings.tradeByValue,
           totalValue: settings.totalValue !== undefined ? Number(settings.totalValue) || defaultSettings.totalValue : defaultSettings.totalValue,
-          websocketProvider: settings.websocketProvider && ['kraken', 'coinbase'].includes(settings.websocketProvider) 
+          websocketProvider: settings.websocketProvider && ['kraken', 'coinbase', 'binance'].includes(settings.websocketProvider) 
             ? settings.websocketProvider 
             : defaultSettings.websocketProvider,
-          tradingPlatform: settings.tradingPlatform && ['kraken', 'coinbase'].includes(settings.tradingPlatform) 
+          tradingPlatform: settings.tradingPlatform && ['kraken', 'coinbase', 'binance'].includes(settings.tradingPlatform) 
             ? settings.tradingPlatform 
             : defaultSettings.tradingPlatform,
           purchasePrice: settings.purchasePrice !== undefined && !isNaN(Number(settings.purchasePrice)) ? 

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -14,8 +14,8 @@ export interface MicroProcessingSettings {
   tradeByShares: number;
   tradeByValue: boolean;
   totalValue: number;
-  websocketProvider: 'kraken' | 'coinbase';
-  tradingPlatform: 'kraken' | 'coinbase';
+  websocketProvider: 'kraken' | 'coinbase' | 'binance';
+  tradingPlatform: 'kraken' | 'coinbase' | 'binance';
   purchasePrice?: number;
 }
 
@@ -245,43 +245,41 @@ export default function MicroProcessingPopup({
           {/* WebSocket Provider */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">WebSocket Provider</Label>
-            <RadioGroup
+            <Select
               value={settings.websocketProvider}
-              onValueChange={(value: 'kraken' | 'coinbase') => 
+              onValueChange={(value: 'kraken' | 'coinbase' | 'binance') => 
                 setSettings({...settings, websocketProvider: value})
               }
-              className="flex space-x-4"
             >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="kraken" id="websocket-kraken" />
-                <Label htmlFor="websocket-kraken">Kraken</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="coinbase" id="websocket-coinbase" />
-                <Label htmlFor="websocket-coinbase">Coinbase</Label>
-              </div>
-            </RadioGroup>
+              <SelectTrigger>
+                <SelectValue placeholder="Select WebSocket Provider" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="kraken">Kraken</SelectItem>
+                <SelectItem value="coinbase">Coinbase</SelectItem>
+                <SelectItem value="binance">Binance</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           
           {/* Trading Platform */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Trading Platform</Label>
-            <RadioGroup
+            <Select
               value={settings.tradingPlatform}
-              onValueChange={(value: 'kraken' | 'coinbase') => 
+              onValueChange={(value: 'kraken' | 'coinbase' | 'binance') => 
                 setSettings({...settings, tradingPlatform: value})
               }
-              className="flex space-x-4"
             >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="kraken" id="platform-kraken" />
-                <Label htmlFor="platform-kraken">Kraken</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="coinbase" id="platform-coinbase" />
-                <Label htmlFor="platform-coinbase">Coinbase</Label>
-              </div>
-            </RadioGroup>
+              <SelectTrigger>
+                <SelectValue placeholder="Select Trading Platform" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="kraken">Kraken</SelectItem>
+                <SelectItem value="coinbase">Coinbase</SelectItem>
+                <SelectItem value="binance">Binance</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           
           {/* Purchase Price */}

@@ -146,6 +146,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (finnhubApiKey !== undefined) updateData['finnhubApiKey'] = finnhubApiKey;
         if (krakenApiKey !== undefined) updateData['krakenApiKey'] = krakenApiKey;
         if (krakenApiSign !== undefined) updateData['krakenApiSign'] = krakenApiSign;
+        if (req.body.binanceTradeApi !== undefined) updateData['binanceTradeApi'] = req.body.binanceTradeApi;
+        if (req.body.binanceApiToken !== undefined) updateData['binanceApiToken'] = req.body.binanceApiToken;
         if (alphaVantageApiKey !== undefined) updateData['alphaVantageApiKey'] = alphaVantageApiKey;
         if (coinDeskApiKey !== undefined) updateData['coinDeskApiKey'] = coinDeskApiKey;
         if (req.body.openAIApiKey !== undefined) updateData['openAIApiKey'] = req.body.openAIApiKey;

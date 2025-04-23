@@ -747,6 +747,8 @@ export default function Dashboard() {
           krakenWebsocketUrl: settings.krakenWebsocketUrl,
           krakenApiKey: settings.krakenApiKey,
           krakenApiSign: settings.krakenApiSign,
+          binanceTradeApi: settings.binanceTradeApi,
+          binanceApiToken: settings.binanceApiToken,
         }),
       });
       
@@ -1829,6 +1831,39 @@ export default function Dashboard() {
                           </div>
                           <p className="text-sm text-muted-foreground">
                             These credentials are required for manual crypto trading functionality. The API endpoint used is: https://api.kraken.com/0/private/AddOrder
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="border-t pt-4 mt-4">
+                        <h3 className="text-lg font-medium mb-2">Binance API Integration</h3>
+                        <div className="space-y-4">
+                          <div>
+                            <Label htmlFor="binanceTradeApi">Binance Trade API</Label>
+                            <Input
+                              id="binanceTradeApi"
+                              type="password"
+                              placeholder="Enter your Binance Trade API"
+                              value={settings.binanceTradeApi || ""}
+                              onChange={(e) => 
+                                setSettings({ ...settings, binanceTradeApi: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="binanceApiToken">Binance API Token</Label>
+                            <Input
+                              id="binanceApiToken"
+                              type="password"
+                              placeholder="Enter your Binance API Token"
+                              value={settings.binanceApiToken || ""}
+                              onChange={(e) => 
+                                setSettings({ ...settings, binanceApiToken: e.target.value })
+                              }
+                            />
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            These credentials are required for trading with Binance. Make sure to enable the appropriate permissions in your Binance account.
                           </p>
                         </div>
                       </div>

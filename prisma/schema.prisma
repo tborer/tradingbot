@@ -45,6 +45,8 @@ model Settings {
   finnhubApiKey     String?
   krakenApiKey      String?
   krakenApiSign     String?
+  binanceTradeApi   String?
+  binanceApiToken   String?
   alphaVantageApiKey String?
   coinDeskApiKey    String?
   openAIApiKey      String?
@@ -164,8 +166,8 @@ model MicroProcessingSettings {
   tradeByShares     Float    @default(0)
   tradeByValue      Boolean  @default(false)
   totalValue        Float    @default(0)
-  websocketProvider String   @default("kraken") // 'kraken' or 'coinbase'
-  tradingPlatform   String   @default("kraken") // 'kraken' or 'coinbase'
+  websocketProvider String   @default("kraken") // 'kraken', 'coinbase', or 'binance'
+  tradingPlatform   String   @default("kraken") // 'kraken', 'coinbase', or 'binance'
   purchasePrice     Float?   // The purchase price to use for sell calculations
   lastBuyPrice      Float?
   lastBuyShares     Float?

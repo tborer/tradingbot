@@ -432,11 +432,8 @@ export default function SortableCryptoList({
       
       if (response.ok) {
         try {
-          const data = await response.json();
-          console.log(`Received settings data:`, data);
-          
-          // Ensure we have a valid settings object
-          const settings = data.microProcessingSettings || defaultSettings;
+          const settings = await response.json();
+          console.log(`Received settings data:`, settings);
           
           // Use the fetched settings with proper type conversion
           setCurrentMicroProcessingSettings({
@@ -447,6 +444,7 @@ export default function SortableCryptoList({
             totalValue: Number(settings.totalValue) || 0,
             websocketProvider: settings.websocketProvider || 'kraken',
             tradingPlatform: settings.tradingPlatform || 'kraken',
+            purchasePrice: settings.purchasePrice !== null ? Number(settings.purchasePrice) : undefined
           });
           
           console.log(`Successfully loaded settings for ${symbol}`);
@@ -521,13 +519,19 @@ export default function SortableCryptoList({
         totalValue: Number(settings.totalValue) || 0,
         websocketProvider: settings.websocketProvider || 'kraken',
         tradingPlatform: settings.tradingPlatform || 'kraken',
+        purchasePrice: settings.purchasePrice !== undefined ? Number(settings.purchasePrice) : null,
         processingStatus: 'idle' // Always reset to idle when saving
       };
+      
+      console.log("Sending settings to API:", JSON.stringify(validatedSettings, null, 2));
       
       // Save the micro processing settings to the backend
       const response = await fetch(`/api/cryptos/micro-processing-settings`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
         body: JSON.stringify({
           cryptoId: selectedMicroProcessingCrypto.id,
           settings: validatedSettings

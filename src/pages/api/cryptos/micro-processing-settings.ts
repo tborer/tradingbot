@@ -73,12 +73,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   
     // Handle POST request to save settings
     if (req.method === 'POST') {
+      // Safely extract and validate the request body
+      if (!req.body) {
+        return res.status(400).json({ error: 'Missing request body' });
+      }
+      
       const { cryptoId, settings } = req.body;
       
       if (!cryptoId) {
         return res.status(400).json({ error: 'Missing cryptoId in request body' });
       }
       
+      // Ensure settings is a valid object
       if (!settings || typeof settings !== 'object') {
         return res.status(400).json({ error: 'Missing or invalid settings in request body' });
       }
@@ -159,7 +165,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         });
         
-        return res.status(200).json({ microProcessingSettings });
+        // Return the settings directly without nesting them in a microProcessingSettings property
+        // This matches the format expected by the client and the GET endpoint
+        return res.status(200).json(microProcessingSettings);
       } catch (error) {
         console.error('Error saving micro processing settings:', error);
         return res.status(500).json({ 

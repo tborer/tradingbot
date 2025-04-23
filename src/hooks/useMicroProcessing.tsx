@@ -36,23 +36,30 @@ export function useMicroProcessing() {
       const cryptosWithSettings = await Promise.all(
         cryptos.map(async (crypto: any) => {
           try {
+            console.log(`Fetching micro processing settings for ${crypto.symbol} (${crypto.id})`);
             const settingsResponse = await fetch(`/api/cryptos/micro-processing-settings?cryptoId=${crypto.id}`);
             
-            if (settingsResponse.ok) {
-              const settings = await settingsResponse.json();
-              
-              // Only include enabled settings
-              if (settings.enabled) {
-                return {
-                  ...crypto,
-                  currentPrice: crypto.lastPrice || crypto.currentPrice,
-                  microProcessingSettings: settings
-                };
-              }
+            if (!settingsResponse.ok) {
+              const errorData = await settingsResponse.json();
+              console.error(`Failed to fetch micro processing settings for ${crypto.symbol}:`, errorData);
+              throw new Error(`API error details: ${JSON.stringify(errorData)}`);
+            }
+            
+            const settings = await settingsResponse.json();
+            console.log(`Received settings for ${crypto.symbol}:`, settings);
+            
+            // Only include enabled settings
+            if (settings.enabled) {
+              return {
+                ...crypto,
+                currentPrice: crypto.lastPrice || crypto.currentPrice,
+                microProcessingSettings: settings
+              };
             }
             return null;
           } catch (err) {
             console.error(`Error fetching settings for ${crypto.symbol}:`, err);
+            setError(`Failed to fetch micro processing settings: ${err.message}`);
             return null;
           }
         })

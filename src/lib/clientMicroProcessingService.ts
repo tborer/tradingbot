@@ -385,6 +385,11 @@ async function updateServerState(
   settings: Partial<MicroProcessingSettings>
 ): Promise<void> {
   try {
+    console.log(`Updating server state for crypto ${cryptoId} with settings:`, settings);
+    
+    // Ensure settings is not null or undefined
+    const validSettings = settings || {};
+    
     const response = await fetch('/api/cryptos/micro-processing-settings', {
       method: 'POST',
       headers: {
@@ -392,16 +397,21 @@ async function updateServerState(
       },
       body: JSON.stringify({
         cryptoId,
-        settings
+        settings: validSettings
       }),
     });
     
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('Failed to update server state:', errorData);
+      console.error(`Failed to update server state for crypto ${cryptoId}:`, errorData);
+      throw new Error(`API error: ${errorData.error || 'Unknown error'} - ${errorData.details || ''}`);
+    } else {
+      console.log(`Successfully updated server state for crypto ${cryptoId}`);
     }
   } catch (error) {
-    console.error('Error updating server state:', error);
+    console.error(`Error updating server state for crypto ${cryptoId}:`, error);
+    // Re-throw the error to allow the caller to handle it
+    throw error;
   }
 }
 

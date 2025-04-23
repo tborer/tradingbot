@@ -75,18 +75,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'POST') {
       // Safely extract and validate the request body
       if (!req.body) {
+        console.error('POST request missing body');
         return res.status(400).json({ error: 'Missing request body' });
       }
+      
+      console.log('POST request body:', req.body);
       
       const { cryptoId, settings } = req.body;
       
       if (!cryptoId) {
+        console.error('Missing cryptoId in request body');
         return res.status(400).json({ error: 'Missing cryptoId in request body' });
       }
       
       // Ensure settings is a valid object
-      if (!settings || typeof settings !== 'object') {
-        return res.status(400).json({ error: 'Missing or invalid settings in request body' });
+      if (!settings) {
+        console.error(`Invalid settings for cryptoId ${cryptoId}: settings is ${settings}`);
+        return res.status(400).json({ error: 'Missing settings in request body' });
+      }
+      
+      if (typeof settings !== 'object') {
+        console.error(`Invalid settings type for cryptoId ${cryptoId}: ${typeof settings}`);
+        return res.status(400).json({ error: 'Settings must be an object' });
       }
       
       try {
@@ -182,9 +192,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (error) {
     // Global error handler to ensure we always return JSON
     console.error('Unhandled error in micro-processing-settings API:', error);
+    
+    // Log more details about the error
+    console.error('Error stack:', error.stack);
+    console.error('Request method:', req.method);
+    console.error('Request query:', req.query);
+    console.error('Request body:', req.body);
+    
     return res.status(500).json({ 
       error: 'An unexpected error occurred', 
-      details: error.message || 'Unknown error'
+      details: error.message || 'Unknown error',
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }

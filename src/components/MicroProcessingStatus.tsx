@@ -31,12 +31,47 @@ export default function MicroProcessingStatus() {
         setLogs([]);
       }
     }
+    
+    // Log component mount
+    const timestamp = new Date().toLocaleTimeString();
+    const mountLog = `[${timestamp}] 🟢 Micro processing status component mounted`;
+    setLogs(prevLogs => [mountLog, ...prevLogs].slice(0, 100));
+    
+    return () => {
+      // Log component unmount
+      const unmountTimestamp = new Date().toLocaleTimeString();
+      const unmountLog = `[${unmountTimestamp}] 🔵 Micro processing status component unmounted`;
+      const currentLogs = JSON.parse(localStorage.getItem('microProcessingLogs') || '[]');
+      localStorage.setItem('microProcessingLogs', JSON.stringify([unmountLog, ...currentLogs].slice(0, 100)));
+    };
   }, []);
   
   // Add a log entry
-  const addLog = (message: string) => {
+  const addLog = (message: string, level: 'info' | 'warning' | 'error' = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
-    const logEntry = `[${timestamp}] ${message}`;
+    let prefix = '';
+    
+    switch (level) {
+      case 'warning':
+        prefix = '⚠️ ';
+        break;
+      case 'error':
+        prefix = '🔴 ';
+        break;
+      default:
+        prefix = '📝 ';
+    }
+    
+    const logEntry = `[${timestamp}] ${prefix}${message}`;
+    
+    // Also log to console for debugging
+    if (level === 'error') {
+      console.error(message);
+    } else if (level === 'warning') {
+      console.warn(message);
+    } else {
+      console.log(message);
+    }
     
     setLogs(prevLogs => {
       // Keep only the last 100 logs
@@ -52,21 +87,24 @@ export default function MicroProcessingStatus() {
   // Handle manual refresh
   const handleRefresh = async () => {
     try {
+      addLog('Starting manual refresh of micro processing cryptos');
       await refreshCryptos();
       setLastRefreshed(new Date());
-      addLog('Manually refreshed micro processing cryptos');
+      addLog('Successfully refreshed micro processing cryptos');
       
       toast({
         title: "Refreshed",
         description: "Micro processing data has been refreshed.",
       });
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       console.error('Error refreshing micro processing:', err);
+      addLog(`Error refreshing micro processing: ${errorMessage}`, 'error');
       
       toast({
         variant: "destructive",
         title: "Refresh Failed",
-        description: "Failed to refresh micro processing data.",
+        description: `Failed to refresh micro processing data: ${errorMessage}`,
       });
     }
   };

@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useMicroProcessing } from "@/hooks/useMicroProcessing";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ import { parseKrakenMessage, createKrakenSubscription, shouldSellCrypto, shouldB
 import KrakenPriceMonitor from "@/components/KrakenPriceMonitor";
 import KrakenBalance from "@/components/KrakenBalance";
 import USDBalance from "@/components/USDBalance";
+import MicroProcessingStatus from "@/components/MicroProcessingStatus";
 import SortableStockList from "@/components/SortableStockList";
 import SortableCryptoList from "@/components/SortableCryptoList";
 import TransactionHistory from "@/components/TransactionHistory";
@@ -41,6 +43,7 @@ export default function Dashboard() {
   const { toast } = useToast();
   const [stocks, setStocks] = useState<StockWithCurrentPrice[]>([]);
   const [cryptos, setCryptos] = useState<CryptoWithPrice[]>([]);
+  const { handlePriceUpdate } = useMicroProcessing();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [newStock, setNewStock] = useState({ ticker: "", purchasePrice: "", shares: "" });
   const [newCrypto, setNewCrypto] = useState({ symbol: "", purchasePrice: "", shares: "" });
@@ -516,6 +519,9 @@ export default function Dashboard() {
     }
     
     console.log('Updating crypto prices with:', JSON.stringify(cryptoPrices));
+    
+    // Also update prices in the micro processing service
+    handlePriceUpdate(cryptoPrices);
     
     setCryptos(prevCryptos => {
       const updatedCryptos = prevCryptos.map(crypto => {
@@ -1589,6 +1595,9 @@ export default function Dashboard() {
                 onPriceUpdate={updateCryptoPrices}
               />
             )}
+            
+            {/* Micro Processing Status */}
+            <MicroProcessingStatus />
             
             {/* Fix Auto Trade Flags */}
             <FixAutoTradeFlags />

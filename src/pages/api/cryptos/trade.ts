@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
 import { getApiUrl } from '@/lib/utils';
+import { autoTradeLogger } from '@/lib/autoTradeLogger';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -69,7 +70,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(403).json({ error: 'Manual crypto trading is not enabled. Please enable it in settings.' });
     }
     
-    const { cryptoId, action, shares, orderType, totalValue, purchaseMethod } = req.body;
+    const { cryptoId, action, shares, orderType, totalValue, purchaseMethod, microProcessing } = req.body;
     
     // Determine if we're buying by total value
     const isBuyingByTotalValue = purchaseMethod === 'totalValue' && totalValue && totalValue > 0;
@@ -123,6 +124,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: `Not enough shares to sell. You only have ${crypto.shares.toFixed(8)} shares available.` });
     }
     
+    // Get the latest price from the Kraken WebSocket data
+    // If we have a lastPrice stored, use that, otherwise fall back to purchasePrice
+    const currentPrice = crypto.lastPrice || crypto.purchasePrice;
+    
     // Calculate shares to trade if buying by total value
     let sharesToTrade = Number(shares);
     if (isBuyingByTotalValue && action === 'buy') {
@@ -130,12 +135,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log(`Buying by total value: $${totalValue} at price $${currentPrice} = ${sharesToTrade} shares`);
     }
     
-    // Get the latest price from the Kraken WebSocket data
-    // If we have a lastPrice stored, use that, otherwise fall back to purchasePrice
-    const currentPrice = crypto.lastPrice || crypto.purchasePrice;
     const totalAmount = currentPrice * sharesToTrade;
     
     console.log(`Using current price for ${action}: $${currentPrice} (lastPrice: ${crypto.lastPrice}, purchasePrice: ${crypto.purchasePrice})`);
+    
+    // Log micro processing trades
+    if (microProcessing) {
+      autoTradeLogger.log(`Micro processing ${action}: ${sharesToTrade} shares of ${crypto.symbol} at $${currentPrice}. Total: $${totalAmount.toFixed(2)}`);
+    }
     
     // Execute the order using the Kraken API
     try {
@@ -160,6 +167,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           price: currentPrice,
           orderType: effectiveOrderType,
           isAutoOrder: req.body.isAutoOrder || false,
+          microProcessing: microProcessing || false,
           totalValue: isBuyingByTotalValue ? Number(totalValue) : undefined,
           purchaseMethod: isBuyingByTotalValue ? 'totalValue' : 'shares'
         })
@@ -185,12 +193,48 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       }
 
+      // If this is a micro processing trade, update the micro processing settings
+      if (microProcessing) {
+        try {
+          // Update the micro processing settings based on the action
+          if (action === 'buy') {
+            await prisma.microProcessingSettings.update({
+              where: { cryptoId: crypto.id },
+              data: {
+                lastBuyPrice: currentPrice,
+                lastBuyShares: sharesToTrade,
+                lastBuyTimestamp: new Date(),
+                processingStatus: 'selling'
+              }
+            });
+            
+            autoTradeLogger.log(`Updated micro processing settings for ${crypto.symbol} after buy: lastBuyPrice=${currentPrice}, lastBuyShares=${sharesToTrade}, status=selling`);
+          } else if (action === 'sell') {
+            await prisma.microProcessingSettings.update({
+              where: { cryptoId: crypto.id },
+              data: {
+                lastBuyPrice: null,
+                lastBuyShares: null,
+                lastBuyTimestamp: null,
+                processingStatus: 'idle'
+              }
+            });
+            
+            autoTradeLogger.log(`Reset micro processing settings for ${crypto.symbol} after sell: status=idle`);
+          }
+        } catch (settingsError) {
+          console.error('Error updating micro processing settings:', settingsError);
+          // Don't fail the transaction if settings update fails
+        }
+      }
+      
       // Return the transaction from the execute-order API
       return res.status(200).json({
         transaction: executeOrderResult.transaction,
         newShares: executeOrderResult.transaction.shares,
         message: executeOrderResult.message,
-        krakenOrderId: executeOrderResult.krakenOrderId
+        krakenOrderId: executeOrderResult.krakenOrderId,
+        microProcessing: microProcessing || false
       });
     } catch (error) {
       console.error('Error executing order via Kraken API:', error);

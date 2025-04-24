@@ -8,130 +8,99 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   console.log(`[MICRO-SETTINGS] Request URL: ${req.url}`);
   console.log(`[MICRO-SETTINGS] Request query params:`, req.query);
   
-  // Define user variable at the function scope level so it's accessible throughout
-  let user: any = null;
-  
   try {
-    // Get the user from Supabase auth
+    // Get the user from Supabase auth - simplified authentication
     console.log('[MICRO-SETTINGS] Authenticating user with Supabase');
     const supabase = createClient({ req, res });
+    const { data } = await supabase.auth.getUser();
     
-    try {
-      const { data } = await supabase.auth.getUser();
-      console.log('[MICRO-SETTINGS] Supabase auth response:', data ? 'Data received' : 'No data received');
-    
-      if (!data || !data.user) {
-        console.error('[MICRO-SETTINGS] Authentication failed: No user found');
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-      
-      user = data.user;
-      console.log(`[MICRO-SETTINGS] User authenticated: ${user.id}`);
-    } catch (authError) {
-      console.error('[MICRO-SETTINGS] Supabase authentication error:', authError);
-      console.error('[MICRO-SETTINGS] Auth error stack:', authError instanceof Error ? authError.stack : 'No stack trace available');
-      return res.status(401).json({ 
-        error: 'Authentication failed', 
-        details: authError instanceof Error ? authError.message : 'Unknown authentication error' 
-      });
+    if (!data || !data.user) {
+      console.error('[MICRO-SETTINGS] Authentication failed: No user found');
+      return res.status(401).json({ error: 'Unauthorized' });
     }
+    
+    const user = data.user;
+    console.log(`[MICRO-SETTINGS] User authenticated: ${user.id}`);
     
     // Handle GET request to fetch settings
     if (req.method === 'GET') {
       console.log('[MICRO-SETTINGS] Processing GET request');
-      const { cryptoId } = req.query;
+      const { cryptoId, includeEnabledCryptos } = req.query;
       
-      console.log(`[MICRO-SETTINGS] GET request for cryptoId: ${cryptoId}`);
+      // New consolidated endpoint to get all cryptos with their micro processing settings
+      if (includeEnabledCryptos === 'true') {
+        console.log('[MICRO-SETTINGS] Fetching all cryptos with micro processing settings');
+        
+        try {
+          // Get all cryptos for this user with their micro processing settings in a single query
+          const cryptosWithSettings = await prisma.crypto.findMany({
+            where: {
+              userId: user.id
+            },
+            include: {
+              microProcessingSettings: true
+            }
+          });
+          
+          console.log(`[MICRO-SETTINGS] Found ${cryptosWithSettings.length} cryptos for user`);
+          
+          // Map the results to include currentPrice from lastPrice
+          const formattedCryptos = cryptosWithSettings.map(crypto => ({
+            ...crypto,
+            currentPrice: crypto.lastPrice || crypto.currentPrice,
+            microProcessingSettings: crypto.microProcessingSettings || {
+              enabled: false,
+              sellPercentage: 0.5,
+              tradeByShares: 0,
+              tradeByValue: false,
+              totalValue: 0,
+              websocketProvider: 'kraken',
+              tradingPlatform: 'kraken',
+              purchasePrice: null,
+              processingStatus: 'idle',
+              testMode: false
+            }
+          }));
+          
+          console.log('[MICRO-SETTINGS] Sending successful response with status 200');
+          return res.status(200).json(formattedCryptos);
+        } catch (error) {
+          console.error('[MICRO-SETTINGS] Error fetching cryptos with settings:', error);
+          return res.status(500).json({ 
+            error: 'Failed to fetch cryptos with micro processing settings', 
+            details: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
       
+      // Original single crypto settings endpoint
       if (!cryptoId || typeof cryptoId !== 'string') {
         console.error('[MICRO-SETTINGS] Missing or invalid cryptoId parameter');
         return res.status(400).json({ error: 'Missing or invalid cryptoId parameter' });
       }
       
       try {
-        console.log(`[MICRO-SETTINGS] Verifying crypto ownership for cryptoId: ${cryptoId}`);
         // Check if the crypto belongs to the user
-        console.log(`[MICRO-SETTINGS] Querying database for crypto with id: ${cryptoId} and userId: ${user.id}`);
-        
-        let crypto;
-        try {
-          crypto = await prisma.crypto.findFirst({
-            where: {
-              id: cryptoId,
-              userId: user.id
-            }
-          });
-          console.log(`[MICRO-SETTINGS] Prisma crypto query completed successfully`);
-        } catch (prismaError) {
-          console.error('[MICRO-SETTINGS] Prisma error during crypto query:', prismaError);
-          console.error('[MICRO-SETTINGS] Prisma error details:', {
-            name: prismaError instanceof Error ? prismaError.name : 'Unknown',
-            message: prismaError instanceof Error ? prismaError.message : 'Unknown error',
-            stack: prismaError instanceof Error ? prismaError.stack : 'No stack trace'
-          });
-          throw prismaError; // Re-throw to be caught by the outer try-catch
-        }
-        
-        // Add the requested logging for the crypto object
-        console.log("Crypto object:", crypto);
+        const crypto = await prisma.crypto.findFirst({
+          where: {
+            id: cryptoId,
+            userId: user.id
+          }
+        });
         
         if (!crypto) {
           console.error(`[MICRO-SETTINGS] Crypto not found for id: ${cryptoId} and userId: ${user.id}`);
           return res.status(404).json({ error: 'Crypto not found' });
         }
         
-        console.log(`[MICRO-SETTINGS] Crypto found: ${crypto.symbol} (${crypto.id})`);
-        
         // Get the micro processing settings
-        console.log(`[MICRO-SETTINGS] Fetching micro processing settings for cryptoId: ${cryptoId}`);
+        const microProcessingSettings = await prisma.microProcessingSettings.findUnique({
+          where: {
+            cryptoId: cryptoId
+          }
+        });
         
-        let microProcessingSettings: MicroProcessingSettings | null = null;
-        try {
-          microProcessingSettings = await prisma.microProcessingSettings.findUnique({
-            where: {
-              cryptoId: cryptoId
-            }
-          });
-          console.log(`[MICRO-SETTINGS] Prisma microProcessingSettings query completed successfully`);
-        } catch (prismaError) {
-          console.error('[MICRO-SETTINGS] Prisma error during microProcessingSettings query:', prismaError);
-          console.error('[MICRO-SETTINGS] Prisma error details:', {
-            name: prismaError instanceof Error ? prismaError.name : 'Unknown',
-            message: prismaError instanceof Error ? prismaError.message : 'Unknown error',
-            stack: prismaError instanceof Error ? prismaError.stack : 'No stack trace'
-          });
-          throw prismaError; // Re-throw to be caught by the outer try-catch
-        }
-        
-        // Add the requested logging for the microProcessingSettings object
-        console.log("microProcessingSettings object:", microProcessingSettings);
-        
-        // Log detailed information about the microProcessingSettings object
-        if (microProcessingSettings) {
-          console.log('[MICRO-SETTINGS] Settings found with the following properties:');
-          console.log(`[MICRO-SETTINGS] - id: ${microProcessingSettings.id}`);
-          console.log(`[MICRO-SETTINGS] - cryptoId: ${microProcessingSettings.cryptoId}`);
-          console.log(`[MICRO-SETTINGS] - enabled: ${microProcessingSettings.enabled}`);
-          console.log(`[MICRO-SETTINGS] - sellPercentage: ${microProcessingSettings.sellPercentage}`);
-          console.log(`[MICRO-SETTINGS] - tradeByShares: ${microProcessingSettings.tradeByShares}`);
-          console.log(`[MICRO-SETTINGS] - tradeByValue: ${microProcessingSettings.tradeByValue}`);
-          console.log(`[MICRO-SETTINGS] - totalValue: ${microProcessingSettings.totalValue}`);
-          console.log(`[MICRO-SETTINGS] - websocketProvider: ${microProcessingSettings.websocketProvider}`);
-          console.log(`[MICRO-SETTINGS] - tradingPlatform: ${microProcessingSettings.tradingPlatform}`);
-          console.log(`[MICRO-SETTINGS] - purchasePrice: ${microProcessingSettings.purchasePrice}`);
-          console.log(`[MICRO-SETTINGS] - processingStatus: ${microProcessingSettings.processingStatus}`);
-          console.log(`[MICRO-SETTINGS] - testMode: ${microProcessingSettings.testMode}`);
-          console.log(`[MICRO-SETTINGS] - lastBuyPrice: ${microProcessingSettings.lastBuyPrice}`);
-          console.log(`[MICRO-SETTINGS] - lastBuyShares: ${microProcessingSettings.lastBuyShares}`);
-          console.log(`[MICRO-SETTINGS] - lastBuyTimestamp: ${microProcessingSettings.lastBuyTimestamp}`);
-          console.log(`[MICRO-SETTINGS] - createdAt: ${microProcessingSettings.createdAt}`);
-          console.log(`[MICRO-SETTINGS] - updatedAt: ${microProcessingSettings.updatedAt}`);
-        } else {
-          console.log('[MICRO-SETTINGS] No settings found for this crypto');
-        }
-        
-        // Return settings object if found, or a default settings object if none found
-        // This ensures we always return a valid object structure
+        // Default settings
         const defaultSettings = {
           enabled: false,
           sellPercentage: 0.5,
@@ -145,94 +114,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           testMode: false
         };
         
-        // Explicitly check if microProcessingSettings is null
-        let resultSettings;
+        // Return settings or defaults
+        const resultSettings = microProcessingSettings || {
+          cryptoId: cryptoId,
+          ...defaultSettings,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
         
-        if (!microProcessingSettings) {
-          console.log('[MICRO-SETTINGS] No settings found, using default values');
-          resultSettings = {
-            id: undefined,
-            cryptoId: cryptoId,
-            enabled: defaultSettings.enabled,
-            sellPercentage: defaultSettings.sellPercentage,
-            tradeByShares: defaultSettings.tradeByShares,
-            tradeByValue: defaultSettings.tradeByValue,
-            totalValue: defaultSettings.totalValue,
-            websocketProvider: defaultSettings.websocketProvider,
-            tradingPlatform: defaultSettings.tradingPlatform,
-            purchasePrice: null,
-            processingStatus: defaultSettings.processingStatus,
-            testMode: defaultSettings.testMode,
-            lastBuyPrice: null,
-            lastBuyShares: null,
-            lastBuyTimestamp: null,
-            createdAt: new Date(),
-            updatedAt: new Date()
-          };
-        } else {
-          console.log('[MICRO-SETTINGS] Constructing result object from existing settings with validation');
-          // Manually construct the result object with explicit null checks and NaN checks for each property
-          resultSettings = {
-            id: microProcessingSettings.id || undefined,
-            cryptoId: cryptoId,
-            enabled: microProcessingSettings.enabled === true,
-            sellPercentage: typeof microProcessingSettings.sellPercentage === 'number' && !isNaN(microProcessingSettings.sellPercentage) ? 
-              microProcessingSettings.sellPercentage : defaultSettings.sellPercentage,
-            tradeByShares: typeof microProcessingSettings.tradeByShares === 'number' && !isNaN(microProcessingSettings.tradeByShares) ? 
-              microProcessingSettings.tradeByShares : defaultSettings.tradeByShares,
-            tradeByValue: microProcessingSettings.tradeByValue === true,
-            totalValue: typeof microProcessingSettings.totalValue === 'number' && !isNaN(microProcessingSettings.totalValue) ? 
-              microProcessingSettings.totalValue : defaultSettings.totalValue,
-            websocketProvider: microProcessingSettings.websocketProvider || defaultSettings.websocketProvider,
-            tradingPlatform: microProcessingSettings.tradingPlatform || defaultSettings.tradingPlatform,
-            purchasePrice: typeof microProcessingSettings.purchasePrice === 'number' && !isNaN(microProcessingSettings.purchasePrice) ? 
-              microProcessingSettings.purchasePrice : null,
-            processingStatus: microProcessingSettings.processingStatus || defaultSettings.processingStatus,
-            testMode: microProcessingSettings.testMode === true,
-            lastBuyPrice: typeof microProcessingSettings.lastBuyPrice === 'number' && !isNaN(microProcessingSettings.lastBuyPrice) ? 
-              microProcessingSettings.lastBuyPrice : null,
-            lastBuyShares: typeof microProcessingSettings.lastBuyShares === 'number' && !isNaN(microProcessingSettings.lastBuyShares) ? 
-              microProcessingSettings.lastBuyShares : null,
-            lastBuyTimestamp: microProcessingSettings.lastBuyTimestamp || null,
-            createdAt: microProcessingSettings.createdAt || new Date(),
-            updatedAt: microProcessingSettings.updatedAt || new Date()
-          };
-        }
-        
-        // Validate the resultSettings object for any potential issues
-        console.log('[MICRO-SETTINGS] Validating final resultSettings object');
-        Object.entries(resultSettings).forEach(([key, value]) => {
-          if (value === undefined) {
-            console.warn(`[MICRO-SETTINGS] Warning: resultSettings.${key} is undefined`);
-          }
-          if (typeof value === 'number' && isNaN(value)) {
-            console.warn(`[MICRO-SETTINGS] Warning: resultSettings.${key} is NaN`);
-          }
-        });
-        
-        console.log('[MICRO-SETTINGS] Returning settings:', resultSettings);
-        
-        // Return the settings directly without nesting them in a microProcessingSettings property
-        console.log('[MICRO-SETTINGS] Sending successful response with status 200');
         return res.status(200).json(resultSettings);
       } catch (error) {
         console.error('[MICRO-SETTINGS] Error fetching micro processing settings:', error);
-        console.error('[MICRO-SETTINGS] Error stack:', error instanceof Error ? error.stack : 'No stack trace available');
-        console.error('[MICRO-SETTINGS] GET request parameters:', { cryptoId, userId: user.id });
-        
-        // Check if it's a Prisma error and log more details
-        if (error && typeof error === 'object' && 'code' in error) {
-          console.error('[MICRO-SETTINGS] Prisma error code:', (error as any).code);
-          console.error('[MICRO-SETTINGS] Prisma error meta:', (error as any).meta);
-        }
-        
-        const errorMessage = error instanceof Error ? error.message : 'Unknown database error';
-        console.error('[MICRO-SETTINGS] Sending error response with status 500');
         return res.status(500).json({ 
           error: 'Failed to fetch micro processing settings', 
-          details: errorMessage,
-          errorType: error instanceof Error ? error.name : 'Unknown',
-          timestamp: new Date().toISOString()
+          details: error instanceof Error ? error.message : 'Unknown error'
         });
       }
     }

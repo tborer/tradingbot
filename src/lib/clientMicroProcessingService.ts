@@ -290,12 +290,10 @@ export async function processMicroTrade(
       }
     }
     
-    // Execute the trade via API
+    // Execute the trade via API with standardized request configuration
     const response = await fetch('/api/cryptos/trade', {
+      ...standardRequestConfig,
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         cryptoId,
         action,
@@ -303,8 +301,7 @@ export async function processMicroTrade(
         price: currentPrice,
         orderType: 'market',
         microProcessing: true
-      }),
-      credentials: 'include'
+      })
     });
     
     if (!response.ok) {
@@ -379,6 +376,16 @@ export async function processMicroTrade(
   }
 }
 
+// Standard request configuration for all API calls
+const standardRequestConfig = {
+  credentials: 'include' as RequestCredentials,
+  headers: {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache'
+  }
+};
+
 /**
  * Update the server-side state of micro processing
  */
@@ -396,15 +403,12 @@ async function updateServerState(
     const { crypto, ...settingsWithoutCrypto } = validSettings;
     
     const response = await fetch('/api/cryptos/micro-processing-settings', {
+      ...standardRequestConfig,
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         cryptoId,
         settings: settingsWithoutCrypto
-      }),
-      credentials: 'include'
+      })
     });
     
     if (!response.ok) {

@@ -20,7 +20,66 @@ export function useMicroProcessing() {
   const processingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isInitializedRef = useRef(false);
 
-  // Fetch cryptos with micro processing settings
+  // Standard request configuration for all API calls
+  const standardRequestConfig = {
+    method: 'GET',
+    credentials: 'include' as RequestCredentials,
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache'
+    }
+  };
+
+  // Retry mechanism for API requests during authentication transitions
+  const fetchWithRetry = useCallback(async (url: string, config = {}, maxRetries = 3, retryDelay = 1000) => {
+    const mergedConfig = { ...standardRequestConfig, ...config };
+    let lastError;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          console.log(`Retry attempt ${attempt + 1}/${maxRetries} for ${url}`);
+        }
+        
+        const response = await fetch(url, mergedConfig);
+        
+        if (!response.ok) {
+          // Try to get more detailed error information
+          let errorMessage = `Request failed with status ${response.status}`;
+          try {
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+              const errorData = await response.json();
+              errorMessage = errorData.error || errorData.details || errorMessage;
+              console.error("API error details:", errorData);
+            }
+          } catch (parseError) {
+            console.error("Could not parse error response:", parseError);
+          }
+          
+          throw new Error(errorMessage);
+        }
+        
+        return response;
+      } catch (error) {
+        console.error(`Attempt ${attempt + 1} failed:`, error);
+        lastError = error;
+        
+        // If this is an authentication error and we're still initializing, wait longer
+        if (initializing && error.message.includes('Unauthorized')) {
+          console.log('Authentication still initializing, waiting longer before retry...');
+          await new Promise(resolve => setTimeout(resolve, retryDelay * 2));
+        } else {
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+      }
+    }
+    
+    throw lastError;
+  }, [initializing]);
+
+  // Fetch cryptos with micro processing settings - consolidated into a single API call
   const fetchMicroProcessingCryptos = useCallback(async () => {
     if (initializing) {
       console.log('Authentication is still initializing, skipping fetch');
@@ -36,105 +95,18 @@ export function useMicroProcessing() {
     
     try {
       setLoading(true);
-      const response = await fetch('/api/cryptos', {
-        credentials: 'include',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        }
-      });
       
-      if (!response.ok) {
-        throw new Error('Failed to fetch cryptos');
-      }
+      // Use a single consolidated API endpoint to get cryptos with their enabled settings
+      // This reduces authentication failure points by making a single request
+      const response = await fetchWithRetry('/api/cryptos/micro-processing-settings?includeEnabledCryptos=true');
+      const data = await response.json();
       
-      const cryptos = await response.json();
+      console.log(`Received ${data.length} cryptos with micro processing settings`);
       
-      // Only fetch enabled micro processing settings
-      // This is a separate API call to avoid fetching settings for all cryptos
-      let enabledSettings = [];
-      try {
-        console.log('Fetching enabled micro processing settings...');
-        const enabledSettingsResponse = await fetch('/api/cryptos/process-micro-processing?fetchOnly=true', {
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          },
-          // Add cache control to prevent caching issues
-          cache: 'no-store',
-          // Include credentials to send cookies for authentication
-          credentials: 'include'
-        });
-        
-        console.log(`Enabled settings response status: ${enabledSettingsResponse.status}`);
-        
-        if (!enabledSettingsResponse.ok) {
-          // Try to get more detailed error information
-          let errorMessage = 'Failed to fetch enabled micro processing settings';
-          try {
-            const contentType = enabledSettingsResponse.headers.get("content-type");
-            if (contentType && contentType.includes("application/json")) {
-              const errorData = await enabledSettingsResponse.json();
-              errorMessage = errorData.error || errorData.details || errorMessage;
-              console.error("API error details:", errorData);
-            }
-          } catch (parseError) {
-            console.error("Could not parse error response:", parseError);
-          }
-          
-          throw new Error(errorMessage);
-        }
-        
-        // Parse the response as JSON
-        const responseText = await enabledSettingsResponse.text();
-        console.log('Raw response text:', responseText);
-        
-        try {
-          enabledSettings = JSON.parse(responseText);
-          console.log(`Received ${enabledSettings.length} enabled settings`);
-        } catch (parseError) {
-          console.error(`Error parsing JSON response: ${parseError}`);
-          console.error(`Response was: ${responseText}`);
-          throw new Error(`Invalid JSON response: ${parseError.message}`);
-        }
-      } catch (settingsError) {
-        console.error('Error fetching enabled settings:', settingsError);
-        // Continue with empty settings rather than failing completely
-        toast({
-          variant: "destructive",
-          title: "Warning",
-          description: `Could not fetch micro processing settings: ${settingsError.message}`,
-        });
-      }
-      
-      // Map the enabled settings to their respective cryptos
-      const cryptosWithSettings = cryptos
-        .map((crypto: any) => {
-          const settings = enabledSettings.find((s: any) => s.cryptoId === crypto.id);
-          
-          // Only include cryptos with enabled settings
-          if (settings && settings.enabled) {
-            // Log the settings and crypto for debugging
-            console.log("Mapping crypto to settings:", {
-              cryptoId: crypto.id,
-              symbol: crypto.symbol,
-              settingsId: settings.id,
-              settingsCryptoId: settings.cryptoId,
-              settingsCrypto: settings.crypto // This should contain the crypto relationship
-            });
-            
-            return {
-              ...crypto,
-              currentPrice: crypto.lastPrice || crypto.currentPrice,
-              microProcessingSettings: {
-                ...settings,
-                crypto: settings.crypto || crypto // Ensure crypto is included in the settings
-              }
-            };
-          }
-          return null;
-        })
-        .filter(Boolean);
+      // Process the data
+      const cryptosWithSettings = data.filter((item: any) => 
+        item.microProcessingSettings && item.microProcessingSettings.enabled
+      );
       
       setEnabledCryptos(cryptosWithSettings);
       
@@ -148,10 +120,16 @@ export function useMicroProcessing() {
     } catch (err) {
       console.error('Error fetching micro processing cryptos:', err);
       setError('Failed to load micro processing cryptocurrencies');
+      
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: `Failed to load micro processing settings: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      });
     } finally {
       setLoading(false);
     }
-  }, [user, initializing, toast]);
+  }, [user, initializing, toast, fetchWithRetry]);
 
   // Handle price updates from WebSocket
   const handlePriceUpdate = useCallback((priceData: any) => {
@@ -233,24 +211,37 @@ export function useMicroProcessing() {
     }
   }, [user, initializing, isProcessing, fetchMicroProcessingCryptos, toast]);
 
-  // Initialize data on component mount
+  // Initialize data on component mount with improved authentication state handling
   useEffect(() => {
-    // Only proceed if authentication is not in initializing state and user is available
-    if (initializing) {
-      console.log('Authentication is still initializing, waiting...');
-      return;
-    }
+    let authCheckTimer: NodeJS.Timeout | null = null;
     
-    if (!user) {
-      console.log('No authenticated user found after initialization');
-      return;
-    }
+    // Function to check auth state and fetch data when ready
+    const checkAuthAndFetch = () => {
+      if (initializing) {
+        console.log('Authentication is still initializing, waiting...');
+        // Set a timer to check again
+        authCheckTimer = setTimeout(checkAuthAndFetch, 500);
+        return;
+      }
+      
+      if (!user) {
+        console.log('No authenticated user found after initialization');
+        return;
+      }
+      
+      console.log('Authentication initialized and user available, fetching data', { userId: user.id });
+      fetchMicroProcessingCryptos();
+    };
     
-    console.log('Authentication initialized and user available, fetching data', { userId: user.id });
-    fetchMicroProcessingCryptos();
+    // Start the auth check process
+    checkAuthAndFetch();
     
     return () => {
-      // Clean up interval on unmount
+      // Clean up timers and intervals on unmount
+      if (authCheckTimer) {
+        clearTimeout(authCheckTimer);
+      }
+      
       if (processingIntervalRef.current) {
         clearInterval(processingIntervalRef.current);
       }

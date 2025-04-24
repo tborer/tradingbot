@@ -94,9 +94,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(200).json(resultSettings);
       } catch (error) {
         console.error('Error fetching micro processing settings:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown database error';
         return res.status(500).json({ 
           error: 'Failed to fetch micro processing settings', 
-          details: error.message || 'Unknown database error' 
+          details: errorMessage 
         });
       }
     }
@@ -243,9 +244,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(200).json(resultSettings);
       } catch (error) {
         console.error('Error saving micro processing settings:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown database error';
         return res.status(500).json({ 
           error: 'Failed to save micro processing settings',
-          details: error.message || 'Unknown database error'
+          details: errorMessage
         });
       }
     }
@@ -256,16 +258,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Global error handler to ensure we always return JSON
     console.error('Unhandled error in micro-processing-settings API:', error);
     
+    // Check if there is a message
+    const details = error instanceof Error ? error.message : 'Unknown error';
+    
     // Log more details about the error
-    console.error('Error stack:', error.stack);
     console.error('Request method:', req.method);
     console.error('Request query:', req.query);
     console.error('Request body:', req.body);
     
     return res.status(500).json({ 
       error: 'An unexpected error occurred', 
-      details: error.message || 'Unknown error',
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      details: details,
+      stack: process.env.NODE_ENV === 'development' && error instanceof Error ? error.stack : undefined
     });
   }
 }

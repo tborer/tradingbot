@@ -421,20 +421,6 @@ export default function SortableCryptoList({
         tradingPlatform: 'kraken'
       };
       
-      // First, get the crypto details to ensure we have the correct data
-      const cryptoResponse = await fetch(`/api/cryptos/${id}`, {
-        method: "GET",
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-      
-      let cryptoData = null;
-      if (cryptoResponse.ok) {
-        cryptoData = await cryptoResponse.json();
-        console.log("Fetched crypto data:", cryptoData);
-      }
-      
       // Fetch the current micro processing settings for this specific crypto
       const response = await fetch(`/api/cryptos/micro-processing-settings?cryptoId=${id}`, {
         method: "GET",

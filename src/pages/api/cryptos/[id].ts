@@ -34,6 +34,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ error: 'Crypto not found' });
     }
     
+    // GET - Retrieve crypto
+    if (req.method === 'GET') {
+      return res.status(200).json(crypto);
+    }
+    
     // PUT - Update crypto
     if (req.method === 'PUT') {
       const { symbol, purchasePrice, autoSell, autoBuy } = req.body;

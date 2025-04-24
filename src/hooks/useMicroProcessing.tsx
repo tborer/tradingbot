@@ -32,49 +32,37 @@ export function useMicroProcessing() {
       
       const cryptos = await response.json();
       
-      // Fetch micro processing settings for each crypto
-      const cryptosWithSettings = await Promise.all(
-        cryptos.map(async (crypto: any) => {
-          try {
-            console.log(`Fetching micro processing settings for ${crypto.symbol} (${crypto.id})`);
-            const settingsResponse = await fetch(`/api/cryptos/micro-processing-settings?cryptoId=${crypto.id}`);
-            
-            if (!settingsResponse.ok) {
-              const errorData = await settingsResponse.json();
-              console.error(`Failed to fetch micro processing settings for ${crypto.symbol}:`, errorData);
-              throw new Error(`API error details: ${JSON.stringify(errorData)}`);
-            }
-            
-            const settings = await settingsResponse.json();
-            console.log(`Received settings for ${crypto.symbol}:`, settings);
-            
-            // Only include enabled settings
-            if (settings.enabled) {
-              return {
-                ...crypto,
-                currentPrice: crypto.lastPrice || crypto.currentPrice,
-                microProcessingSettings: settings
-              };
-            }
-            return null;
-          } catch (err) {
-            console.error(`Error fetching settings for ${crypto.symbol}:`, err);
-            setError(`Failed to fetch micro processing settings: ${err.message}`);
-            return null;
+      // Only fetch enabled micro processing settings
+      // This is a separate API call to avoid fetching settings for all cryptos
+      const enabledSettingsResponse = await fetch('/api/cryptos/process-micro-processing?fetchOnly=true');
+      
+      if (!enabledSettingsResponse.ok) {
+        throw new Error('Failed to fetch enabled micro processing settings');
+      }
+      
+      const enabledSettings = await enabledSettingsResponse.json();
+      
+      // Map the enabled settings to their respective cryptos
+      const cryptosWithSettings = cryptos
+        .map((crypto: any) => {
+          const settings = enabledSettings.find((s: any) => s.cryptoId === crypto.id);
+          
+          // Only include cryptos with enabled settings
+          if (settings && settings.enabled) {
+            return {
+              ...crypto,
+              currentPrice: crypto.lastPrice || crypto.currentPrice,
+              microProcessingSettings: settings
+            };
           }
+          return null;
         })
-      );
+        .filter(Boolean);
       
-      // Filter out null values and cryptos without enabled settings
-      const enabledCryptosWithSettings = cryptosWithSettings.filter(
-        (crypto): crypto is MicroProcessingCrypto => 
-          crypto !== null && crypto.microProcessingSettings?.enabled === true
-      );
-      
-      setEnabledCryptos(enabledCryptosWithSettings);
+      setEnabledCryptos(cryptosWithSettings);
       
       // Initialize micro processing for each enabled crypto
-      enabledCryptosWithSettings.forEach(crypto => {
+      cryptosWithSettings.forEach((crypto: MicroProcessingCrypto) => {
         initializeMicroProcessing(crypto);
       });
       

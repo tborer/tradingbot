@@ -61,32 +61,58 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           testMode: false
         };
         
-        // Manually construct the result object to avoid issues with null values
-        const resultSettings = {
-          id: microProcessingSettings?.id || undefined,
-          cryptoId: cryptoId,
-          enabled: microProcessingSettings?.enabled === true,
-          sellPercentage: typeof microProcessingSettings?.sellPercentage === 'number' ? 
-            microProcessingSettings.sellPercentage : defaultSettings.sellPercentage,
-          tradeByShares: typeof microProcessingSettings?.tradeByShares === 'number' ? 
-            microProcessingSettings.tradeByShares : defaultSettings.tradeByShares,
-          tradeByValue: microProcessingSettings?.tradeByValue === true,
-          totalValue: typeof microProcessingSettings?.totalValue === 'number' ? 
-            microProcessingSettings.totalValue : defaultSettings.totalValue,
-          websocketProvider: microProcessingSettings?.websocketProvider || defaultSettings.websocketProvider,
-          tradingPlatform: microProcessingSettings?.tradingPlatform || defaultSettings.tradingPlatform,
-          purchasePrice: typeof microProcessingSettings?.purchasePrice === 'number' ? 
-            microProcessingSettings.purchasePrice : null,
-          processingStatus: microProcessingSettings?.processingStatus || defaultSettings.processingStatus,
-          testMode: microProcessingSettings?.testMode === true,
-          lastBuyPrice: typeof microProcessingSettings?.lastBuyPrice === 'number' ? 
-            microProcessingSettings.lastBuyPrice : null,
-          lastBuyShares: typeof microProcessingSettings?.lastBuyShares === 'number' ? 
-            microProcessingSettings.lastBuyShares : null,
-          lastBuyTimestamp: microProcessingSettings?.lastBuyTimestamp || null,
-          createdAt: microProcessingSettings?.createdAt || new Date(),
-          updatedAt: microProcessingSettings?.updatedAt || new Date()
-        };
+        // Explicitly check if microProcessingSettings is null
+        let resultSettings;
+        
+        if (!microProcessingSettings) {
+          console.log('No settings found, using default values');
+          resultSettings = {
+            id: undefined,
+            cryptoId: cryptoId,
+            enabled: defaultSettings.enabled,
+            sellPercentage: defaultSettings.sellPercentage,
+            tradeByShares: defaultSettings.tradeByShares,
+            tradeByValue: defaultSettings.tradeByValue,
+            totalValue: defaultSettings.totalValue,
+            websocketProvider: defaultSettings.websocketProvider,
+            tradingPlatform: defaultSettings.tradingPlatform,
+            purchasePrice: null,
+            processingStatus: defaultSettings.processingStatus,
+            testMode: defaultSettings.testMode,
+            lastBuyPrice: null,
+            lastBuyShares: null,
+            lastBuyTimestamp: null,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          };
+        } else {
+          // Manually construct the result object with explicit null checks and NaN checks for each property
+          resultSettings = {
+            id: microProcessingSettings.id || undefined,
+            cryptoId: cryptoId,
+            enabled: microProcessingSettings.enabled === true,
+            sellPercentage: typeof microProcessingSettings.sellPercentage === 'number' && !isNaN(microProcessingSettings.sellPercentage) ? 
+              microProcessingSettings.sellPercentage : defaultSettings.sellPercentage,
+            tradeByShares: typeof microProcessingSettings.tradeByShares === 'number' && !isNaN(microProcessingSettings.tradeByShares) ? 
+              microProcessingSettings.tradeByShares : defaultSettings.tradeByShares,
+            tradeByValue: microProcessingSettings.tradeByValue === true,
+            totalValue: typeof microProcessingSettings.totalValue === 'number' && !isNaN(microProcessingSettings.totalValue) ? 
+              microProcessingSettings.totalValue : defaultSettings.totalValue,
+            websocketProvider: microProcessingSettings.websocketProvider || defaultSettings.websocketProvider,
+            tradingPlatform: microProcessingSettings.tradingPlatform || defaultSettings.tradingPlatform,
+            purchasePrice: typeof microProcessingSettings.purchasePrice === 'number' && !isNaN(microProcessingSettings.purchasePrice) ? 
+              microProcessingSettings.purchasePrice : null,
+            processingStatus: microProcessingSettings.processingStatus || defaultSettings.processingStatus,
+            testMode: microProcessingSettings.testMode === true,
+            lastBuyPrice: typeof microProcessingSettings.lastBuyPrice === 'number' && !isNaN(microProcessingSettings.lastBuyPrice) ? 
+              microProcessingSettings.lastBuyPrice : null,
+            lastBuyShares: typeof microProcessingSettings.lastBuyShares === 'number' && !isNaN(microProcessingSettings.lastBuyShares) ? 
+              microProcessingSettings.lastBuyShares : null,
+            lastBuyTimestamp: microProcessingSettings.lastBuyTimestamp || null,
+            createdAt: microProcessingSettings.createdAt || new Date(),
+            updatedAt: microProcessingSettings.updatedAt || new Date()
+          };
+        }
         
         console.log('Returning settings:', resultSettings);
         
@@ -210,27 +236,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         });
         
-        // Manually construct the result object to avoid issues with null values
+        // Explicitly check if microProcessingSettings is null or undefined
+        if (!microProcessingSettings) {
+          console.error('Upsert operation failed: microProcessingSettings is null or undefined');
+          return res.status(500).json({ 
+            error: 'Failed to save micro processing settings',
+            details: 'Database operation returned null or undefined'
+          });
+        }
+        
+        // Manually construct the result object with explicit null checks for each property
         const resultSettings = {
-          id: microProcessingSettings.id,
+          id: microProcessingSettings.id || undefined,
           cryptoId: cryptoId,
           enabled: microProcessingSettings.enabled === true,
-          sellPercentage: typeof microProcessingSettings.sellPercentage === 'number' ? 
+          sellPercentage: typeof microProcessingSettings.sellPercentage === 'number' && !isNaN(microProcessingSettings.sellPercentage) ? 
             microProcessingSettings.sellPercentage : defaultSettings.sellPercentage,
-          tradeByShares: typeof microProcessingSettings.tradeByShares === 'number' ? 
+          tradeByShares: typeof microProcessingSettings.tradeByShares === 'number' && !isNaN(microProcessingSettings.tradeByShares) ? 
             microProcessingSettings.tradeByShares : defaultSettings.tradeByShares,
           tradeByValue: microProcessingSettings.tradeByValue === true,
-          totalValue: typeof microProcessingSettings.totalValue === 'number' ? 
+          totalValue: typeof microProcessingSettings.totalValue === 'number' && !isNaN(microProcessingSettings.totalValue) ? 
             microProcessingSettings.totalValue : defaultSettings.totalValue,
           websocketProvider: microProcessingSettings.websocketProvider || defaultSettings.websocketProvider,
           tradingPlatform: microProcessingSettings.tradingPlatform || defaultSettings.tradingPlatform,
-          purchasePrice: typeof microProcessingSettings.purchasePrice === 'number' ? 
+          purchasePrice: typeof microProcessingSettings.purchasePrice === 'number' && !isNaN(microProcessingSettings.purchasePrice) ? 
             microProcessingSettings.purchasePrice : null,
           processingStatus: microProcessingSettings.processingStatus || defaultSettings.processingStatus,
           testMode: microProcessingSettings.testMode === true,
-          lastBuyPrice: typeof microProcessingSettings.lastBuyPrice === 'number' ? 
+          lastBuyPrice: typeof microProcessingSettings.lastBuyPrice === 'number' && !isNaN(microProcessingSettings.lastBuyPrice) ? 
             microProcessingSettings.lastBuyPrice : null,
-          lastBuyShares: typeof microProcessingSettings.lastBuyShares === 'number' ? 
+          lastBuyShares: typeof microProcessingSettings.lastBuyShares === 'number' && !isNaN(microProcessingSettings.lastBuyShares) ? 
             microProcessingSettings.lastBuyShares : null,
           lastBuyTimestamp: microProcessingSettings.lastBuyTimestamp || null,
           createdAt: microProcessingSettings.createdAt || new Date(),

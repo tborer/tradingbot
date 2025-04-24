@@ -5,6 +5,17 @@ import { autoTradeLock } from '@/lib/autoTradeLock';
 // Function to process a buy transaction for micro processing
 export async function processMicroBuy(cryptoId: string, symbol: string, userId: string, currentPrice: number) {
   try {
+    // Validate input parameters
+    if (!cryptoId || !symbol || !userId) {
+      autoTradeLogger.log(`Micro processing: Invalid parameters for buy. cryptoId: ${cryptoId}, symbol: ${symbol}, userId: ${userId}`);
+      return;
+    }
+
+    if (!currentPrice || currentPrice <= 0) {
+      autoTradeLogger.log(`Micro processing: Invalid current price for ${symbol}: ${currentPrice}`);
+      return;
+    }
+
     // Check if there's already a lock for this crypto
     const isLocked = await autoTradeLock.isLocked(cryptoId);
     if (isLocked) {
@@ -17,7 +28,13 @@ export async function processMicroBuy(cryptoId: string, symbol: string, userId: 
       where: { cryptoId }
     });
 
-    if (!settings || !settings.enabled) {
+    if (!settings) {
+      autoTradeLogger.log(`Micro processing: No settings found for ${symbol} (${cryptoId})`);
+      return;
+    }
+
+    if (!settings.enabled) {
+      autoTradeLogger.log(`Micro processing: Settings disabled for ${symbol}`);
       return;
     }
 
@@ -43,12 +60,18 @@ export async function processMicroBuy(cryptoId: string, symbol: string, userId: 
       
       if (settings.tradeByValue) {
         // If trading by value, calculate shares based on current price
-        totalAmount = settings.totalValue;
+        totalAmount = settings.totalValue || 0;
+        if (totalAmount <= 0) {
+          throw new Error(`Invalid total value: ${totalAmount}`);
+        }
         shares = totalAmount / currentPrice;
         autoTradeLogger.log(`Micro processing: Trading by value - $${totalAmount} worth of ${symbol} at $${currentPrice} per share = ${shares} shares`);
       } else {
         // If trading by shares, use the specified number of shares
-        shares = settings.tradeByShares;
+        shares = settings.tradeByShares || 0;
+        if (shares <= 0) {
+          throw new Error(`Invalid shares value: ${shares}`);
+        }
         totalAmount = shares * currentPrice;
       }
 
@@ -57,8 +80,12 @@ export async function processMicroBuy(cryptoId: string, symbol: string, userId: 
         where: { id: userId }
       });
 
-      if (!user || user.usdBalance < totalAmount) {
-        autoTradeLogger.log(`Micro processing: Not enough USD balance to buy ${shares} shares of ${symbol} at $${currentPrice}. Required: $${totalAmount}, Available: $${user?.usdBalance || 0}`);
+      if (!user) {
+        throw new Error(`User not found: ${userId}`);
+      }
+
+      if (user.usdBalance < totalAmount) {
+        autoTradeLogger.log(`Micro processing: Not enough USD balance to buy ${shares} shares of ${symbol} at $${currentPrice}. Required: $${totalAmount}, Available: $${user.usdBalance || 0}`);
         
         // Reset the processing status
         await prisma.microProcessingSettings.update({
@@ -87,14 +114,16 @@ export async function processMicroBuy(cryptoId: string, symbol: string, userId: 
         where: { id: cryptoId }
       });
 
-      if (crypto) {
-        await prisma.crypto.update({
-          where: { id: cryptoId },
-          data: {
-            shares: crypto.shares + shares
-          }
-        });
+      if (!crypto) {
+        throw new Error(`Crypto not found: ${cryptoId}`);
       }
+
+      await prisma.crypto.update({
+        where: { id: cryptoId },
+        data: {
+          shares: (crypto.shares || 0) + shares
+        }
+      });
 
       // Update the user's USD balance
       await prisma.user.update({
@@ -122,6 +151,12 @@ export async function processMicroBuy(cryptoId: string, symbol: string, userId: 
     }
   } catch (error) {
     autoTradeLogger.log(`Error in processMicroBuy for ${symbol}: ${error.message}`);
+    console.error(`Error in processMicroBuy for ${symbol}:`, error);
+    
+    // Log additional details about the error
+    if (error instanceof Error) {
+      console.error('Error stack:', error.stack);
+    }
     
     // Try to reset the processing status and release the lock
     try {
@@ -132,6 +167,7 @@ export async function processMicroBuy(cryptoId: string, symbol: string, userId: 
       await autoTradeLock.releaseLock(cryptoId);
     } catch (cleanupError) {
       autoTradeLogger.log(`Error cleaning up after failed micro buy for ${symbol}: ${cleanupError.message}`);
+      console.error(`Error cleaning up after failed micro buy for ${symbol}:`, cleanupError);
     }
   }
 }
@@ -139,6 +175,17 @@ export async function processMicroBuy(cryptoId: string, symbol: string, userId: 
 // Function to process a sell transaction for micro processing
 export async function processMicroSell(cryptoId: string, symbol: string, userId: string, currentPrice: number) {
   try {
+    // Validate input parameters
+    if (!cryptoId || !symbol || !userId) {
+      autoTradeLogger.log(`Micro processing: Invalid parameters for sell. cryptoId: ${cryptoId}, symbol: ${symbol}, userId: ${userId}`);
+      return;
+    }
+
+    if (!currentPrice || currentPrice <= 0) {
+      autoTradeLogger.log(`Micro processing: Invalid current price for ${symbol}: ${currentPrice}`);
+      return;
+    }
+
     // Check if there's already a lock for this crypto
     const isLocked = await autoTradeLock.isLocked(cryptoId);
     if (isLocked) {
@@ -151,15 +198,35 @@ export async function processMicroSell(cryptoId: string, symbol: string, userId:
       where: { cryptoId }
     });
 
-    if (!settings || !settings.enabled || settings.processingStatus !== 'selling') {
+    if (!settings) {
+      autoTradeLogger.log(`Micro processing: No settings found for ${symbol} (${cryptoId})`);
+      return;
+    }
+
+    if (!settings.enabled) {
+      autoTradeLogger.log(`Micro processing: Settings disabled for ${symbol}`);
+      return;
+    }
+
+    if (settings.processingStatus !== 'selling') {
+      autoTradeLogger.log(`Micro processing: ${symbol} is not in selling state (current: ${settings.processingStatus || 'undefined'}). Skipping.`);
       return;
     }
 
     // Check if we have a price to compare against (either purchase price or last buy price)
     const referencePrice = settings.purchasePrice || settings.lastBuyPrice;
     
-    if (!referencePrice || !settings.lastBuyShares) {
-      autoTradeLogger.log(`Micro processing: No reference price or buy shares information for ${symbol}. Resetting to idle state.`);
+    if (!referencePrice) {
+      autoTradeLogger.log(`Micro processing: No reference price for ${symbol}. Resetting to idle state.`);
+      await prisma.microProcessingSettings.update({
+        where: { cryptoId },
+        data: { processingStatus: 'idle' }
+      });
+      return;
+    }
+
+    if (!settings.lastBuyShares) {
+      autoTradeLogger.log(`Micro processing: No buy shares information for ${symbol}. Resetting to idle state.`);
       await prisma.microProcessingSettings.update({
         where: { cryptoId },
         data: { processingStatus: 'idle' }
@@ -169,6 +236,7 @@ export async function processMicroSell(cryptoId: string, symbol: string, userId:
 
     // Calculate the current percentage change from the reference price
     const percentChange = ((currentPrice - referencePrice) / referencePrice) * 100;
+    autoTradeLogger.log(`Micro processing: ${symbol} current price change: ${percentChange.toFixed(2)}%, threshold: ${settings.sellPercentage}%`);
 
     // Check if we've reached the sell percentage threshold
     if (percentChange < settings.sellPercentage) {
@@ -192,6 +260,18 @@ export async function processMicroSell(cryptoId: string, symbol: string, userId:
 
       // Make sure we have enough shares to sell
       const sharesToSell = settings.lastBuyShares;
+      if (!sharesToSell || sharesToSell <= 0) {
+        autoTradeLogger.log(`Micro processing: Invalid shares to sell for ${symbol}: ${sharesToSell}`);
+        
+        // Reset the processing status
+        await prisma.microProcessingSettings.update({
+          where: { cryptoId },
+          data: { processingStatus: 'idle' }
+        });
+        
+        return;
+      }
+
       if (crypto.shares < sharesToSell) {
         autoTradeLogger.log(`Micro processing: Not enough shares to sell ${sharesToSell} of ${symbol}. Available: ${crypto.shares}`);
         
@@ -208,7 +288,6 @@ export async function processMicroSell(cryptoId: string, symbol: string, userId:
       const totalAmount = sharesToSell * currentPrice;
 
       // Calculate profit based on the reference price that was used
-      const referencePrice = settings.purchasePrice || settings.lastBuyPrice;
       const profit = (currentPrice - referencePrice) * sharesToSell;
       
       // Create the transaction
@@ -237,14 +316,16 @@ export async function processMicroSell(cryptoId: string, symbol: string, userId:
         where: { id: userId }
       });
 
-      if (user) {
-        await prisma.user.update({
-          where: { id: userId },
-          data: {
-            usdBalance: user.usdBalance + totalAmount
-          }
-        });
+      if (!user) {
+        throw new Error(`User not found: ${userId}`);
       }
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          usdBalance: user.usdBalance + totalAmount
+        }
+      });
 
       // Reset the micro processing settings for the next cycle
       await prisma.microProcessingSettings.update({
@@ -264,6 +345,12 @@ export async function processMicroSell(cryptoId: string, symbol: string, userId:
     }
   } catch (error) {
     autoTradeLogger.log(`Error in processMicroSell for ${symbol}: ${error.message}`);
+    console.error(`Error in processMicroSell for ${symbol}:`, error);
+    
+    // Log additional details about the error
+    if (error instanceof Error) {
+      console.error('Error stack:', error.stack);
+    }
     
     // Try to reset the processing status and release the lock
     try {
@@ -274,6 +361,7 @@ export async function processMicroSell(cryptoId: string, symbol: string, userId:
       await autoTradeLock.releaseLock(cryptoId);
     } catch (cleanupError) {
       autoTradeLogger.log(`Error cleaning up after failed micro sell for ${symbol}: ${cleanupError.message}`);
+      console.error(`Error cleaning up after failed micro sell for ${symbol}:`, cleanupError);
     }
   }
 }
@@ -281,6 +369,11 @@ export async function processMicroSell(cryptoId: string, symbol: string, userId:
 // Main function to process micro processing for all enabled cryptos
 export async function processMicroProcessing(userId: string) {
   try {
+    if (!userId) {
+      autoTradeLogger.log(`Error in processMicroProcessing: userId is ${userId}`);
+      return;
+    }
+
     // Get all cryptos with enabled micro processing
     const cryptosWithMicroProcessing = await prisma.crypto.findMany({
       where: {
@@ -294,7 +387,8 @@ export async function processMicroProcessing(userId: string) {
       }
     });
 
-    if (cryptosWithMicroProcessing.length === 0) {
+    if (!cryptosWithMicroProcessing || cryptosWithMicroProcessing.length === 0) {
+      autoTradeLogger.log(`No enabled micro processing cryptos found for user ${userId}`);
       return;
     }
 
@@ -302,23 +396,48 @@ export async function processMicroProcessing(userId: string) {
 
     // Process each crypto
     for (const crypto of cryptosWithMicroProcessing) {
-      if (!crypto.lastPrice) {
-        autoTradeLogger.log(`Micro processing: No current price for ${crypto.symbol}. Skipping.`);
-        continue;
-      }
+      try {
+        if (!crypto) {
+          autoTradeLogger.log(`Micro processing: Found null crypto in results. Skipping.`);
+          continue;
+        }
 
-      const settings = crypto.microProcessingSettings;
-      if (!settings) continue;
+        if (!crypto.lastPrice) {
+          autoTradeLogger.log(`Micro processing: No current price for ${crypto.symbol || 'unknown'}. Skipping.`);
+          continue;
+        }
 
-      if (settings.processingStatus === 'idle' || !settings.processingStatus) {
-        // If idle, initiate a buy
-        await processMicroBuy(crypto.id, crypto.symbol, userId, crypto.lastPrice);
-      } else if (settings.processingStatus === 'selling') {
-        // If in selling state, check if we should sell
-        await processMicroSell(crypto.id, crypto.symbol, userId, crypto.lastPrice);
+        const settings = crypto.microProcessingSettings;
+        if (!settings) {
+          autoTradeLogger.log(`Micro processing: No settings for ${crypto.symbol}. Skipping.`);
+          continue;
+        }
+
+        // Log the current state for debugging
+        autoTradeLogger.log(`Micro processing: Processing ${crypto.symbol} with status ${settings.processingStatus || 'undefined'}`);
+
+        if (settings.processingStatus === 'idle' || !settings.processingStatus) {
+          // If idle, initiate a buy
+          await processMicroBuy(crypto.id, crypto.symbol, userId, crypto.lastPrice);
+        } else if (settings.processingStatus === 'selling') {
+          // If in selling state, check if we should sell
+          await processMicroSell(crypto.id, crypto.symbol, userId, crypto.lastPrice);
+        } else {
+          autoTradeLogger.log(`Micro processing: Unknown status ${settings.processingStatus} for ${crypto.symbol}. Skipping.`);
+        }
+      } catch (cryptoError) {
+        // Log error but continue processing other cryptos
+        autoTradeLogger.log(`Error processing crypto ${crypto?.symbol || 'unknown'}: ${cryptoError.message}`);
+        console.error(`Error processing crypto ${crypto?.id}:`, cryptoError);
       }
     }
   } catch (error) {
     autoTradeLogger.log(`Error in processMicroProcessing: ${error.message}`);
+    console.error('Error in processMicroProcessing:', error);
+    
+    // Log additional details about the error
+    if (error instanceof Error) {
+      console.error('Error stack:', error.stack);
+    }
   }
 }

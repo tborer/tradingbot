@@ -34,13 +34,58 @@ export function useMicroProcessing() {
       
       // Only fetch enabled micro processing settings
       // This is a separate API call to avoid fetching settings for all cryptos
-      const enabledSettingsResponse = await fetch('/api/cryptos/process-micro-processing?fetchOnly=true');
-      
-      if (!enabledSettingsResponse.ok) {
-        throw new Error('Failed to fetch enabled micro processing settings');
+      let enabledSettings = [];
+      try {
+        console.log('Fetching enabled micro processing settings...');
+        const enabledSettingsResponse = await fetch('/api/cryptos/process-micro-processing?fetchOnly=true', {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          // Add cache control to prevent caching issues
+          cache: 'no-store'
+        });
+        
+        console.log(`Enabled settings response status: ${enabledSettingsResponse.status}`);
+        
+        if (!enabledSettingsResponse.ok) {
+          // Try to get more detailed error information
+          let errorMessage = 'Failed to fetch enabled micro processing settings';
+          try {
+            const contentType = enabledSettingsResponse.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+              const errorData = await enabledSettingsResponse.json();
+              errorMessage = errorData.error || errorData.details || errorMessage;
+              console.error("API error details:", errorData);
+            }
+          } catch (parseError) {
+            console.error("Could not parse error response:", parseError);
+          }
+          
+          throw new Error(errorMessage);
+        }
+        
+        // Parse the response as JSON
+        const responseText = await enabledSettingsResponse.text();
+        console.log('Raw response text:', responseText);
+        
+        try {
+          enabledSettings = JSON.parse(responseText);
+          console.log(`Received ${enabledSettings.length} enabled settings`);
+        } catch (parseError) {
+          console.error(`Error parsing JSON response: ${parseError}`);
+          console.error(`Response was: ${responseText}`);
+          throw new Error(`Invalid JSON response: ${parseError.message}`);
+        }
+      } catch (settingsError) {
+        console.error('Error fetching enabled settings:', settingsError);
+        // Continue with empty settings rather than failing completely
+        toast({
+          variant: "destructive",
+          title: "Warning",
+          description: `Could not fetch micro processing settings: ${settingsError.message}`,
+        });
       }
-      
-      const enabledSettings = await enabledSettingsResponse.json();
       
       // Map the enabled settings to their respective cryptos
       const cryptosWithSettings = cryptos

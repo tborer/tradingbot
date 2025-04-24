@@ -1,6 +1,10 @@
 import prisma from '@/lib/prisma';
 import { autoTradeLogger } from '@/lib/autoTradeLogger';
 import { autoTradeLock } from '@/lib/autoTradeLock';
+import { 
+  executeBinanceMarketBuy, 
+  executeBinanceMarketSell 
+} from '@/lib/binanceTradeApi';
 
 // Function to process a buy transaction for micro processing
 export async function processMicroBuy(cryptoId: string, symbol: string, userId: string, currentPrice: number) {
@@ -204,16 +208,20 @@ export async function processMicroBuy(cryptoId: string, symbol: string, userId: 
   try {
     // Check if test mode is enabled
     const testMode = settings.testMode === true;
+    const tradingPlatform = settings.tradingPlatform || 'kraken';
     
-    if (testMode) {
-      // In test mode, just log the transaction details without executing it
-      autoTradeLogger.log(`TEST MODE - Micro processing buy: Would buy ${shares} shares of ${symbol} at $${currentPrice}. Total: $${totalAmount}`);
-      
-      // Create a test transaction record with the API request details
-      const testTransaction = await prisma.cryptoTransaction.create({
-        data: {
+    // Handle Binance trading platform
+    if (tradingPlatform === 'binance') {
+      try {
+        autoTradeLogger.log(`Micro processing: Using Binance trading platform for ${symbol}`);
+        
+        // Execute Binance market buy
+        const binanceResult = await executeBinanceMarketBuy(userId, symbol, shares, testMode);
+        
+        // Create transaction record
+        const transactionData = {
           cryptoId,
-          action: 'test_buy',
+          action: testMode ? 'test_buy' : 'buy',
           shares,
           price: currentPrice,
           totalAmount,
@@ -225,57 +233,125 @@ export async function processMicroBuy(cryptoId: string, symbol: string, userId: 
             totalAmount,
             cryptoId,
             symbol,
-            testMode: true
+            testMode,
+            platform: 'binance'
           }, null, 2),
-          logInfo: `TEST MODE - Micro processing buy: ${shares} shares at $${currentPrice}. Total: $${totalAmount}. No actual trade executed.`
-        }
-      });
-      
-      transaction = testTransaction;
-      autoTradeLogger.log(`TEST MODE - Created test transaction record: ${testTransaction.id}`);
-    } else {
-      // Create the real transaction
-      const realTransaction = await prisma.cryptoTransaction.create({
-        data: {
-          cryptoId,
-          action: 'buy',
-          shares,
-          price: currentPrice,
-          totalAmount,
-          userId,
-          logInfo: `Micro processing buy: ${shares} shares at $${currentPrice}`
-        }
-      });
-      
-      transaction = realTransaction;
+          apiResponse: JSON.stringify(binanceResult, null, 2),
+          logInfo: `Micro processing buy via Binance: ${shares} shares at $${currentPrice}. Total: $${totalAmount}.`
+        };
+        
+        transaction = await prisma.cryptoTransaction.create({ data: transactionData });
+        
+        // If not in test mode, update crypto shares and user balance
+        if (!testMode) {
+          // Update the crypto shares
+          const crypto = await prisma.crypto.findUnique({
+            where: { id: cryptoId }
+          });
 
-      // Update the crypto shares
-      const crypto = await prisma.crypto.findUnique({
-        where: { id: cryptoId }
-      });
+          if (!crypto) {
+            throw new Error(`Crypto not found: ${cryptoId}`);
+          }
 
-      if (!crypto) {
-        throw new Error(`Crypto not found: ${cryptoId}`);
+          const currentShares = typeof crypto.shares === 'number' ? crypto.shares : 0;
+          
+          await prisma.crypto.update({
+            where: { id: cryptoId },
+            data: {
+              shares: currentShares + shares
+            }
+          });
+
+          // Update the user's USD balance
+          const userBalance = typeof user.usdBalance === 'number' ? user.usdBalance : 0;
+          
+          await prisma.user.update({
+            where: { id: userId },
+            data: {
+              usdBalance: userBalance - totalAmount
+            }
+          });
+        }
+        
+        autoTradeLogger.log(`Micro processing: Binance buy executed successfully. Transaction ID: ${transaction.id}`);
+      } catch (error) {
+        autoTradeLogger.log(`Micro processing: Error executing Binance buy: ${error.message}`);
+        throw error;
       }
+    } else {
+      // Default platform (kraken or other)
+      if (testMode) {
+        // In test mode, just log the transaction details without executing it
+        autoTradeLogger.log(`TEST MODE - Micro processing buy: Would buy ${shares} shares of ${symbol} at $${currentPrice}. Total: $${totalAmount}`);
+        
+        // Create a test transaction record with the API request details
+        const testTransaction = await prisma.cryptoTransaction.create({
+          data: {
+            cryptoId,
+            action: 'test_buy',
+            shares,
+            price: currentPrice,
+            totalAmount,
+            userId,
+            apiRequest: JSON.stringify({
+              action: 'buy',
+              shares,
+              price: currentPrice,
+              totalAmount,
+              cryptoId,
+              symbol,
+              testMode: true
+            }, null, 2),
+            logInfo: `TEST MODE - Micro processing buy: ${shares} shares at $${currentPrice}. Total: $${totalAmount}. No actual trade executed.`
+          }
+        });
+        
+        transaction = testTransaction;
+        autoTradeLogger.log(`TEST MODE - Created test transaction record: ${testTransaction.id}`);
+      } else {
+        // Create the real transaction
+        const realTransaction = await prisma.cryptoTransaction.create({
+          data: {
+            cryptoId,
+            action: 'buy',
+            shares,
+            price: currentPrice,
+            totalAmount,
+            userId,
+            logInfo: `Micro processing buy: ${shares} shares at $${currentPrice}`
+          }
+        });
+        
+        transaction = realTransaction;
 
-      const currentShares = typeof crypto.shares === 'number' ? crypto.shares : 0;
-      
-      await prisma.crypto.update({
-        where: { id: cryptoId },
-        data: {
-          shares: currentShares + shares
-        }
-      });
+        // Update the crypto shares
+        const crypto = await prisma.crypto.findUnique({
+          where: { id: cryptoId }
+        });
 
-      // Update the user's USD balance
-      const userBalance = typeof user.usdBalance === 'number' ? user.usdBalance : 0;
-      
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          usdBalance: userBalance - totalAmount
+        if (!crypto) {
+          throw new Error(`Crypto not found: ${cryptoId}`);
         }
-      });
+
+        const currentShares = typeof crypto.shares === 'number' ? crypto.shares : 0;
+        
+        await prisma.crypto.update({
+          where: { id: cryptoId },
+          data: {
+            shares: currentShares + shares
+          }
+        });
+
+        // Update the user's USD balance
+        const userBalance = typeof user.usdBalance === 'number' ? user.usdBalance : 0;
+        
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            usdBalance: userBalance - totalAmount
+          }
+        });
+      }
     }
   } catch (error) {
     autoTradeLogger.log(`Micro processing: Error executing buy transaction: ${error.message}`);
@@ -567,16 +643,20 @@ export async function processMicroSell(cryptoId: string, symbol: string, userId:
   try {
     // Check if test mode is enabled
     const testMode = settings.testMode === true;
+    const tradingPlatform = settings.tradingPlatform || 'kraken';
     
-    if (testMode) {
-      // In test mode, just log the transaction details without executing it
-      autoTradeLogger.log(`TEST MODE - Micro processing sell: Would sell ${sharesToSell} shares of ${symbol} at $${currentPrice}. Total: $${totalAmount}. Profit: ${profit.toFixed(2)}`);
-      
-      // Create a test transaction record with the API request details
-      const testTransaction = await prisma.cryptoTransaction.create({
-        data: {
+    // Handle Binance trading platform
+    if (tradingPlatform === 'binance') {
+      try {
+        autoTradeLogger.log(`Micro processing: Using Binance trading platform for ${symbol}`);
+        
+        // Execute Binance market sell
+        const binanceResult = await executeBinanceMarketSell(userId, symbol, sharesToSell, testMode);
+        
+        // Create transaction record
+        const transactionData = {
           cryptoId,
-          action: 'test_sell',
+          action: testMode ? 'test_sell' : 'sell',
           shares: sharesToSell,
           price: currentPrice,
           totalAmount,
@@ -590,55 +670,123 @@ export async function processMicroSell(cryptoId: string, symbol: string, userId:
             symbol,
             referencePrice,
             profit: profit.toFixed(2),
-            testMode: true
+            testMode,
+            platform: 'binance'
           }, null, 2),
-          logInfo: `TEST MODE - Micro processing sell: ${sharesToSell} shares at $${currentPrice}. Reference price: $${referencePrice}. Profit: ${profit.toFixed(2)}. No actual trade executed.`
-        }
-      });
-      
-      transaction = testTransaction;
-      autoTradeLogger.log(`TEST MODE - Created test transaction record: ${testTransaction.id}`);
-    } else {
-      // Create the real transaction
-      const realTransaction = await prisma.cryptoTransaction.create({
-        data: {
-          cryptoId,
-          action: 'sell',
-          shares: sharesToSell,
-          price: currentPrice,
-          totalAmount,
-          userId,
-          logInfo: `Micro processing sell: ${sharesToSell} shares at $${currentPrice}. Reference price: $${referencePrice}. Profit: ${profit.toFixed(2)}`
-        }
-      });
-      
-      transaction = realTransaction;
+          apiResponse: JSON.stringify(binanceResult, null, 2),
+          logInfo: `Micro processing sell via Binance: ${sharesToSell} shares at $${currentPrice}. Reference price: $${referencePrice}. Profit: ${profit.toFixed(2)}.`
+        };
+        
+        transaction = await prisma.cryptoTransaction.create({ data: transactionData });
+        
+        // If not in test mode, update crypto shares and user balance
+        if (!testMode) {
+          // Update the crypto shares
+          const currentShares = typeof crypto.shares === 'number' ? crypto.shares : 0;
+          await prisma.crypto.update({
+            where: { id: cryptoId },
+            data: {
+              shares: currentShares - sharesToSell
+            }
+          });
 
-      // Update the crypto shares
-      const currentShares = typeof crypto.shares === 'number' ? crypto.shares : 0;
-      await prisma.crypto.update({
-        where: { id: cryptoId },
-        data: {
-          shares: currentShares - sharesToSell
+          // Update the user's USD balance
+          const user = await prisma.user.findUnique({
+            where: { id: userId }
+          });
+
+          if (!user) {
+            throw new Error(`User not found: ${userId}`);
+          }
+
+          const userBalance = typeof user.usdBalance === 'number' ? user.usdBalance : 0;
+          await prisma.user.update({
+            where: { id: userId },
+            data: {
+              usdBalance: userBalance + totalAmount
+            }
+          });
         }
-      });
-
-      // Update the user's USD balance
-      const user = await prisma.user.findUnique({
-        where: { id: userId }
-      });
-
-      if (!user) {
-        throw new Error(`User not found: ${userId}`);
+        
+        autoTradeLogger.log(`Micro processing: Binance sell executed successfully. Transaction ID: ${transaction.id}`);
+      } catch (error) {
+        autoTradeLogger.log(`Micro processing: Error executing Binance sell: ${error.message}`);
+        throw error;
       }
+    } else {
+      // Default platform (kraken or other)
+      if (testMode) {
+        // In test mode, just log the transaction details without executing it
+        autoTradeLogger.log(`TEST MODE - Micro processing sell: Would sell ${sharesToSell} shares of ${symbol} at $${currentPrice}. Total: $${totalAmount}. Profit: ${profit.toFixed(2)}`);
+        
+        // Create a test transaction record with the API request details
+        const testTransaction = await prisma.cryptoTransaction.create({
+          data: {
+            cryptoId,
+            action: 'test_sell',
+            shares: sharesToSell,
+            price: currentPrice,
+            totalAmount,
+            userId,
+            apiRequest: JSON.stringify({
+              action: 'sell',
+              shares: sharesToSell,
+              price: currentPrice,
+              totalAmount,
+              cryptoId,
+              symbol,
+              referencePrice,
+              profit: profit.toFixed(2),
+              testMode: true
+            }, null, 2),
+            logInfo: `TEST MODE - Micro processing sell: ${sharesToSell} shares at $${currentPrice}. Reference price: $${referencePrice}. Profit: ${profit.toFixed(2)}. No actual trade executed.`
+          }
+        });
+        
+        transaction = testTransaction;
+        autoTradeLogger.log(`TEST MODE - Created test transaction record: ${testTransaction.id}`);
+      } else {
+        // Create the real transaction
+        const realTransaction = await prisma.cryptoTransaction.create({
+          data: {
+            cryptoId,
+            action: 'sell',
+            shares: sharesToSell,
+            price: currentPrice,
+            totalAmount,
+            userId,
+            logInfo: `Micro processing sell: ${sharesToSell} shares at $${currentPrice}. Reference price: $${referencePrice}. Profit: ${profit.toFixed(2)}`
+          }
+        });
+        
+        transaction = realTransaction;
 
-      const userBalance = typeof user.usdBalance === 'number' ? user.usdBalance : 0;
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          usdBalance: userBalance + totalAmount
+        // Update the crypto shares
+        const currentShares = typeof crypto.shares === 'number' ? crypto.shares : 0;
+        await prisma.crypto.update({
+          where: { id: cryptoId },
+          data: {
+            shares: currentShares - sharesToSell
+          }
+        });
+
+        // Update the user's USD balance
+        const user = await prisma.user.findUnique({
+          where: { id: userId }
+        });
+
+        if (!user) {
+          throw new Error(`User not found: ${userId}`);
         }
-      });
+
+        const userBalance = typeof user.usdBalance === 'number' ? user.usdBalance : 0;
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            usdBalance: userBalance + totalAmount
+          }
+        });
+      }
     }
   } catch (error) {
     autoTradeLogger.log(`Micro processing: Error executing sell transaction: ${error.message}`);

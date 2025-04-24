@@ -33,6 +33,7 @@ import Research from "@/components/Research";
 import UserManagement from "@/components/UserManagement";
 import DataUploads from "@/components/DataUploads";
 import FixAutoTradeFlags from "@/components/FixAutoTradeFlags";
+import FixMicroProcessingTable from "@/components/FixMicroProcessingTable";
 import AutoTradeLogs from "@/components/AutoTradeLogs";
 import AIAgent from "@/components/AIAgent";
 import { Stock, StockWithPrice as StockWithCurrentPrice, Settings, Crypto, CryptoWithPrice } from "@/types/stock";
@@ -129,7 +130,7 @@ export default function Dashboard() {
   // Connect to WebSockets (Finnhub for stocks only - Kraken is handled by KrakenWebSocketContext)
   const connectWebSocket = useCallback(() => {
     // Check if FinnHub websocket is enabled in settings
-    if (settings?.enableFinnHubWebSocket === false) {
+    if (settings?.enableFinnHubWebSocket !== true) {
       console.log("FinnHub WebSocket is disabled in settings, skipping connection");
       return;
     }
@@ -572,16 +573,18 @@ export default function Dashboard() {
       }
       
       // Connect initially if FinnHub websocket is enabled
-      if (settings.enableFinnHubWebSocket !== false) {
+      if (settings.enableFinnHubWebSocket === true) {
+        console.log("FinnHub WebSocket is enabled in settings, connecting...");
         connectWebSocket();
         
         // Set up periodic reconnection
         timerRef.current = setInterval(() => {
-          if (!stocksConnected || !cryptoConnected) {
+          if (settings.enableFinnHubWebSocket === true && (!stocksConnected || !cryptoConnected)) {
             connectWebSocket();
           }
         }, settings.checkFrequencySeconds * 1000);
       } else {
+        console.log("FinnHub WebSocket is disabled in settings, closing any existing connection");
         // If FinnHub websocket is disabled, close any existing connection
         if (wsRef.current) {
           try {
@@ -1602,6 +1605,9 @@ export default function Dashboard() {
             
             {/* Fix Auto Trade Flags */}
             <FixAutoTradeFlags />
+            
+            {/* Fix Micro Processing Table */}
+            <FixMicroProcessingTable />
             
             {/* Crypto Transaction History */}
             <Card>

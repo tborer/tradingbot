@@ -2,6 +2,7 @@ import type { AppProps } from 'next/app'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { WebSocketLogProvider } from '@/contexts/WebSocketLogContext'
 import { KrakenWebSocketProvider } from '@/contexts/KrakenWebSocketContext'
+import { BinanceWebSocketProvider } from '@/contexts/BinanceWebSocketContext'
 import { ResearchApiLogProvider } from '@/contexts/ResearchApiLogContext'
 import { BalanceApiLogProvider } from '@/contexts/BalanceApiLogContext'
 import { AnalysisProvider } from '@/contexts/AnalysisContext'
@@ -42,12 +43,14 @@ export default function App({ Component, pageProps }: AppProps) {
               <ResearchApiLogProvider>
                 <BalanceApiLogProvider>
                   <KrakenWebSocketProvider>
-                    <AnalysisProvider>
+                    <BinanceWebSocketProvider>
+                      <AnalysisProvider>
                       <ProtectedRoute>
                         <Component {...pageProps} />
                       </ProtectedRoute>
                       <Toaster />
-                    </AnalysisProvider>
+                      </AnalysisProvider>
+                    </BinanceWebSocketProvider>
                   </KrakenWebSocketProvider>
                 </BalanceApiLogProvider>
               </ResearchApiLogProvider>

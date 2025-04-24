@@ -22,6 +22,7 @@ import SortableCryptoList from "@/components/SortableCryptoList";
 import TransactionHistory from "@/components/TransactionHistory";
 import CryptoTransactionHistory from "@/components/CryptoTransactionHistory";
 import KrakenWebSocketSettings from "@/components/KrakenWebSocketSettings";
+import BinanceWebSocketSettings from "@/components/BinanceWebSocketSettings";
 import FinnHubWebSocketSettings from "@/components/FinnHubWebSocketSettings";
 import AlphaVantageSettings from "@/components/AlphaVantageSettings";
 import CoinDeskSettings from "@/components/CoinDeskSettings";
@@ -1877,6 +1878,8 @@ export default function Dashboard() {
                         </div>
                       </div>
 
+                      <BinanceWebSocketSettings />
+                      
                       <KrakenWebSocketSettings
                         websocketUrl={settings.krakenWebsocketUrl || "wss://ws.kraken.com/v2"}
                         enableManualCryptoTrading={settings.enableManualCryptoTrading === true}

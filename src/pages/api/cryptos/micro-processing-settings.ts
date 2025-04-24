@@ -61,10 +61,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           testMode: false
         };
         
-        // Use the spread operator to ensure we're always returning a valid object
-        const resultSettings = microProcessingSettings 
-          ? { ...defaultSettings, ...microProcessingSettings }
-          : { ...defaultSettings };
+        // Manually construct the result object to avoid issues with null values
+        const resultSettings = {
+          id: microProcessingSettings?.id || undefined,
+          cryptoId: cryptoId,
+          enabled: microProcessingSettings?.enabled === true,
+          sellPercentage: typeof microProcessingSettings?.sellPercentage === 'number' ? 
+            microProcessingSettings.sellPercentage : defaultSettings.sellPercentage,
+          tradeByShares: typeof microProcessingSettings?.tradeByShares === 'number' ? 
+            microProcessingSettings.tradeByShares : defaultSettings.tradeByShares,
+          tradeByValue: microProcessingSettings?.tradeByValue === true,
+          totalValue: typeof microProcessingSettings?.totalValue === 'number' ? 
+            microProcessingSettings.totalValue : defaultSettings.totalValue,
+          websocketProvider: microProcessingSettings?.websocketProvider || defaultSettings.websocketProvider,
+          tradingPlatform: microProcessingSettings?.tradingPlatform || defaultSettings.tradingPlatform,
+          purchasePrice: typeof microProcessingSettings?.purchasePrice === 'number' ? 
+            microProcessingSettings.purchasePrice : null,
+          processingStatus: microProcessingSettings?.processingStatus || defaultSettings.processingStatus,
+          testMode: microProcessingSettings?.testMode === true,
+          lastBuyPrice: typeof microProcessingSettings?.lastBuyPrice === 'number' ? 
+            microProcessingSettings.lastBuyPrice : null,
+          lastBuyShares: typeof microProcessingSettings?.lastBuyShares === 'number' ? 
+            microProcessingSettings.lastBuyShares : null,
+          lastBuyTimestamp: microProcessingSettings?.lastBuyTimestamp || null,
+          createdAt: microProcessingSettings?.createdAt || new Date(),
+          updatedAt: microProcessingSettings?.updatedAt || new Date()
+        };
+        
+        console.log('Returning settings:', resultSettings);
         
         // Return the settings directly without nesting them in a microProcessingSettings property
         return res.status(200).json(resultSettings);
@@ -185,8 +209,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         });
         
-        // Use the spread operator to ensure we're always returning a valid object
-        const resultSettings = { ...defaultSettings, ...microProcessingSettings };
+        // Manually construct the result object to avoid issues with null values
+        const resultSettings = {
+          id: microProcessingSettings.id,
+          cryptoId: cryptoId,
+          enabled: microProcessingSettings.enabled === true,
+          sellPercentage: typeof microProcessingSettings.sellPercentage === 'number' ? 
+            microProcessingSettings.sellPercentage : defaultSettings.sellPercentage,
+          tradeByShares: typeof microProcessingSettings.tradeByShares === 'number' ? 
+            microProcessingSettings.tradeByShares : defaultSettings.tradeByShares,
+          tradeByValue: microProcessingSettings.tradeByValue === true,
+          totalValue: typeof microProcessingSettings.totalValue === 'number' ? 
+            microProcessingSettings.totalValue : defaultSettings.totalValue,
+          websocketProvider: microProcessingSettings.websocketProvider || defaultSettings.websocketProvider,
+          tradingPlatform: microProcessingSettings.tradingPlatform || defaultSettings.tradingPlatform,
+          purchasePrice: typeof microProcessingSettings.purchasePrice === 'number' ? 
+            microProcessingSettings.purchasePrice : null,
+          processingStatus: microProcessingSettings.processingStatus || defaultSettings.processingStatus,
+          testMode: microProcessingSettings.testMode === true,
+          lastBuyPrice: typeof microProcessingSettings.lastBuyPrice === 'number' ? 
+            microProcessingSettings.lastBuyPrice : null,
+          lastBuyShares: typeof microProcessingSettings.lastBuyShares === 'number' ? 
+            microProcessingSettings.lastBuyShares : null,
+          lastBuyTimestamp: microProcessingSettings.lastBuyTimestamp || null,
+          createdAt: microProcessingSettings.createdAt || new Date(),
+          updatedAt: microProcessingSettings.updatedAt || new Date()
+        };
+        
+        console.log('Returning updated settings:', resultSettings);
         
         // Return the settings directly without nesting them in a microProcessingSettings property
         // This matches the format expected by the client and the GET endpoint

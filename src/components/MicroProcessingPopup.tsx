@@ -55,38 +55,107 @@ export default function MicroProcessingPopup({
   };
   
   // Merge initial settings with defaults, ensuring all values are of the correct type
-  const [settings, setSettings] = useState<MicroProcessingSettings>(() => ({
-    ...defaultSettings,
-    enabled: initialSettings?.enabled ?? defaultSettings.enabled,
-    sellPercentage: Number(initialSettings?.sellPercentage) || defaultSettings.sellPercentage,
-    tradeByShares: Number(initialSettings?.tradeByShares) || defaultSettings.tradeByShares,
-    tradeByValue: initialSettings?.tradeByValue ?? defaultSettings.tradeByValue,
-    totalValue: Number(initialSettings?.totalValue) || defaultSettings.totalValue,
-    websocketProvider: initialSettings?.websocketProvider || defaultSettings.websocketProvider,
-    tradingPlatform: initialSettings?.tradingPlatform || defaultSettings.tradingPlatform,
-    purchasePrice: initialSettings?.purchasePrice,
-    testMode: initialSettings?.testMode ?? defaultSettings.testMode
-  }));
+  const [settings, setSettings] = useState<MicroProcessingSettings>(() => {
+    // Safely extract values from initialSettings with proper type checking
+    const enabled = initialSettings?.enabled === true;
+    
+    // For numeric values, ensure they are valid numbers or use defaults
+    const sellPercentage = typeof initialSettings?.sellPercentage === 'number' && !isNaN(initialSettings.sellPercentage) 
+      ? initialSettings.sellPercentage 
+      : defaultSettings.sellPercentage;
+    
+    const tradeByShares = typeof initialSettings?.tradeByShares === 'number' && !isNaN(initialSettings.tradeByShares) 
+      ? initialSettings.tradeByShares 
+      : defaultSettings.tradeByShares;
+    
+    const tradeByValue = initialSettings?.tradeByValue === true;
+    
+    const totalValue = typeof initialSettings?.totalValue === 'number' && !isNaN(initialSettings.totalValue) 
+      ? initialSettings.totalValue 
+      : defaultSettings.totalValue;
+    
+    // For string values, check if they exist and are valid
+    const websocketProvider = initialSettings?.websocketProvider && 
+      ['kraken', 'coinbase', 'binance'].includes(initialSettings.websocketProvider)
+      ? initialSettings.websocketProvider as 'kraken' | 'coinbase' | 'binance'
+      : defaultSettings.websocketProvider;
+    
+    const tradingPlatform = initialSettings?.tradingPlatform && 
+      ['kraken', 'coinbase', 'binance'].includes(initialSettings.tradingPlatform)
+      ? initialSettings.tradingPlatform as 'kraken' | 'coinbase' | 'binance'
+      : defaultSettings.tradingPlatform;
+    
+    // For optional numeric values, they can be undefined but not NaN
+    const purchasePrice = typeof initialSettings?.purchasePrice === 'number' && !isNaN(initialSettings.purchasePrice)
+      ? initialSettings.purchasePrice 
+      : undefined;
+    
+    const testMode = initialSettings?.testMode === true;
+    
+    return {
+      enabled,
+      sellPercentage,
+      tradeByShares,
+      tradeByValue,
+      totalValue,
+      websocketProvider,
+      tradingPlatform,
+      purchasePrice,
+      testMode
+    };
+  });
   
   // Update settings when initialSettings change
   useEffect(() => {
+    // Same safe extraction logic as in the initial state
+    const enabled = initialSettings?.enabled === true;
+    
+    const sellPercentage = typeof initialSettings?.sellPercentage === 'number' && !isNaN(initialSettings.sellPercentage) 
+      ? initialSettings.sellPercentage 
+      : defaultSettings.sellPercentage;
+    
+    const tradeByShares = typeof initialSettings?.tradeByShares === 'number' && !isNaN(initialSettings.tradeByShares) 
+      ? initialSettings.tradeByShares 
+      : defaultSettings.tradeByShares;
+    
+    const tradeByValue = initialSettings?.tradeByValue === true;
+    
+    const totalValue = typeof initialSettings?.totalValue === 'number' && !isNaN(initialSettings.totalValue) 
+      ? initialSettings.totalValue 
+      : defaultSettings.totalValue;
+    
+    const websocketProvider = initialSettings?.websocketProvider && 
+      ['kraken', 'coinbase', 'binance'].includes(initialSettings.websocketProvider)
+      ? initialSettings.websocketProvider as 'kraken' | 'coinbase' | 'binance'
+      : defaultSettings.websocketProvider;
+    
+    const tradingPlatform = initialSettings?.tradingPlatform && 
+      ['kraken', 'coinbase', 'binance'].includes(initialSettings.tradingPlatform)
+      ? initialSettings.tradingPlatform as 'kraken' | 'coinbase' | 'binance'
+      : defaultSettings.tradingPlatform;
+    
+    const purchasePrice = typeof initialSettings?.purchasePrice === 'number' && !isNaN(initialSettings.purchasePrice)
+      ? initialSettings.purchasePrice 
+      : undefined;
+    
+    const testMode = initialSettings?.testMode === true;
+    
     setSettings({
-      ...defaultSettings,
-      enabled: initialSettings?.enabled ?? defaultSettings.enabled,
-      sellPercentage: Number(initialSettings?.sellPercentage) || defaultSettings.sellPercentage,
-      tradeByShares: Number(initialSettings?.tradeByShares) || defaultSettings.tradeByShares,
-      tradeByValue: initialSettings?.tradeByValue ?? defaultSettings.tradeByValue,
-      totalValue: Number(initialSettings?.totalValue) || defaultSettings.totalValue,
-      websocketProvider: initialSettings?.websocketProvider || defaultSettings.websocketProvider,
-      tradingPlatform: initialSettings?.tradingPlatform || defaultSettings.tradingPlatform,
-      purchasePrice: initialSettings?.purchasePrice,
-      testMode: initialSettings?.testMode ?? defaultSettings.testMode
+      enabled,
+      sellPercentage,
+      tradeByShares,
+      tradeByValue,
+      totalValue,
+      websocketProvider,
+      tradingPlatform,
+      purchasePrice,
+      testMode
     });
   }, [initialSettings]);
   
   const handleSave = async () => {
     // Validate settings based on trade type
-    if (!settings.tradeByValue && settings.tradeByShares <= 0) {
+    if (!settings.tradeByValue && (typeof settings.tradeByShares !== 'number' || isNaN(settings.tradeByShares) || settings.tradeByShares <= 0)) {
       toast({
         variant: "destructive",
         title: "Invalid Input",
@@ -95,7 +164,7 @@ export default function MicroProcessingPopup({
       return;
     }
     
-    if (settings.tradeByValue && settings.totalValue <= 0) {
+    if (settings.tradeByValue && (typeof settings.totalValue !== 'number' || isNaN(settings.totalValue) || settings.totalValue <= 0)) {
       toast({
         variant: "destructive",
         title: "Invalid Input",
@@ -104,19 +173,42 @@ export default function MicroProcessingPopup({
       return;
     }
     
-    // Ensure all values are of the correct type
+    // Validate sell percentage
+    if (typeof settings.sellPercentage !== 'number' || isNaN(settings.sellPercentage) || settings.sellPercentage < 0.005) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Sell Percentage",
+        description: "Please enter a valid sell percentage (minimum 0.005%).",
+      });
+      return;
+    }
+    
+    // Ensure all values are of the correct type with explicit validation
     const validatedSettings: MicroProcessingSettings = {
-      enabled: Boolean(settings.enabled),
-      sellPercentage: Number(settings.sellPercentage) || 0.5,
-      tradeByShares: Number(settings.tradeByShares) || 0,
-      tradeByValue: Boolean(settings.tradeByValue),
-      totalValue: Number(settings.totalValue) || 0,
-      websocketProvider: settings.websocketProvider || 'kraken',
-      tradingPlatform: settings.tradingPlatform || 'kraken',
-      purchasePrice: settings.purchasePrice !== undefined && !isNaN(Number(settings.purchasePrice)) ? 
-        Number(settings.purchasePrice) : undefined,
-      testMode: Boolean(settings.testMode)
+      enabled: settings.enabled === true,
+      sellPercentage: typeof settings.sellPercentage === 'number' && !isNaN(settings.sellPercentage) 
+        ? settings.sellPercentage 
+        : 0.5,
+      tradeByShares: typeof settings.tradeByShares === 'number' && !isNaN(settings.tradeByShares) 
+        ? settings.tradeByShares 
+        : 0,
+      tradeByValue: settings.tradeByValue === true,
+      totalValue: typeof settings.totalValue === 'number' && !isNaN(settings.totalValue) 
+        ? settings.totalValue 
+        : 0,
+      websocketProvider: settings.websocketProvider && ['kraken', 'coinbase', 'binance'].includes(settings.websocketProvider)
+        ? settings.websocketProvider 
+        : 'kraken',
+      tradingPlatform: settings.tradingPlatform && ['kraken', 'coinbase', 'binance'].includes(settings.tradingPlatform)
+        ? settings.tradingPlatform 
+        : 'kraken',
+      purchasePrice: typeof settings.purchasePrice === 'number' && !isNaN(settings.purchasePrice) 
+        ? settings.purchasePrice 
+        : undefined,
+      testMode: settings.testMode === true
     };
+    
+    console.log('Saving validated settings:', validatedSettings);
     
     setIsSubmitting(true);
     try {
@@ -218,7 +310,10 @@ export default function MicroProcessingPopup({
                 min="0.00000001"
                 step="0.00000001"
                 value={settings.tradeByShares}
-                onChange={(e) => setSettings({...settings, tradeByShares: Number(e.target.value)})}
+                onChange={(e) => {
+                  const value = parseFloat(e.target.value);
+                  setSettings({...settings, tradeByShares: isNaN(value) ? 0 : value});
+                }}
                 placeholder="Enter number of shares"
               />
               <p className="text-xs text-muted-foreground">
@@ -239,7 +334,10 @@ export default function MicroProcessingPopup({
                 min="0.01"
                 step="0.01"
                 value={settings.totalValue}
-                onChange={(e) => setSettings({...settings, totalValue: Number(e.target.value)})}
+                onChange={(e) => {
+                  const value = parseFloat(e.target.value);
+                  setSettings({...settings, totalValue: isNaN(value) ? 0 : value});
+                }}
                 placeholder="Enter total value in USD"
               />
               <p className="text-xs text-muted-foreground">
@@ -299,7 +397,10 @@ export default function MicroProcessingPopup({
               min="0.00000001"
               step="0.00000001"
               value={settings.purchasePrice || ''}
-              onChange={(e) => setSettings({...settings, purchasePrice: Number(e.target.value) || undefined})}
+              onChange={(e) => {
+                const value = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                setSettings({...settings, purchasePrice: value !== undefined && isNaN(value) ? undefined : value});
+              }}
               placeholder="Enter purchase price (optional)"
             />
             <p className="text-xs text-muted-foreground">

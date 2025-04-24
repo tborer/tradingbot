@@ -1,23 +1,37 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import prisma from '@/lib/prisma';
 import { createClient } from '@/util/supabase/api';
+import { MicroProcessingSettings } from '@prisma/client';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   console.log(`[MICRO-SETTINGS] API handler started: ${req.method} request received`);
+  console.log(`[MICRO-SETTINGS] Request URL: ${req.url}`);
+  console.log(`[MICRO-SETTINGS] Request query params:`, req.query);
   
   try {
     // Get the user from Supabase auth
     console.log('[MICRO-SETTINGS] Authenticating user with Supabase');
     const supabase = createClient({ req, res });
-    const { data } = await supabase.auth.getUser();
     
-    if (!data || !data.user) {
-      console.error('[MICRO-SETTINGS] Authentication failed: No user found');
-      return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const { data } = await supabase.auth.getUser();
+      console.log('[MICRO-SETTINGS] Supabase auth response:', data ? 'Data received' : 'No data received');
+    
+      if (!data || !data.user) {
+        console.error('[MICRO-SETTINGS] Authentication failed: No user found');
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      
+      const user = data.user;
+      console.log(`[MICRO-SETTINGS] User authenticated: ${user.id}`);
+    } catch (authError) {
+      console.error('[MICRO-SETTINGS] Supabase authentication error:', authError);
+      console.error('[MICRO-SETTINGS] Auth error stack:', authError instanceof Error ? authError.stack : 'No stack trace available');
+      return res.status(401).json({ 
+        error: 'Authentication failed', 
+        details: authError instanceof Error ? authError.message : 'Unknown authentication error' 
+      });
     }
-    
-    const user = data.user;
-    console.log(`[MICRO-SETTINGS] User authenticated: ${user.id}`);
     
     // Handle GET request to fetch settings
     if (req.method === 'GET') {
@@ -35,12 +49,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log(`[MICRO-SETTINGS] Verifying crypto ownership for cryptoId: ${cryptoId}`);
         // Check if the crypto belongs to the user
         console.log(`[MICRO-SETTINGS] Querying database for crypto with id: ${cryptoId} and userId: ${user.id}`);
-        const crypto = await prisma.crypto.findFirst({
-          where: {
-            id: cryptoId,
-            userId: user.id
-          }
-        });
+        
+        let crypto;
+        try {
+          crypto = await prisma.crypto.findFirst({
+            where: {
+              id: cryptoId,
+              userId: user.id
+            }
+          });
+          console.log(`[MICRO-SETTINGS] Prisma crypto query completed successfully`);
+        } catch (prismaError) {
+          console.error('[MICRO-SETTINGS] Prisma error during crypto query:', prismaError);
+          console.error('[MICRO-SETTINGS] Prisma error details:', {
+            name: prismaError instanceof Error ? prismaError.name : 'Unknown',
+            message: prismaError instanceof Error ? prismaError.message : 'Unknown error',
+            stack: prismaError instanceof Error ? prismaError.stack : 'No stack trace'
+          });
+          throw prismaError; // Re-throw to be caught by the outer try-catch
+        }
         
         // Add the requested logging for the crypto object
         console.log("Crypto object:", crypto);
@@ -54,17 +81,51 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         // Get the micro processing settings
         console.log(`[MICRO-SETTINGS] Fetching micro processing settings for cryptoId: ${cryptoId}`);
-        const microProcessingSettings = await prisma.microProcessingSettings.findUnique({
-          where: {
-            cryptoId: cryptoId
-          }
-        });
+        
+        let microProcessingSettings: MicroProcessingSettings | null = null;
+        try {
+          microProcessingSettings = await prisma.microProcessingSettings.findUnique({
+            where: {
+              cryptoId: cryptoId
+            }
+          });
+          console.log(`[MICRO-SETTINGS] Prisma microProcessingSettings query completed successfully`);
+        } catch (prismaError) {
+          console.error('[MICRO-SETTINGS] Prisma error during microProcessingSettings query:', prismaError);
+          console.error('[MICRO-SETTINGS] Prisma error details:', {
+            name: prismaError instanceof Error ? prismaError.name : 'Unknown',
+            message: prismaError instanceof Error ? prismaError.message : 'Unknown error',
+            stack: prismaError instanceof Error ? prismaError.stack : 'No stack trace'
+          });
+          throw prismaError; // Re-throw to be caught by the outer try-catch
+        }
         
         // Add the requested logging for the microProcessingSettings object
         console.log("microProcessingSettings object:", microProcessingSettings);
         
-        console.log(`[MICRO-SETTINGS] Database query result for settings:`, 
-                    microProcessingSettings ? 'Settings found' : 'No settings found');
+        // Log detailed information about the microProcessingSettings object
+        if (microProcessingSettings) {
+          console.log('[MICRO-SETTINGS] Settings found with the following properties:');
+          console.log(`[MICRO-SETTINGS] - id: ${microProcessingSettings.id}`);
+          console.log(`[MICRO-SETTINGS] - cryptoId: ${microProcessingSettings.cryptoId}`);
+          console.log(`[MICRO-SETTINGS] - enabled: ${microProcessingSettings.enabled}`);
+          console.log(`[MICRO-SETTINGS] - sellPercentage: ${microProcessingSettings.sellPercentage}`);
+          console.log(`[MICRO-SETTINGS] - tradeByShares: ${microProcessingSettings.tradeByShares}`);
+          console.log(`[MICRO-SETTINGS] - tradeByValue: ${microProcessingSettings.tradeByValue}`);
+          console.log(`[MICRO-SETTINGS] - totalValue: ${microProcessingSettings.totalValue}`);
+          console.log(`[MICRO-SETTINGS] - websocketProvider: ${microProcessingSettings.websocketProvider}`);
+          console.log(`[MICRO-SETTINGS] - tradingPlatform: ${microProcessingSettings.tradingPlatform}`);
+          console.log(`[MICRO-SETTINGS] - purchasePrice: ${microProcessingSettings.purchasePrice}`);
+          console.log(`[MICRO-SETTINGS] - processingStatus: ${microProcessingSettings.processingStatus}`);
+          console.log(`[MICRO-SETTINGS] - testMode: ${microProcessingSettings.testMode}`);
+          console.log(`[MICRO-SETTINGS] - lastBuyPrice: ${microProcessingSettings.lastBuyPrice}`);
+          console.log(`[MICRO-SETTINGS] - lastBuyShares: ${microProcessingSettings.lastBuyShares}`);
+          console.log(`[MICRO-SETTINGS] - lastBuyTimestamp: ${microProcessingSettings.lastBuyTimestamp}`);
+          console.log(`[MICRO-SETTINGS] - createdAt: ${microProcessingSettings.createdAt}`);
+          console.log(`[MICRO-SETTINGS] - updatedAt: ${microProcessingSettings.updatedAt}`);
+        } else {
+          console.log('[MICRO-SETTINGS] No settings found for this crypto');
+        }
         
         // Return settings object if found, or a default settings object if none found
         // This ensures we always return a valid object structure
@@ -85,7 +146,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         let resultSettings;
         
         if (!microProcessingSettings) {
-          console.log('No settings found, using default values');
+          console.log('[MICRO-SETTINGS] No settings found, using default values');
           resultSettings = {
             id: undefined,
             cryptoId: cryptoId,
@@ -106,6 +167,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             updatedAt: new Date()
           };
         } else {
+          console.log('[MICRO-SETTINGS] Constructing result object from existing settings with validation');
           // Manually construct the result object with explicit null checks and NaN checks for each property
           resultSettings = {
             id: microProcessingSettings.id || undefined,
@@ -134,19 +196,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           };
         }
         
-        console.log('Returning settings:', resultSettings);
+        // Validate the resultSettings object for any potential issues
+        console.log('[MICRO-SETTINGS] Validating final resultSettings object');
+        Object.entries(resultSettings).forEach(([key, value]) => {
+          if (value === undefined) {
+            console.warn(`[MICRO-SETTINGS] Warning: resultSettings.${key} is undefined`);
+          }
+          if (typeof value === 'number' && isNaN(value)) {
+            console.warn(`[MICRO-SETTINGS] Warning: resultSettings.${key} is NaN`);
+          }
+        });
+        
+        console.log('[MICRO-SETTINGS] Returning settings:', resultSettings);
         
         // Return the settings directly without nesting them in a microProcessingSettings property
+        console.log('[MICRO-SETTINGS] Sending successful response with status 200');
         return res.status(200).json(resultSettings);
       } catch (error) {
         console.error('[MICRO-SETTINGS] Error fetching micro processing settings:', error);
         console.error('[MICRO-SETTINGS] Error stack:', error instanceof Error ? error.stack : 'No stack trace available');
         console.error('[MICRO-SETTINGS] GET request parameters:', { cryptoId, userId: user.id });
         
+        // Check if it's a Prisma error and log more details
+        if (error && typeof error === 'object' && 'code' in error) {
+          console.error('[MICRO-SETTINGS] Prisma error code:', (error as any).code);
+          console.error('[MICRO-SETTINGS] Prisma error meta:', (error as any).meta);
+        }
+        
         const errorMessage = error instanceof Error ? error.message : 'Unknown database error';
+        console.error('[MICRO-SETTINGS] Sending error response with status 500');
         return res.status(500).json({ 
           error: 'Failed to fetch micro processing settings', 
-          details: errorMessage 
+          details: errorMessage,
+          errorType: error instanceof Error ? error.name : 'Unknown',
+          timestamp: new Date().toISOString()
         });
       }
     }
@@ -256,10 +339,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         // Upsert the micro processing settings
         console.log(`[MICRO-SETTINGS] Performing upsert operation for cryptoId: ${cryptoId}`);
-        const microProcessingSettings = await prisma.microProcessingSettings.upsert({
-          where: {
-            cryptoId: cryptoId
-          },
+        console.log('[MICRO-SETTINGS] Upsert data:', {
           update: {
             enabled: validatedSettings.enabled,
             sellPercentage: validatedSettings.sellPercentage,
@@ -270,8 +350,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             tradingPlatform: validatedSettings.tradingPlatform,
             purchasePrice: validatedSettings.purchasePrice,
             processingStatus: validatedSettings.processingStatus,
-            testMode: validatedSettings.testMode,
-            updatedAt: new Date()
+            testMode: validatedSettings.testMode
           },
           create: {
             cryptoId: cryptoId,
@@ -287,6 +366,57 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             processingStatus: 'idle'
           }
         });
+        
+        let microProcessingSettings;
+        try {
+          microProcessingSettings = await prisma.microProcessingSettings.upsert({
+            where: {
+              cryptoId: cryptoId
+            },
+            update: {
+              enabled: validatedSettings.enabled,
+              sellPercentage: validatedSettings.sellPercentage,
+              tradeByShares: validatedSettings.tradeByShares,
+              tradeByValue: validatedSettings.tradeByValue,
+              totalValue: validatedSettings.totalValue,
+              websocketProvider: validatedSettings.websocketProvider,
+              tradingPlatform: validatedSettings.tradingPlatform,
+              purchasePrice: validatedSettings.purchasePrice,
+              processingStatus: validatedSettings.processingStatus,
+              testMode: validatedSettings.testMode,
+              updatedAt: new Date()
+            },
+            create: {
+              cryptoId: cryptoId,
+              enabled: validatedSettings.enabled,
+              sellPercentage: validatedSettings.sellPercentage,
+              tradeByShares: validatedSettings.tradeByShares,
+              tradeByValue: validatedSettings.tradeByValue,
+              totalValue: validatedSettings.totalValue,
+              websocketProvider: validatedSettings.websocketProvider,
+              tradingPlatform: validatedSettings.tradingPlatform,
+              purchasePrice: validatedSettings.purchasePrice,
+              testMode: validatedSettings.testMode,
+              processingStatus: 'idle'
+            }
+          });
+          console.log('[MICRO-SETTINGS] Prisma upsert operation completed successfully');
+        } catch (prismaError) {
+          console.error('[MICRO-SETTINGS] Prisma error during upsert operation:', prismaError);
+          console.error('[MICRO-SETTINGS] Prisma error details:', {
+            name: prismaError instanceof Error ? prismaError.name : 'Unknown',
+            message: prismaError instanceof Error ? prismaError.message : 'Unknown error',
+            stack: prismaError instanceof Error ? prismaError.stack : 'No stack trace'
+          });
+          
+          // Check if it's a Prisma error and log more details
+          if (prismaError && typeof prismaError === 'object' && 'code' in prismaError) {
+            console.error('[MICRO-SETTINGS] Prisma error code:', (prismaError as any).code);
+            console.error('[MICRO-SETTINGS] Prisma error meta:', (prismaError as any).meta);
+          }
+          
+          throw prismaError; // Re-throw to be caught by the outer try-catch
+        }
         
         // Explicitly check if microProcessingSettings is null or undefined
         if (!microProcessingSettings) {
@@ -347,6 +477,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     
     // Handle unsupported methods
+    console.log(`[MICRO-SETTINGS] Unsupported method: ${req.method}`);
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
     // Global error handler to ensure we always return JSON
@@ -361,9 +492,48 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.error('[MICRO-SETTINGS] Request query:', req.query);
     console.error('[MICRO-SETTINGS] Request body:', req.body);
     
+    // Check if it's a Prisma error and log more details
+    if (error && typeof error === 'object' && 'code' in error) {
+      console.error('[MICRO-SETTINGS] Prisma error code:', (error as any).code);
+      console.error('[MICRO-SETTINGS] Prisma error meta:', (error as any).meta);
+      
+      // Handle specific Prisma errors
+      if ((error as any).code === 'P2003') {
+        console.error('[MICRO-SETTINGS] Foreign key constraint failed. This might be due to a missing crypto record.');
+        return res.status(500).json({
+          error: 'Database constraint error',
+          details: 'The operation failed due to a foreign key constraint. The crypto record might be missing or invalid.',
+          errorCode: (error as any).code,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      if ((error as any).code === 'P2025') {
+        console.error('[MICRO-SETTINGS] Record not found. This might be due to a missing crypto record.');
+        return res.status(404).json({
+          error: 'Record not found',
+          details: 'The requested record could not be found in the database.',
+          errorCode: (error as any).code,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+    
+    // Check for network or connection errors
+    if (error instanceof Error && error.message.includes('connect')) {
+      console.error('[MICRO-SETTINGS] Possible database connection error');
+    }
+    
+    // Check for timeout errors
+    if (error instanceof Error && error.message.includes('timeout')) {
+      console.error('[MICRO-SETTINGS] Possible database timeout error');
+    }
+    
     return res.status(500).json({ 
       error: 'An unexpected error occurred', 
       details: details,
+      errorType: error instanceof Error ? error.name : 'Unknown',
+      timestamp: new Date().toISOString(),
       stack: process.env.NODE_ENV === 'development' && error instanceof Error ? error.stack : undefined
     });
   }

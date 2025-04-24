@@ -421,19 +421,36 @@ export default function SortableCryptoList({
         tradingPlatform: 'kraken'
       };
       
+      console.log(`Initiating fetch for micro processing settings with cryptoId=${id}`);
+      
       // Fetch the current micro processing settings for this specific crypto
       const response = await fetch(`/api/cryptos/micro-processing-settings?cryptoId=${id}`, {
         method: "GET",
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json'
-        }
+        },
+        // Add cache control to prevent caching issues
+        cache: 'no-store'
       });
+      
+      console.log(`Fetch response status: ${response.status} ${response.statusText}`);
       
       if (response.ok) {
         try {
-          const settings = await response.json();
-          console.log(`Received settings data:`, settings);
+          const responseText = await response.text();
+          console.log(`Raw response text:`, responseText);
+          
+          // Try to parse the response as JSON
+          let settings;
+          try {
+            settings = JSON.parse(responseText);
+            console.log(`Received settings data:`, settings);
+          } catch (parseError) {
+            console.error(`Error parsing JSON response: ${parseError}`);
+            console.error(`Response was: ${responseText}`);
+            throw new Error(`Invalid JSON response: ${parseError.message}`);
+          }
           
           // Use the fetched settings with proper type conversion
           setCurrentMicroProcessingSettings({
@@ -449,12 +466,14 @@ export default function SortableCryptoList({
           
           console.log(`Successfully loaded settings for ${symbol}`);
         } catch (jsonError) {
-          console.error("Error parsing JSON response:", jsonError);
+          console.error("Error processing response:", jsonError);
+          console.error("Error details:", jsonError instanceof Error ? jsonError.message : String(jsonError));
+          console.error("Error stack:", jsonError instanceof Error ? jsonError.stack : "No stack trace");
           setCurrentMicroProcessingSettings(defaultSettings);
           toast({
             variant: "destructive",
             title: "Error",
-            description: "Failed to parse settings data. Default settings will be used.",
+            description: `Failed to process settings data: ${jsonError instanceof Error ? jsonError.message : "Unknown error"}. Default settings will be used.`,
           });
         }
       } else {
@@ -487,6 +506,9 @@ export default function SortableCryptoList({
       }
     } catch (error) {
       console.error("Error fetching micro processing settings:", error);
+      console.error("Error details:", error instanceof Error ? error.message : String(error));
+      console.error("Error stack:", error instanceof Error ? error.stack : "No stack trace");
+      
       // Reset to default settings if there was an error
       setCurrentMicroProcessingSettings({
         enabled: false,
@@ -495,10 +517,16 @@ export default function SortableCryptoList({
         websocketProvider: 'kraken',
         tradingPlatform: 'kraken'
       });
+      
+      // Provide more detailed error message
+      const errorMessage = error instanceof Error 
+        ? `Failed to fetch micro processing settings: ${error.message}`
+        : "Failed to fetch micro processing settings: An unexpected error occurred";
+      
       toast({
         variant: "destructive",
         title: "Error",
-        description: `Failed to load micro processing settings. Default settings will be used.`,
+        description: errorMessage,
       });
     }
     

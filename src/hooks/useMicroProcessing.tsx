@@ -49,10 +49,22 @@ export function useMicroProcessing() {
           
           // Only include cryptos with enabled settings
           if (settings && settings.enabled) {
+            // Log the settings and crypto for debugging
+            console.log("Mapping crypto to settings:", {
+              cryptoId: crypto.id,
+              symbol: crypto.symbol,
+              settingsId: settings.id,
+              settingsCryptoId: settings.cryptoId,
+              settingsCrypto: settings.crypto // This should contain the crypto relationship
+            });
+            
             return {
               ...crypto,
               currentPrice: crypto.lastPrice || crypto.currentPrice,
-              microProcessingSettings: settings
+              microProcessingSettings: {
+                ...settings,
+                crypto: settings.crypto || crypto // Ensure crypto is included in the settings
+              }
             };
           }
           return null;

@@ -42,6 +42,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         });
         
+        // Add the requested logging for the crypto object
+        console.log("Crypto object:", crypto);
+        
         if (!crypto) {
           console.error(`[MICRO-SETTINGS] Crypto not found for id: ${cryptoId} and userId: ${user.id}`);
           return res.status(404).json({ error: 'Crypto not found' });
@@ -56,6 +59,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             cryptoId: cryptoId
           }
         });
+        
+        // Add the requested logging for the microProcessingSettings object
+        console.log("microProcessingSettings object:", microProcessingSettings);
         
         console.log(`[MICRO-SETTINGS] Database query result for settings:`, 
                     microProcessingSettings ? 'Settings found' : 'No settings found');
@@ -186,6 +192,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             userId: user.id
           }
         });
+        
+        // Add the requested logging for the crypto object
+        console.log("Crypto object:", crypto);
         
         if (!crypto) {
           console.error(`[MICRO-SETTINGS] Crypto not found for id: ${cryptoId} and userId: ${user.id}`);

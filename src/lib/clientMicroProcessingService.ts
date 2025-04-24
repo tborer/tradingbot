@@ -15,6 +15,7 @@ export interface MicroProcessingSettings {
   lastBuyShares?: number;
   lastBuyTimestamp?: Date;
   processingStatus?: 'buying' | 'selling' | 'idle';
+  crypto?: MicroProcessingCrypto; // Add the crypto relationship
 }
 
 export interface MicroProcessingCrypto {
@@ -390,6 +391,9 @@ async function updateServerState(
     // Ensure settings is not null or undefined
     const validSettings = settings || {};
     
+    // Remove the crypto property if it exists to avoid circular references
+    const { crypto, ...settingsWithoutCrypto } = validSettings;
+    
     const response = await fetch('/api/cryptos/micro-processing-settings', {
       method: 'POST',
       headers: {
@@ -397,7 +401,7 @@ async function updateServerState(
       },
       body: JSON.stringify({
         cryptoId,
-        settings: validSettings
+        settings: settingsWithoutCrypto
       }),
     });
     

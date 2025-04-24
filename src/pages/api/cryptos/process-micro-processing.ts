@@ -41,13 +41,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(200).json([]);
           }
           
-          // Get all enabled micro processing settings
+          // Get all enabled micro processing settings with the crypto relationship
           const enabledSettings = await prisma.microProcessingSettings.findMany({
             where: {
               cryptoId: {
                 in: cryptos.map(crypto => crypto.id)
               },
               enabled: true
+            },
+            include: {
+              crypto: true // Include the crypto relationship
             }
           });
           

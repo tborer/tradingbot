@@ -456,40 +456,64 @@ export async function processAllMicroProcessingCryptos(): Promise<{
     messages: [] as string[]
   };
   
-  // Get all enabled cryptos
-  const enabledCryptos = getEnabledMicroProcessingCryptos();
-  
-  if (enabledCryptos.length === 0) {
-    result.messages.push('No enabled micro processing cryptos found');
-    return result;
-  }
-  
-  // Process each crypto
-  for (const crypto of enabledCryptos) {
-    try {
-      // Check if we should trade
-      const tradeDecision = shouldMicroTrade(crypto.id);
-      
-      if (tradeDecision.shouldTrade && tradeDecision.action) {
-        // Process the trade
-        const tradeResult = await processMicroTrade(crypto.id, tradeDecision.action);
-        
-        if (tradeResult.success) {
-          result.processed++;
-          result.messages.push(tradeResult.message);
-        } else {
-          result.errors++;
-          result.messages.push(tradeResult.message);
-        }
-      }
-    } catch (error) {
-      result.errors++;
-      result.messages.push(`Error processing ${crypto.symbol}: ${error.message}`);
+  try {
+    // Get all enabled cryptos
+    const enabledCryptos = getEnabledMicroProcessingCryptos();
+    
+    console.log(`Processing ${enabledCryptos.length} enabled micro processing cryptos`);
+    
+    if (enabledCryptos.length === 0) {
+      result.messages.push('No enabled micro processing cryptos found');
+      return result;
     }
+    
+    // Process each crypto
+    for (const crypto of enabledCryptos) {
+      try {
+        if (!crypto || !crypto.id) {
+          console.warn('Invalid crypto object found in enabled cryptos:', crypto);
+          result.errors++;
+          result.messages.push('Encountered invalid crypto data');
+          continue;
+        }
+        
+        console.log(`Processing crypto: ${crypto.symbol} (${crypto.id})`);
+        
+        // Check if we should trade
+        const tradeDecision = shouldMicroTrade(crypto.id);
+        
+        if (tradeDecision.shouldTrade && tradeDecision.action) {
+          console.log(`Trade decision for ${crypto.symbol}: ${tradeDecision.action} - ${tradeDecision.reason}`);
+          
+          // Process the trade
+          const tradeResult = await processMicroTrade(crypto.id, tradeDecision.action);
+          
+          if (tradeResult.success) {
+            result.processed++;
+            result.messages.push(tradeResult.message);
+          } else {
+            result.errors++;
+            result.messages.push(tradeResult.message);
+          }
+        } else {
+          console.log(`No trade needed for ${crypto.symbol}: ${tradeDecision.reason}`);
+        }
+      } catch (error: any) {
+        console.error(`Error processing individual crypto ${crypto?.symbol || 'unknown'}:`, error);
+        result.errors++;
+        result.messages.push(`Error processing ${crypto?.symbol || 'unknown'}: ${error?.message || 'Unknown error'}`);
+      }
+    }
+  } catch (error: any) {
+    console.error('Critical error in processAllMicroProcessingCryptos:', error);
+    result.success = false;
+    result.errors++;
+    result.messages.push(`Critical error: ${error?.message || 'Unknown error'}`);
   }
   
   // Set overall success based on errors
   result.success = result.errors === 0;
   
+  console.log(`Micro processing complete: ${result.processed} processed, ${result.errors} errors`);
   return result;
 }

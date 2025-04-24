@@ -62,16 +62,23 @@ export function useMicroProcessing() {
         }
         
         return response;
-      } catch (error) {
+      } catch (error: any) {
         console.error(`Attempt ${attempt + 1} failed:`, error);
         lastError = error;
         
         // If this is an authentication error and we're still initializing, wait longer
-        if (initializing && error.message.includes('Unauthorized')) {
+        if (initializing && error.message && error.message.includes('Unauthorized')) {
           console.log('Authentication still initializing, waiting longer before retry...');
           await new Promise(resolve => setTimeout(resolve, retryDelay * 2));
         } else {
           await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+        
+        // If this is the last attempt, prepare a more detailed error
+        if (attempt === maxRetries - 1) {
+          const detailedError = new Error(`Failed to fetch after ${maxRetries} attempts: ${error.message || 'Unknown error'}`);
+          detailedError.stack = error.stack;
+          lastError = detailedError;
         }
       }
     }
@@ -95,36 +102,67 @@ export function useMicroProcessing() {
     
     try {
       setLoading(true);
+      setError(null); // Clear any previous errors
       
       // Use a single consolidated API endpoint to get cryptos with their enabled settings
-      // This reduces authentication failure points by making a single request
+      console.log('Fetching micro processing settings with includeEnabledCryptos=true');
       const response = await fetchWithRetry('/api/cryptos/micro-processing-settings?includeEnabledCryptos=true');
-      const data = await response.json();
+      
+      // Validate response before parsing JSON
+      if (!response) {
+        throw new Error('No response received from server');
+      }
+      
+      // Parse the JSON response with error handling
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error('Error parsing JSON response:', jsonError);
+        throw new Error('Failed to parse server response');
+      }
+      
+      // Validate the data structure
+      if (!Array.isArray(data)) {
+        console.error('Expected array but received:', typeof data, data);
+        throw new Error('Invalid data format received from server');
+      }
       
       console.log(`Received ${data.length} cryptos with micro processing settings`);
       
-      // Process the data
-      const cryptosWithSettings = data.filter((item: any) => 
-        item.microProcessingSettings && item.microProcessingSettings.enabled
-      );
+      // Process the data with additional validation
+      const cryptosWithSettings = data.filter((item: any) => {
+        if (!item || typeof item !== 'object') {
+          console.warn('Invalid item in response:', item);
+          return false;
+        }
+        return item.microProcessingSettings && item.microProcessingSettings.enabled;
+      });
+      
+      console.log(`Found ${cryptosWithSettings.length} enabled cryptos for micro processing`);
       
       setEnabledCryptos(cryptosWithSettings);
       
       // Initialize micro processing for each enabled crypto
       cryptosWithSettings.forEach((crypto: MicroProcessingCrypto) => {
-        initializeMicroProcessing(crypto);
+        try {
+          initializeMicroProcessing(crypto);
+        } catch (initError) {
+          console.error(`Failed to initialize micro processing for ${crypto.symbol}:`, initError);
+          // Continue with other cryptos even if one fails
+        }
       });
       
       isInitializedRef.current = true;
       
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching micro processing cryptos:', err);
-      setError('Failed to load micro processing cryptocurrencies');
+      setError(`Failed to load micro processing cryptocurrencies: ${err.message || 'Unknown error'}`);
       
       toast({
         variant: "destructive",
         title: "Error",
-        description: `Failed to load micro processing settings: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        description: `Failed to load micro processing settings: ${err.message || 'Unknown error'}`,
       });
     } finally {
       setLoading(false);
@@ -214,6 +252,8 @@ export function useMicroProcessing() {
   // Initialize data on component mount with improved authentication state handling
   useEffect(() => {
     let authCheckTimer: NodeJS.Timeout | null = null;
+    let retryCount = 0;
+    const maxRetries = 5;
     
     // Function to check auth state and fetch data when ready
     const checkAuthAndFetch = () => {
@@ -226,11 +266,34 @@ export function useMicroProcessing() {
       
       if (!user) {
         console.log('No authenticated user found after initialization');
+        
+        // If we've tried several times and still no user, we might need to redirect to login
+        if (retryCount >= maxRetries) {
+          console.log(`Max retries (${maxRetries}) reached without finding user, stopping retries`);
+          setError('Authentication failed. Please try logging in again.');
+          return;
+        }
+        
+        // Try again after a delay with exponential backoff
+        retryCount++;
+        const delay = Math.min(1000 * Math.pow(1.5, retryCount), 10000); // Max 10 seconds
+        console.log(`Retry ${retryCount}/${maxRetries} for auth check in ${delay}ms`);
+        authCheckTimer = setTimeout(checkAuthAndFetch, delay);
         return;
       }
       
+      // Reset retry count if we have a user
+      retryCount = 0;
+      
       console.log('Authentication initialized and user available, fetching data', { userId: user.id });
-      fetchMicroProcessingCryptos();
+      
+      // Wrap in try/catch to prevent unhandled promise rejections
+      try {
+        fetchMicroProcessingCryptos();
+      } catch (error) {
+        console.error('Error during initial data fetch:', error);
+        setError('Failed to load initial data');
+      }
     };
     
     // Start the auth check process

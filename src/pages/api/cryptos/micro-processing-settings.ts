@@ -44,11 +44,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           
           console.log(`[MICRO-SETTINGS] Found ${cryptosWithSettings.length} cryptos for user`);
           
-          // Map the results to include currentPrice from lastPrice
-          const formattedCryptos = cryptosWithSettings.map(crypto => ({
-            ...crypto,
-            currentPrice: crypto.lastPrice || crypto.currentPrice,
-            microProcessingSettings: crypto.microProcessingSettings || {
+          // Map the results to include currentPrice from lastPrice with additional validation
+          const formattedCryptos = cryptosWithSettings.map(crypto => {
+            // Ensure we have valid data for each crypto
+            if (!crypto) {
+              console.warn('[MICRO-SETTINGS] Found null or undefined crypto in database results');
+              return null;
+            }
+            
+            // Determine the current price with fallbacks
+            let currentPrice = null;
+            if (crypto.lastPrice !== null && crypto.lastPrice !== undefined) {
+              currentPrice = crypto.lastPrice;
+            } else if (crypto.currentPrice !== null && crypto.currentPrice !== undefined) {
+              currentPrice = crypto.currentPrice;
+            }
+            
+            // Create default settings if none exist
+            const defaultSettings = {
               enabled: false,
               sellPercentage: 0.5,
               tradeByShares: 0,
@@ -59,16 +72,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               purchasePrice: null,
               processingStatus: 'idle',
               testMode: false
-            }
-          }));
+            };
+            
+            // Return the formatted crypto with validated fields
+            return {
+              ...crypto,
+              currentPrice,
+              microProcessingSettings: crypto.microProcessingSettings || defaultSettings
+            };
+          }).filter(crypto => crypto !== null); // Remove any null entries
           
+          console.log(`[MICRO-SETTINGS] Formatted ${formattedCryptos.length} cryptos with settings`);
           console.log('[MICRO-SETTINGS] Sending successful response with status 200');
+          
+          // Set appropriate headers for JSON response
+          res.setHeader('Content-Type', 'application/json');
           return res.status(200).json(formattedCryptos);
         } catch (error) {
           console.error('[MICRO-SETTINGS] Error fetching cryptos with settings:', error);
+          console.error('[MICRO-SETTINGS] Error details:', error instanceof Error ? error.stack : 'No stack trace');
+          
+          // Return a more detailed error response
           return res.status(500).json({ 
             error: 'Failed to fetch cryptos with micro processing settings', 
-            details: error instanceof Error ? error.message : 'Unknown error'
+            details: error instanceof Error ? error.message : 'Unknown error',
+            timestamp: new Date().toISOString()
           });
         }
       }

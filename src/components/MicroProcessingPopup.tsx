@@ -18,6 +18,7 @@ export interface MicroProcessingSettings {
   websocketProvider: 'kraken' | 'coinbase' | 'binance';
   tradingPlatform: 'kraken' | 'coinbase' | 'binance';
   purchasePrice?: number;
+  testMode?: boolean;
 }
 
 interface MicroProcessingPopupProps {
@@ -49,7 +50,8 @@ export default function MicroProcessingPopup({
     totalValue: 0,
     websocketProvider: 'kraken',
     tradingPlatform: 'kraken',
-    purchasePrice: undefined
+    purchasePrice: undefined,
+    testMode: false
   };
   
   // Merge initial settings with defaults, ensuring all values are of the correct type
@@ -62,7 +64,8 @@ export default function MicroProcessingPopup({
     totalValue: Number(initialSettings?.totalValue) || defaultSettings.totalValue,
     websocketProvider: initialSettings?.websocketProvider || defaultSettings.websocketProvider,
     tradingPlatform: initialSettings?.tradingPlatform || defaultSettings.tradingPlatform,
-    purchasePrice: initialSettings?.purchasePrice
+    purchasePrice: initialSettings?.purchasePrice,
+    testMode: initialSettings?.testMode ?? defaultSettings.testMode
   }));
   
   // Update settings when initialSettings change
@@ -76,7 +79,8 @@ export default function MicroProcessingPopup({
       totalValue: Number(initialSettings?.totalValue) || defaultSettings.totalValue,
       websocketProvider: initialSettings?.websocketProvider || defaultSettings.websocketProvider,
       tradingPlatform: initialSettings?.tradingPlatform || defaultSettings.tradingPlatform,
-      purchasePrice: initialSettings?.purchasePrice
+      purchasePrice: initialSettings?.purchasePrice,
+      testMode: initialSettings?.testMode ?? defaultSettings.testMode
     });
   }, [initialSettings]);
   
@@ -110,7 +114,8 @@ export default function MicroProcessingPopup({
       websocketProvider: settings.websocketProvider || 'kraken',
       tradingPlatform: settings.tradingPlatform || 'kraken',
       purchasePrice: settings.purchasePrice !== undefined && !isNaN(Number(settings.purchasePrice)) ? 
-        Number(settings.purchasePrice) : undefined
+        Number(settings.purchasePrice) : undefined,
+      testMode: Boolean(settings.testMode)
     };
     
     setIsSubmitting(true);
@@ -300,6 +305,23 @@ export default function MicroProcessingPopup({
             <p className="text-xs text-muted-foreground">
               The purchase price to use for sell calculations. If not set, the last buy price will be used.
             </p>
+          </div>
+          
+          {/* Test Mode */}
+          <div className="flex items-center justify-between border-t pt-4">
+            <div>
+              <Label htmlFor="test-mode" className="text-sm font-medium">
+                Test Mode
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                When enabled, simulates trades without executing actual orders. Shows API request details for testing.
+              </p>
+            </div>
+            <Switch
+              id="test-mode"
+              checked={settings.testMode}
+              onCheckedChange={(checked) => setSettings({...settings, testMode: checked})}
+            />
           </div>
         </div>
         

@@ -57,11 +57,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           websocketProvider: 'kraken',
           tradingPlatform: 'kraken',
           purchasePrice: null,
-          processingStatus: 'idle'
+          processingStatus: 'idle',
+          testMode: false
         };
         
+        // Use the spread operator to ensure we're always returning a valid object
+        const resultSettings = microProcessingSettings 
+          ? { ...defaultSettings, ...microProcessingSettings }
+          : { ...defaultSettings };
+        
         // Return the settings directly without nesting them in a microProcessingSettings property
-        return res.status(200).json(microProcessingSettings || defaultSettings);
+        return res.status(200).json(resultSettings);
       } catch (error) {
         console.error('Error fetching micro processing settings:', error);
         return res.status(500).json({ 
@@ -122,7 +128,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           websocketProvider: 'kraken',
           tradingPlatform: 'kraken',
           purchasePrice: null,
-          processingStatus: 'idle'
+          processingStatus: 'idle',
+          testMode: false
         };
         
         // Validate settings before saving, ensuring all values are of the correct type
@@ -141,7 +148,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             : defaultSettings.tradingPlatform,
           purchasePrice: settings.purchasePrice !== undefined && !isNaN(Number(settings.purchasePrice)) ? 
             Number(settings.purchasePrice) : null,
-          processingStatus: settings.processingStatus || defaultSettings.processingStatus
+          processingStatus: settings.processingStatus || defaultSettings.processingStatus,
+          testMode: settings.testMode !== undefined ? Boolean(settings.testMode) : defaultSettings.testMode
         };
         
         // Upsert the micro processing settings
@@ -159,6 +167,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             tradingPlatform: validatedSettings.tradingPlatform,
             purchasePrice: validatedSettings.purchasePrice,
             processingStatus: validatedSettings.processingStatus,
+            testMode: validatedSettings.testMode,
             updatedAt: new Date()
           },
           create: {
@@ -171,13 +180,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             websocketProvider: validatedSettings.websocketProvider,
             tradingPlatform: validatedSettings.tradingPlatform,
             purchasePrice: validatedSettings.purchasePrice,
+            testMode: validatedSettings.testMode,
             processingStatus: 'idle'
           }
         });
         
+        // Use the spread operator to ensure we're always returning a valid object
+        const resultSettings = { ...defaultSettings, ...microProcessingSettings };
+        
         // Return the settings directly without nesting them in a microProcessingSettings property
         // This matches the format expected by the client and the GET endpoint
-        return res.status(200).json(microProcessingSettings);
+        return res.status(200).json(resultSettings);
       } catch (error) {
         console.error('Error saving micro processing settings:', error);
         return res.status(500).json({ 

@@ -173,6 +173,7 @@ model MicroProcessingSettings {
   lastBuyShares     Float?
   lastBuyTimestamp  DateTime?
   processingStatus  String?  // 'buying', 'selling', 'idle'
+  testMode          Boolean  @default(false) // If true, will simulate trades without executing them
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }

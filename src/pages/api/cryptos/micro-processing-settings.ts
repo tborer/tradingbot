@@ -32,6 +32,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log('[MICRO-SETTINGS] Fetching all cryptos with micro processing settings');
         
         try {
+          // Validate user ID before querying
+          if (!user || !user.id) {
+            console.error('[MICRO-SETTINGS] Invalid user ID for query');
+            return res.status(400).json({ 
+              error: 'Invalid user ID',
+              details: 'User ID is required for this operation'
+            });
+          }
+          
           // Get all cryptos for this user with their micro processing settings in a single query
           const cryptosWithSettings = await prisma.crypto.findMany({
             where: {
@@ -41,6 +50,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               microProcessingSettings: true
             }
           });
+          
+          // Validate the result from the database
+          if (!cryptosWithSettings) {
+            console.error('[MICRO-SETTINGS] Database returned null or undefined result');
+            return res.status(500).json({ 
+              error: 'Database error',
+              details: 'Failed to retrieve crypto data from database'
+            });
+          }
           
           console.log(`[MICRO-SETTINGS] Found ${cryptosWithSettings.length} cryptos for user`);
           
@@ -96,6 +114,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               console.error(`[MICRO-SETTINGS] Error formatting crypto ${crypto.id}:`, formatError);
               // Continue with other cryptos even if one fails
             }
+          }
+          
+          // Validate the formatted cryptos array
+          if (!formattedCryptos || formattedCryptos.length === 0) {
+            console.warn('[MICRO-SETTINGS] No valid cryptos found after formatting');
+            // Return an empty array instead of null to avoid client-side errors
+            return res.status(200).json([]);
           }
           
           console.log(`[MICRO-SETTINGS] Formatted ${formattedCryptos.length} cryptos with settings`);

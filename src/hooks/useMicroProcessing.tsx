@@ -104,6 +104,12 @@ export function useMicroProcessing() {
       setLoading(true);
       setError(null); // Clear any previous errors
       
+      // Verify user is authenticated before making the request
+      if (!user || !user.id) {
+        console.error('Cannot fetch micro processing settings: User not authenticated');
+        throw new Error('Authentication required');
+      }
+      
       // Use a single consolidated API endpoint to get cryptos with their enabled settings
       console.log('Fetching micro processing settings with includeEnabledCryptos=true');
       
@@ -127,10 +133,17 @@ export function useMicroProcessing() {
         throw new Error('Failed to parse server response');
       }
       
-      // Validate the data structure
+      // Validate the data structure with fallback to empty array
+      if (!data) {
+        console.warn('Received null or undefined data from server, using empty array');
+        data = [];
+      }
+      
       if (!Array.isArray(data)) {
         console.error('Expected array but received:', typeof data, data);
-        throw new Error('Invalid data format received from server');
+        // Fallback to empty array instead of throwing
+        console.warn('Using empty array as fallback');
+        data = [];
       }
       
       console.log(`Received ${data.length} cryptos with micro processing settings`);
@@ -141,7 +154,14 @@ export function useMicroProcessing() {
           console.warn('Invalid item in response:', item);
           return false;
         }
-        return item.microProcessingSettings && item.microProcessingSettings.enabled;
+        
+        // Check if microProcessingSettings exists and is an object
+        if (!item.microProcessingSettings || typeof item.microProcessingSettings !== 'object') {
+          console.warn('Item missing microProcessingSettings or invalid format:', item);
+          return false;
+        }
+        
+        return item.microProcessingSettings.enabled === true;
       });
       
       console.log(`Found ${cryptosWithSettings.length} enabled cryptos for micro processing`);
@@ -151,9 +171,15 @@ export function useMicroProcessing() {
       // Initialize micro processing for each enabled crypto
       cryptosWithSettings.forEach((crypto: MicroProcessingCrypto) => {
         try {
+          // Validate crypto object before initialization
+          if (!crypto || !crypto.id || !crypto.symbol) {
+            console.warn('Skipping invalid crypto object:', crypto);
+            return;
+          }
+          
           initializeMicroProcessing(crypto);
         } catch (initError) {
-          console.error(`Failed to initialize micro processing for ${crypto.symbol}:`, initError);
+          console.error(`Failed to initialize micro processing for ${crypto?.symbol || 'unknown'}:`, initError);
           // Continue with other cryptos even if one fails
         }
       });

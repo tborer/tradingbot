@@ -45,17 +45,40 @@ const tradeLocks = new Map<string, {
  * Initialize micro processing for a crypto
  */
 export function initializeMicroProcessing(crypto: MicroProcessingCrypto): void {
-  if (!crypto.microProcessingSettings?.enabled) {
+  // Validate crypto object
+  if (!crypto || !crypto.id || !crypto.symbol) {
+    console.error('Cannot initialize micro processing: Invalid crypto object', crypto);
+    return;
+  }
+  
+  // Validate settings
+  if (!crypto.microProcessingSettings) {
+    console.error(`Cannot initialize micro processing for ${crypto.symbol}: Missing settings`);
+    return;
+  }
+  
+  if (!crypto.microProcessingSettings.enabled) {
+    console.log(`Micro processing not enabled for ${crypto.symbol}, skipping initialization`);
     return;
   }
 
   const settings = crypto.microProcessingSettings;
   
+  // Create a safe copy of the crypto object with default values for missing properties
+  const safeCrypto: MicroProcessingCrypto = {
+    id: crypto.id,
+    symbol: crypto.symbol,
+    shares: typeof crypto.shares === 'number' ? crypto.shares : 0,
+    purchasePrice: typeof crypto.purchasePrice === 'number' ? crypto.purchasePrice : 0,
+    currentPrice: typeof crypto.currentPrice === 'number' ? crypto.currentPrice : undefined,
+    microProcessingSettings: settings
+  };
+  
   // Initialize or update the state
   microProcessingState.set(crypto.id, {
     status: settings.processingStatus || 'idle',
     lastAction: new Date(),
-    crypto,
+    crypto: safeCrypto,
     settings
   });
 

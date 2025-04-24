@@ -120,10 +120,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Original single crypto settings endpoint
       if (!cryptoId || typeof cryptoId !== 'string') {
         console.error('[MICRO-SETTINGS] Missing or invalid cryptoId parameter');
-        return res.status(400).json({ error: 'Missing or invalid cryptoId parameter' });
+        console.error('[MICRO-SETTINGS] Request query params:', req.query);
+        return res.status(400).json({ 
+          error: 'Missing or invalid cryptoId parameter',
+          details: `Expected string cryptoId but received: ${typeof cryptoId === 'undefined' ? 'undefined' : typeof cryptoId}`,
+          receivedValue: cryptoId
+        });
+      }
+      
+      // Validate that cryptoId is a valid UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(cryptoId)) {
+        console.error(`[MICRO-SETTINGS] Invalid cryptoId format: ${cryptoId}`);
+        return res.status(400).json({ 
+          error: 'Invalid cryptoId format', 
+          details: 'The cryptoId must be a valid UUID format'
+        });
       }
       
       try {
+        console.log(`[MICRO-SETTINGS] Validating cryptoId: ${cryptoId} for userId: ${user.id}`);
+        
         // Check if the crypto belongs to the user
         const crypto = await prisma.crypto.findFirst({
           where: {
@@ -132,7 +149,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         });
         
-        if (!crypto) {
+        // Log the result of the crypto lookup
+        if (crypto) {
+          console.log(`[MICRO-SETTINGS] Found crypto: ${crypto.symbol} (${crypto.id})`);
+        } else {
           console.error(`[MICRO-SETTINGS] Crypto not found for id: ${cryptoId} and userId: ${user.id}`);
           return res.status(404).json({ error: 'Crypto not found' });
         }

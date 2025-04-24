@@ -106,7 +106,12 @@ export function useMicroProcessing() {
       
       // Use a single consolidated API endpoint to get cryptos with their enabled settings
       console.log('Fetching micro processing settings with includeEnabledCryptos=true');
-      const response = await fetchWithRetry('/api/cryptos/micro-processing-settings?includeEnabledCryptos=true');
+      
+      // Ensure the parameter is explicitly set to a string value
+      const url = '/api/cryptos/micro-processing-settings?includeEnabledCryptos=true';
+      console.log(`Making request to: ${url}`);
+      
+      const response = await fetchWithRetry(url);
       
       // Validate response before parsing JSON
       if (!response) {

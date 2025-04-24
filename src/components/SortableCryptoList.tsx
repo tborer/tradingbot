@@ -410,6 +410,11 @@ export default function SortableCryptoList({
     try {
       console.log(`Fetching micro processing settings for crypto: ${symbol} (${id})`);
       
+      // Validate the id parameter before making the request
+      if (!id || typeof id !== 'string' || id.trim() === '') {
+        throw new Error('Invalid crypto ID: ID cannot be empty');
+      }
+      
       // Default settings to use if we can't fetch or if there are no existing settings
       const defaultSettings = {
         enabled: false,

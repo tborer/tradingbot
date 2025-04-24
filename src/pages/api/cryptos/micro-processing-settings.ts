@@ -44,43 +44,59 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           
           console.log(`[MICRO-SETTINGS] Found ${cryptosWithSettings.length} cryptos for user`);
           
-          // Map the results to include currentPrice from lastPrice with additional validation
-          const formattedCryptos = cryptosWithSettings.map(crypto => {
-            // Ensure we have valid data for each crypto
+          // Map the results to include currentPrice from lastPrice with additional validation and error handling
+          const formattedCryptos = [];
+          
+          for (const crypto of cryptosWithSettings) {
+            // Skip null/undefined cryptos
             if (!crypto) {
               console.warn('[MICRO-SETTINGS] Found null or undefined crypto in database results');
-              return null;
+              continue;
             }
             
-            // Determine the current price with fallbacks
-            let currentPrice = null;
-            if (crypto.lastPrice !== null && crypto.lastPrice !== undefined) {
-              currentPrice = crypto.lastPrice;
-            } else if (crypto.currentPrice !== null && crypto.currentPrice !== undefined) {
-              currentPrice = crypto.currentPrice;
+            try {
+              // Determine the current price with fallbacks
+              let currentPrice = null;
+              if (crypto.lastPrice !== null && crypto.lastPrice !== undefined) {
+                currentPrice = crypto.lastPrice;
+              } else if (crypto.currentPrice !== null && crypto.currentPrice !== undefined) {
+                currentPrice = crypto.currentPrice;
+              }
+              
+              // Create default settings if none exist
+              const defaultSettings = {
+                enabled: false,
+                sellPercentage: 0.5,
+                tradeByShares: 0,
+                tradeByValue: false,
+                totalValue: 0,
+                websocketProvider: 'kraken',
+                tradingPlatform: 'kraken',
+                purchasePrice: null,
+                processingStatus: 'idle',
+                testMode: false
+              };
+              
+              // Create a safe copy of the crypto object with explicit properties
+              const formattedCrypto = {
+                id: crypto.id,
+                symbol: crypto.symbol,
+                shares: typeof crypto.shares === 'number' ? crypto.shares : 0,
+                purchasePrice: typeof crypto.purchasePrice === 'number' ? crypto.purchasePrice : 0,
+                userId: crypto.userId,
+                currentPrice: currentPrice,
+                createdAt: crypto.createdAt,
+                updatedAt: crypto.updatedAt,
+                // Add the microProcessingSettings with fallback to default
+                microProcessingSettings: crypto.microProcessingSettings || defaultSettings
+              };
+              
+              formattedCryptos.push(formattedCrypto);
+            } catch (formatError) {
+              console.error(`[MICRO-SETTINGS] Error formatting crypto ${crypto.id}:`, formatError);
+              // Continue with other cryptos even if one fails
             }
-            
-            // Create default settings if none exist
-            const defaultSettings = {
-              enabled: false,
-              sellPercentage: 0.5,
-              tradeByShares: 0,
-              tradeByValue: false,
-              totalValue: 0,
-              websocketProvider: 'kraken',
-              tradingPlatform: 'kraken',
-              purchasePrice: null,
-              processingStatus: 'idle',
-              testMode: false
-            };
-            
-            // Return the formatted crypto with validated fields
-            return {
-              ...crypto,
-              currentPrice,
-              microProcessingSettings: crypto.microProcessingSettings || defaultSettings
-            };
-          }).filter(crypto => crypto !== null); // Remove any null entries
+          }
           
           console.log(`[MICRO-SETTINGS] Formatted ${formattedCryptos.length} cryptos with settings`);
           console.log('[MICRO-SETTINGS] Sending successful response with status 200');
@@ -170,7 +186,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ error: 'Missing request body' });
       }
       
-      console.log('[MICRO-SETTINGS] POST request body:', JSON.stringify(req.body));
+      try {
+        console.log('[MICRO-SETTINGS] POST request body:', JSON.stringify(req.body));
+      } catch (jsonError) {
+        console.error('[MICRO-SETTINGS] Could not stringify request body:', jsonError);
+      }
       
       const { cryptoId, settings } = req.body;
       
@@ -232,24 +252,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log('[MICRO-SETTINGS] Validating settings values');
         
         // Log the incoming settings for debugging
-        console.log('[MICRO-SETTINGS] Raw settings received:', settings);
+        try {
+          console.log('[MICRO-SETTINGS] Raw settings received:', JSON.stringify(settings));
+        } catch (jsonError) {
+          console.error('[MICRO-SETTINGS] Could not stringify settings:', jsonError);
+        }
         
+        // Safely extract values with explicit type checking
         const validatedSettings = {
-          enabled: settings.enabled !== undefined ? Boolean(settings.enabled) : defaultSettings.enabled,
-          sellPercentage: settings.sellPercentage !== undefined ? Number(settings.sellPercentage) || defaultSettings.sellPercentage : defaultSettings.sellPercentage,
-          tradeByShares: settings.tradeByShares !== undefined ? Number(settings.tradeByShares) || defaultSettings.tradeByShares : defaultSettings.tradeByShares,
-          tradeByValue: settings.tradeByValue !== undefined ? Boolean(settings.tradeByValue) : defaultSettings.tradeByValue,
-          totalValue: settings.totalValue !== undefined ? Number(settings.totalValue) || defaultSettings.totalValue : defaultSettings.totalValue,
-          websocketProvider: settings.websocketProvider && ['kraken', 'coinbase', 'binance'].includes(settings.websocketProvider) 
+          enabled: settings.enabled === true,
+          sellPercentage: typeof settings.sellPercentage === 'number' && !isNaN(settings.sellPercentage) 
+            ? settings.sellPercentage 
+            : defaultSettings.sellPercentage,
+          tradeByShares: typeof settings.tradeByShares === 'number' && !isNaN(settings.tradeByShares) 
+            ? settings.tradeByShares 
+            : defaultSettings.tradeByShares,
+          tradeByValue: settings.tradeByValue === true,
+          totalValue: typeof settings.totalValue === 'number' && !isNaN(settings.totalValue) 
+            ? settings.totalValue 
+            : defaultSettings.totalValue,
+          websocketProvider: settings.websocketProvider && 
+            ['kraken', 'coinbase', 'binance'].includes(settings.websocketProvider) 
             ? settings.websocketProvider 
             : defaultSettings.websocketProvider,
-          tradingPlatform: settings.tradingPlatform && ['kraken', 'coinbase', 'binance'].includes(settings.tradingPlatform) 
+          tradingPlatform: settings.tradingPlatform && 
+            ['kraken', 'coinbase', 'binance'].includes(settings.tradingPlatform) 
             ? settings.tradingPlatform 
             : defaultSettings.tradingPlatform,
-          purchasePrice: settings.purchasePrice !== undefined && !isNaN(Number(settings.purchasePrice)) ? 
-            Number(settings.purchasePrice) : null,
+          purchasePrice: typeof settings.purchasePrice === 'number' && !isNaN(settings.purchasePrice) 
+            ? settings.purchasePrice 
+            : null,
           processingStatus: settings.processingStatus || defaultSettings.processingStatus,
-          testMode: settings.testMode !== undefined ? Boolean(settings.testMode) : defaultSettings.testMode
+          testMode: settings.testMode === true
         };
         
         console.log('[MICRO-SETTINGS] Validated settings:', validatedSettings);
@@ -265,33 +299,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         // Upsert the micro processing settings
         console.log(`[MICRO-SETTINGS] Performing upsert operation for cryptoId: ${cryptoId}`);
-        console.log('[MICRO-SETTINGS] Upsert data:', {
-          update: {
-            enabled: validatedSettings.enabled,
-            sellPercentage: validatedSettings.sellPercentage,
-            tradeByShares: validatedSettings.tradeByShares,
-            tradeByValue: validatedSettings.tradeByValue,
-            totalValue: validatedSettings.totalValue,
-            websocketProvider: validatedSettings.websocketProvider,
-            tradingPlatform: validatedSettings.tradingPlatform,
-            purchasePrice: validatedSettings.purchasePrice,
-            processingStatus: validatedSettings.processingStatus,
-            testMode: validatedSettings.testMode
-          },
-          create: {
-            cryptoId: cryptoId,
-            enabled: validatedSettings.enabled,
-            sellPercentage: validatedSettings.sellPercentage,
-            tradeByShares: validatedSettings.tradeByShares,
-            tradeByValue: validatedSettings.tradeByValue,
-            totalValue: validatedSettings.totalValue,
-            websocketProvider: validatedSettings.websocketProvider,
-            tradingPlatform: validatedSettings.tradingPlatform,
-            purchasePrice: validatedSettings.purchasePrice,
-            testMode: validatedSettings.testMode,
-            processingStatus: 'idle'
-          }
-        });
         
         let microProcessingSettings;
         try {
@@ -415,13 +422,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     // Log more details about the error
     console.error('[MICRO-SETTINGS] Request method:', req.method);
-    console.error('[MICRO-SETTINGS] Request query:', req.query);
-    console.error('[MICRO-SETTINGS] Request body:', req.body);
+    
+    // Safely log request query
+    try {
+      console.error('[MICRO-SETTINGS] Request query:', JSON.stringify(req.query));
+    } catch (logError) {
+      console.error('[MICRO-SETTINGS] Could not stringify request query');
+    }
+    
+    // Safely log request body
+    try {
+      console.error('[MICRO-SETTINGS] Request body:', typeof req.body === 'object' ? JSON.stringify(req.body) : req.body);
+    } catch (logError) {
+      console.error('[MICRO-SETTINGS] Could not stringify request body:', logError);
+      console.error('[MICRO-SETTINGS] Raw request body type:', typeof req.body);
+    }
+    
+    // Check if it's a TypeError related to null/undefined object
+    if (error instanceof TypeError && error.message.includes('null') && error.message.includes('object')) {
+      console.error('[MICRO-SETTINGS] TypeError with null/undefined object detected');
+      return res.status(500).json({
+        error: 'An unexpected error occurred',
+        details: 'Cannot process null or undefined data. Please check your request parameters.',
+        errorType: 'TypeError',
+        timestamp: new Date().toISOString()
+      });
+    }
     
     // Check if it's a Prisma error and log more details
     if (error && typeof error === 'object' && 'code' in error) {
-      console.error('[MICRO-SETTINGS] Prisma error code:', (error as any).code);
-      console.error('[MICRO-SETTINGS] Prisma error meta:', (error as any).meta);
+      try {
+        console.error('[MICRO-SETTINGS] Prisma error code:', (error as any).code);
+        console.error('[MICRO-SETTINGS] Prisma error meta:', JSON.stringify((error as any).meta));
+      } catch (metaError) {
+        console.error('[MICRO-SETTINGS] Could not stringify Prisma error meta');
+      }
       
       // Handle specific Prisma errors
       if ((error as any).code === 'P2003') {

@@ -354,7 +354,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { symbol, limit, to_ts } = req.query;
+  const { symbol, limit, to_ts, skipSave } = req.query;
 
   if (!symbol || typeof symbol !== 'string') {
     logWithTimestamp(`Missing required parameter: symbol`);
@@ -470,84 +470,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       logWithTimestamp(`Received ${data.Data.length} records for ${symbol}`);
       
-      // Process and save the data in batches
+      // Check if we should skip saving to the database
+      const shouldSkipSave = skipSave === 'true';
       const savedRecords = [];
       const errors = [];
       const recordsToProcess = data.Data;
-      
-      logWithTimestamp(`Processing ${recordsToProcess.length} records in batches of ${BATCH_SIZE}`);
-      
-      const totalBatches = Math.ceil(recordsToProcess.length / BATCH_SIZE);
       const batchStartTime = Date.now();
       
-      // Process data in batches to avoid timeouts
-      for (let i = 0; i < recordsToProcess.length; i += BATCH_SIZE) {
-        const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
-        const batch = recordsToProcess.slice(i, i + BATCH_SIZE);
-        const batchSize = batch.length;
+      if (shouldSkipSave) {
+        logWithTimestamp(`Skipping database save as requested with skipSave=${skipSave}`);
+      } else {
+        logWithTimestamp(`Processing ${recordsToProcess.length} records in batches of ${BATCH_SIZE}`);
         
-        logWithTimestamp(`Processing batch ${batchNumber} of ${totalBatches} (${batchSize} records)`);
+        const totalBatches = Math.ceil(recordsToProcess.length / BATCH_SIZE);
         
-        try {
-          // Prepare batch operations
-          const operations = batch.map(record => {
-            // Convert UNIX timestamp to Date
-            const timestamp = new Date(record.TIMESTAMP * 1000);
-            
-            return prisma.cryptoHistoricalData.upsert({
-              where: {
-                symbol_timestamp: {
-                  symbol: symbol.toUpperCase(),
-                  timestamp,
-                },
-              },
-              update: {
-                open: record.OPEN,
-                high: record.HIGH,
-                low: record.LOW,
-                close: record.CLOSE,
-                volume: record.VOLUME || 0,
-                quoteVolume: record.QUOTE_VOLUME || 0,
-                instrument: record.INSTRUMENT,
-                market: record.MARKET,
-              },
-              create: {
-                symbol: symbol.toUpperCase(),
-                timestamp,
-                unit: record.UNIT || 'MINUTE',
-                open: record.OPEN,
-                high: record.HIGH,
-                low: record.LOW,
-                close: record.CLOSE,
-                volume: record.VOLUME || 0,
-                quoteVolume: record.QUOTE_VOLUME || 0,
-                instrument: record.INSTRUMENT,
-                market: record.MARKET,
-              },
-            });
-          });
+        // Process data in batches to avoid timeouts
+        for (let i = 0; i < recordsToProcess.length; i += BATCH_SIZE) {
+          const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+          const batch = recordsToProcess.slice(i, i + BATCH_SIZE);
+          const batchSize = batch.length;
           
-          // Execute all operations in the batch
-          const batchDbStartTime = Date.now();
-          const results = await prisma.$transaction(operations);
-          const batchDbDuration = Date.now() - batchDbStartTime;
+          logWithTimestamp(`Processing batch ${batchNumber} of ${totalBatches} (${batchSize} records)`);
           
-          savedRecords.push(...results);
-          
-          logWithTimestamp(`Successfully processed batch ${batchNumber}, saved ${results.length} records in ${batchDbDuration}ms`);
-        } catch (error) {
-          logWithTimestamp(`Error processing batch ${batchNumber} for ${symbol}`, error);
-          
-          // If batch operation fails, try individual records
-          logWithTimestamp(`Falling back to individual processing for batch ${batchNumber}`);
-          
-          for (const record of batch) {
-            try {
+          try {
+            // Prepare batch operations
+            const operations = batch.map(record => {
               // Convert UNIX timestamp to Date
               const timestamp = new Date(record.TIMESTAMP * 1000);
               
-              // Create or update the record in the database
-              const savedRecord = await prisma.cryptoHistoricalData.upsert({
+              return prisma.cryptoHistoricalData.upsert({
                 where: {
                   symbol_timestamp: {
                     symbol: symbol.toUpperCase(),
@@ -578,21 +529,74 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                   market: record.MARKET,
                 },
               });
+            });
+            
+            // Execute all operations in the batch
+            const batchDbStartTime = Date.now();
+            const results = await prisma.$transaction(operations);
+            const batchDbDuration = Date.now() - batchDbStartTime;
+            
+            savedRecords.push(...results);
+            
+            logWithTimestamp(`Successfully processed batch ${batchNumber}, saved ${results.length} records in ${batchDbDuration}ms`);
+          } catch (error) {
+            logWithTimestamp(`Error processing batch ${batchNumber} for ${symbol}`, error);
+            
+            // If batch operation fails, try individual records
+            logWithTimestamp(`Falling back to individual processing for batch ${batchNumber}`);
+            
+            for (const record of batch) {
+              try {
+                // Convert UNIX timestamp to Date
+                const timestamp = new Date(record.TIMESTAMP * 1000);
+                
+                // Create or update the record in the database
+                const savedRecord = await prisma.cryptoHistoricalData.upsert({
+                  where: {
+                    symbol_timestamp: {
+                      symbol: symbol.toUpperCase(),
+                      timestamp,
+                    },
+                  },
+                  update: {
+                    open: record.OPEN,
+                    high: record.HIGH,
+                    low: record.LOW,
+                    close: record.CLOSE,
+                    volume: record.VOLUME || 0,
+                    quoteVolume: record.QUOTE_VOLUME || 0,
+                    instrument: record.INSTRUMENT,
+                    market: record.MARKET,
+                  },
+                  create: {
+                    symbol: symbol.toUpperCase(),
+                    timestamp,
+                    unit: record.UNIT || 'MINUTE',
+                    open: record.OPEN,
+                    high: record.HIGH,
+                    low: record.LOW,
+                    close: record.CLOSE,
+                    volume: record.VOLUME || 0,
+                    quoteVolume: record.QUOTE_VOLUME || 0,
+                    instrument: record.INSTRUMENT,
+                    market: record.MARKET,
+                  },
+                });
 
-              savedRecords.push(savedRecord);
-            } catch (error) {
-              logWithTimestamp(`Error saving individual record for ${symbol}`, error);
-              errors.push({
-                timestamp: record.TIMESTAMP,
-                error: error instanceof Error ? error.message : 'Unknown error',
-              });
+                savedRecords.push(savedRecord);
+              } catch (error) {
+                logWithTimestamp(`Error saving individual record for ${symbol}`, error);
+                errors.push({
+                  timestamp: record.TIMESTAMP,
+                  error: error instanceof Error ? error.message : 'Unknown error',
+                });
+              }
             }
           }
         }
+        
+        logWithTimestamp(`Completed processing all batches in ${Date.now() - batchStartTime}ms`);
       }
-      
-      const totalProcessingTime = Date.now() - batchStartTime;
-      logWithTimestamp(`Completed processing all batches in ${totalProcessingTime}ms`);
       
       const totalRequestTime = Date.now() - requestStartTime;
       logWithTimestamp(`Total request processing time: ${totalRequestTime}ms`);
@@ -615,17 +619,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       logWithTimestamp(`Earliest timestamp in batch: ${earliestTimestamp}, next batch timestamp: ${nextBatchTimestamp}`);
 
+      const totalProcessingTime = Date.now() - batchStartTime;
+      
       return res.status(200).json({
         success: true,
         message: `Processed ${data.Data.length} records for ${symbol}`,
-        savedCount: savedRecords.length,
+        savedCount: shouldSkipSave ? 0 : savedRecords.length,
         errorCount: errors.length,
         processingTimeMs: totalProcessingTime,
         totalTimeMs: totalRequestTime,
         errors: errors.length > 0 ? errors : undefined,
         earliestTimestamp: earliestTimestamp !== Number.MAX_SAFE_INTEGER ? earliestTimestamp : null,
         nextBatchTimestamp: nextBatchTimestamp,
-        Data: data.Data // Include the raw data for client-side processing
+        Data: data.Data, // Include the raw data for client-side processing
+        skipSave: shouldSkipSave // Indicate if saving was skipped
       });
     } catch (fetchError) {
       if (fetchError instanceof Error && fetchError.name === 'AbortError') {

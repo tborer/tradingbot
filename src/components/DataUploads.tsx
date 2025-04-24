@@ -220,12 +220,14 @@ const DataUploads: React.FC = () => {
       try {
         setProcessingStatus(prev => ({ ...prev, [symbol]: 'processing' }));
         
-        // Track total records saved for this symbol across all batches
-        let totalSavedRecords = 0;
+        // Track total records across all batches
         let totalProcessedRecords = 0;
         let batchCount = 0;
         let currentTimestamp = toTimestamp;
         let targetTimestamp = null;
+        
+        // Accumulate all records from all batches before saving to database
+        let accumulatedRecords: any[] = [];
         
         // If collecting full day, calculate the target timestamp (24 hours before the current/adjusted timestamp)
         if (collectFullDay) {
@@ -269,6 +271,7 @@ const DataUploads: React.FC = () => {
           const url = new URL(`/api/cryptos/historical-minutes`, window.location.origin);
           url.searchParams.append('symbol', symbol);
           url.searchParams.append('limit', limit.toString());
+          url.searchParams.append('skipSave', 'true'); // Add parameter to skip saving in the API
           
           // Add to_ts parameter if we have a timestamp
           if (currentTimestamp) {
@@ -377,32 +380,30 @@ const DataUploads: React.FC = () => {
             throw new Error(`Invalid response data for ${symbol} (batch ${batchCount}): Response is empty`);
           }
           
-          // Update total counts
-          const batchSavedCount = data.savedCount || 0;
-          const batchTotalCount = data.message && typeof data.message === 'string' 
-            ? parseInt(data.message.match(/Processed (\d+) records/)?.[1] || '0') 
-            : 0;
-          
-          totalSavedRecords += batchSavedCount;
-          totalProcessedRecords += batchTotalCount;
+          // Accumulate records from this batch
+          if (data.Data && Array.isArray(data.Data)) {
+            console.log(`Adding ${data.Data.length} records from batch ${batchCount} to accumulated data`);
+            accumulatedRecords = [...accumulatedRecords, ...data.Data];
+            totalProcessedRecords += data.Data.length;
+          }
           
           // Update processing details for this symbol
           setProcessingDetails(prev => ({ 
             ...prev, 
             [symbol]: { 
               total: totalProcessedRecords,
-              saved: totalSavedRecords,
-              errors: (prev[symbol]?.errors || 0) + (data.errorCount || 0),
+              saved: 0, // Will be updated after saving
+              errors: (prev[symbol]?.errors || 0),
               batchCount: batchCount
             } 
           }));
           
-          // Show batch success message
-          const processingTime = data.processingTimeMs ? `(${(data.processingTimeMs/1000).toFixed(1)}s)` : '';
+          // Show batch retrieval message
+          const fetchTime = data.processingTimeMs ? `(${(data.processingTimeMs/1000).toFixed(1)}s)` : '';
           
           toast({
-            title: `Batch ${batchCount} Complete`,
-            description: `Saved ${batchSavedCount} records for ${symbol} ${processingTime}`,
+            title: `Batch ${batchCount} Retrieved`,
+            description: `Retrieved ${data.Data?.length || 0} records for ${symbol} ${fetchTime}`,
           });
           
           // If we're not collecting a full day, we're done after the first batch
@@ -503,14 +504,96 @@ const DataUploads: React.FC = () => {
           }
         }
         
-        // Update final status
-        setProcessingStatus(prev => ({ ...prev, [symbol]: 'success' }));
-        
-        // Show final success message
-        toast({
-          title: 'Data Collection Complete',
-          description: `Successfully fetched and saved ${totalSavedRecords} records for ${symbol} in ${batchCount} batch(es).`,
-        });
+        // Now that we've collected all batches, save all the accumulated records in a single operation
+        if (accumulatedRecords.length > 0) {
+          console.log(`Saving ${accumulatedRecords.length} accumulated records for ${symbol} in a single operation`);
+          
+          toast({
+            title: 'Saving Data',
+            description: `Saving ${accumulatedRecords.length} records for ${symbol}...`,
+          });
+          
+          // Format records for the API
+          const formattedRecords = accumulatedRecords.map(record => {
+            // Convert UNIX timestamp to Date
+            const timestamp = new Date(record.TIMESTAMP * 1000);
+            
+            return {
+              symbol: symbol.toUpperCase(),
+              timestamp,
+              unit: record.UNIT || 'MINUTE',
+              open: record.OPEN,
+              high: record.HIGH,
+              low: record.LOW,
+              close: record.CLOSE,
+              volume: record.VOLUME || 0,
+              quoteVolume: record.QUOTE_VOLUME || 0,
+              instrument: record.INSTRUMENT,
+              market: record.MARKET,
+            };
+          });
+          
+          // Save all records in a single API call
+          const saveStartTime = Date.now();
+          try {
+            const saveResponse = await fetch('/api/cryptos/historical-minutes', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                records: formattedRecords,
+                symbol: symbol.toUpperCase(),
+              }),
+            });
+            
+            if (!saveResponse.ok) {
+              const errorData = await saveResponse.json().catch(() => null);
+              console.error(`Error saving accumulated data for ${symbol}:`, errorData);
+              throw new Error(errorData?.error || `Failed to save data for ${symbol}`);
+            }
+            
+            const saveResult = await saveResponse.json();
+            const saveTime = Date.now() - saveStartTime;
+            
+            // Update processing details with saved count
+            setProcessingDetails(prev => ({ 
+              ...prev, 
+              [symbol]: { 
+                ...prev[symbol],
+                saved: saveResult.savedCount || 0,
+                errors: (prev[symbol]?.errors || 0) + (saveResult.errorCount || 0),
+              } 
+            }));
+            
+            // Update final status
+            setProcessingStatus(prev => ({ ...prev, [symbol]: 'success' }));
+            
+            // Show final success message
+            toast({
+              title: 'Data Saved Successfully',
+              description: `Saved ${saveResult.savedCount || 0} records for ${symbol} in ${(saveTime/1000).toFixed(1)}s`,
+            });
+          } catch (saveError) {
+            console.error(`Error saving accumulated data for ${symbol}:`, saveError);
+            setProcessingStatus(prev => ({ ...prev, [symbol]: 'error' }));
+            
+            toast({
+              variant: 'destructive',
+              title: 'Error Saving Data',
+              description: saveError instanceof Error ? saveError.message : 'Unknown error saving data',
+            });
+          }
+        } else {
+          // No records to save
+          setProcessingStatus(prev => ({ ...prev, [symbol]: 'success' }));
+          
+          toast({
+            variant: 'warning',
+            title: 'No Data to Save',
+            description: `No records were collected for ${symbol}`,
+          });
+        }
       } catch (error) {
         console.error(`Error fetching data for ${symbol}:`, error);
         

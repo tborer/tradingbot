@@ -8,6 +8,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   console.log(`[MICRO-SETTINGS] Request URL: ${req.url}`);
   console.log(`[MICRO-SETTINGS] Request query params:`, req.query);
   
+  // Define user variable at the function scope level so it's accessible throughout
+  let user: any = null;
+  
   try {
     // Get the user from Supabase auth
     console.log('[MICRO-SETTINGS] Authenticating user with Supabase');
@@ -22,7 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(401).json({ error: 'Unauthorized' });
       }
       
-      const user = data.user;
+      user = data.user;
       console.log(`[MICRO-SETTINGS] User authenticated: ${user.id}`);
     } catch (authError) {
       console.error('[MICRO-SETTINGS] Supabase authentication error:', authError);

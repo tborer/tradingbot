@@ -7,6 +7,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   console.log(`[PROCESS-MICRO] Request URL: ${req.url}`);
   console.log(`[PROCESS-MICRO] Request query params:`, req.query);
   
+  // Define user variable at the function scope level so it's accessible throughout
+  let user: any = null;
+  
   try {
     // Get the user from Supabase auth
     console.log('[PROCESS-MICRO] Authenticating user with Supabase');
@@ -21,7 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(401).json({ error: 'Unauthorized' });
       }
       
-      const user = data.user;
+      user = data.user;
       console.log(`[PROCESS-MICRO] User authenticated: ${user.id}`);
     } catch (authError) {
       console.error('[PROCESS-MICRO] Supabase authentication error:', authError);

@@ -24,7 +24,9 @@ export function useMicroProcessing() {
     
     try {
       setLoading(true);
-      const response = await fetch('/api/cryptos');
+      const response = await fetch('/api/cryptos', {
+        credentials: 'include'
+      });
       
       if (!response.ok) {
         throw new Error('Failed to fetch cryptos');
@@ -43,7 +45,9 @@ export function useMicroProcessing() {
             'Content-Type': 'application/json'
           },
           // Add cache control to prevent caching issues
-          cache: 'no-store'
+          cache: 'no-store',
+          // Include credentials to send cookies for authentication
+          credentials: 'include'
         });
         
         console.log(`Enabled settings response status: ${enabledSettingsResponse.status}`);

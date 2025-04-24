@@ -304,6 +304,7 @@ export async function processMicroTrade(
         orderType: 'market',
         microProcessing: true
       }),
+      credentials: 'include'
     });
     
     if (!response.ok) {
@@ -403,6 +404,7 @@ async function updateServerState(
         cryptoId,
         settings: settingsWithoutCrypto
       }),
+      credentials: 'include'
     });
     
     if (!response.ok) {

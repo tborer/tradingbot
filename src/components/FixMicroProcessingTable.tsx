@@ -10,7 +10,7 @@ export default function FixMicroProcessingTable() {
   const [result, setResult] = useState<any>(null);
 
   const handleFixTable = async () => {
-    if (!confirm("This will recreate the MicroProcessingSettings table. Any invalid records will be lost. Continue?")) {
+    if (!confirm("This will recreate the MicroProcessingSettings table to add the missing crypto relation field. Any invalid records will be lost. Continue?")) {
       return;
     }
     
@@ -51,8 +51,13 @@ export default function FixMicroProcessingTable() {
       </CardHeader>
       <CardContent>
         <p className="mb-4">
-          This will recreate the MicroProcessingSettings table to ensure proper crypto relationship.
-          Any invalid records will be lost.
+          This will recreate the MicroProcessingSettings table to ensure proper crypto relationship
+          and add the missing crypto relation field. Any invalid records will be lost.
+        </p>
+        <p className="mb-4 text-sm text-muted-foreground">
+          The update fixes a schema issue where the MicroProcessingSettings table was missing the proper
+          crypto relation field that connects it to the Crypto table, ensuring data integrity and proper
+          relationship mapping in the database.
         </p>
         
         {result && (

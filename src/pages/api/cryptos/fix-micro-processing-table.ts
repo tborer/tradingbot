@@ -24,7 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'POST') {
       try {
         // Read the migration SQL file
-        const migrationPath = path.join(process.cwd(), 'prisma', 'migration_recreate_micro_processing_settings.sql');
+        const migrationPath = path.join(process.cwd(), 'prisma', 'migration_add_crypto_relation.sql');
         const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
         
         // Execute the migration
@@ -50,7 +50,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         return res.status(200).json({
           success: true,
-          message: 'MicroProcessingSettings table recreated successfully',
+          message: 'MicroProcessingSettings table recreated successfully with crypto relation field',
           tableInfo,
           constraints
         });

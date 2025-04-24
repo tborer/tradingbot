@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/router';
 import { useToast } from '@/components/ui/use-toast';
 import { 
   initializeMicroProcessing, 
@@ -9,7 +10,8 @@ import {
 } from '@/lib/clientMicroProcessingService';
 
 export function useMicroProcessing() {
-  const { user } = useAuth();
+  const { user, initializing } = useAuth();
+  const router = useRouter();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,12 +22,26 @@ export function useMicroProcessing() {
 
   // Fetch cryptos with micro processing settings
   const fetchMicroProcessingCryptos = useCallback(async () => {
-    if (!user) return;
+    if (initializing) {
+      console.log('Authentication is still initializing, skipping fetch');
+      return;
+    }
+    
+    if (!user) {
+      console.log('User not authenticated, skipping fetch');
+      return;
+    }
+    
+    console.log('User authenticated, proceeding with fetch', { userId: user.id });
     
     try {
       setLoading(true);
       const response = await fetch('/api/cryptos', {
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       
       if (!response.ok) {
@@ -135,7 +151,7 @@ export function useMicroProcessing() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, initializing, toast]);
 
   // Handle price updates from WebSocket
   const handlePriceUpdate = useCallback((priceData: any) => {
@@ -171,7 +187,15 @@ export function useMicroProcessing() {
 
   // Process micro trades
   const processMicroTrades = useCallback(async () => {
-    if (!user || isProcessing || !isInitializedRef.current) return;
+    if (initializing || !user || isProcessing || !isInitializedRef.current) {
+      console.log('Skipping micro trades processing', { 
+        initializing, 
+        userAuthenticated: !!user, 
+        isProcessing, 
+        isInitialized: isInitializedRef.current 
+      });
+      return;
+    }
     
     setIsProcessing(true);
     
@@ -207,13 +231,23 @@ export function useMicroProcessing() {
     } finally {
       setIsProcessing(false);
     }
-  }, [user, isProcessing, fetchMicroProcessingCryptos, toast]);
+  }, [user, initializing, isProcessing, fetchMicroProcessingCryptos, toast]);
 
   // Initialize data on component mount
   useEffect(() => {
-    if (user) {
-      fetchMicroProcessingCryptos();
+    // Only proceed if authentication is not in initializing state and user is available
+    if (initializing) {
+      console.log('Authentication is still initializing, waiting...');
+      return;
     }
+    
+    if (!user) {
+      console.log('No authenticated user found after initialization');
+      return;
+    }
+    
+    console.log('Authentication initialized and user available, fetching data', { userId: user.id });
+    fetchMicroProcessingCryptos();
     
     return () => {
       // Clean up interval on unmount
@@ -221,11 +255,11 @@ export function useMicroProcessing() {
         clearInterval(processingIntervalRef.current);
       }
     };
-  }, [user, fetchMicroProcessingCryptos]);
+  }, [user, initializing, fetchMicroProcessingCryptos]);
 
   // Set up interval to process micro trades
   useEffect(() => {
-    if (!user || !isInitializedRef.current) return;
+    if (initializing || !user || !isInitializedRef.current) return;
     
     // Clear any existing interval
     if (processingIntervalRef.current) {
@@ -242,7 +276,7 @@ export function useMicroProcessing() {
         clearInterval(processingIntervalRef.current);
       }
     };
-  }, [user, processMicroTrades]);
+  }, [user, initializing, processMicroTrades]);
 
   return {
     enabledCryptos,

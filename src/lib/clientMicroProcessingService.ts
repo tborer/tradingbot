@@ -405,19 +405,28 @@ const standardRequestConfig = {
   headers: {
     'Accept': 'application/json',
     'Content-Type': 'application/json',
-    'Cache-Control': 'no-cache'
+    'Cache-Control': 'no-cache',
+    'X-Client-Info': 'client-micro-processing-service'
   }
 };
 
 /**
- * Update the server-side state of micro processing
+ * Update the server-side state of micro processing with enhanced error handling
  */
 async function updateServerState(
   cryptoId: string, 
   settings: Partial<MicroProcessingSettings>
 ): Promise<void> {
+  // Generate a request ID for tracking
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  
   try {
-    console.log(`Updating server state for crypto ${cryptoId} with settings:`, settings);
+    console.log(`[${requestId}] Updating server state for crypto ${cryptoId}`);
+    
+    // Validate inputs
+    if (!cryptoId) {
+      throw new Error('Cannot update server state: Missing cryptoId');
+    }
     
     // Ensure settings is not null or undefined
     const validSettings = settings || {};
@@ -425,24 +434,64 @@ async function updateServerState(
     // Remove the crypto property if it exists to avoid circular references
     const { crypto, ...settingsWithoutCrypto } = validSettings;
     
-    const response = await fetch('/api/cryptos/micro-processing-settings', {
+    // Log sanitized settings (without sensitive data)
+    console.log(`[${requestId}] Settings to update:`, {
+      enabled: settingsWithoutCrypto.enabled,
+      sellPercentage: settingsWithoutCrypto.sellPercentage,
+      tradeByShares: settingsWithoutCrypto.tradeByShares,
+      tradeByValue: settingsWithoutCrypto.tradeByValue,
+      processingStatus: settingsWithoutCrypto.processingStatus
+    });
+    
+    // Create request config with request ID for tracking
+    const requestConfig = {
       ...standardRequestConfig,
       method: 'POST',
+      headers: {
+        ...standardRequestConfig.headers,
+        'X-Request-ID': requestId
+      },
       body: JSON.stringify({
         cryptoId,
         settings: settingsWithoutCrypto
       })
-    });
+    };
+    
+    console.log(`[${requestId}] Sending request to update server state`);
+    const response = await fetch('/api/cryptos/micro-processing-settings', requestConfig);
     
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error(`Failed to update server state for crypto ${cryptoId}:`, errorData);
-      throw new Error(`API error: ${errorData.error || 'Unknown error'} - ${errorData.details || ''}`);
+      let errorData;
+      try {
+        // Try to parse error response as JSON
+        errorData = await response.json();
+        console.error(`[${requestId}] Failed to update server state:`, errorData);
+      } catch (parseError) {
+        // If JSON parsing fails, try to get text
+        const errorText = await response.text();
+        console.error(`[${requestId}] Failed to update server state (non-JSON response):`, 
+          errorText.substring(0, 200));
+        errorData = { error: 'Invalid response format', details: errorText.substring(0, 100) };
+      }
+      
+      // Create detailed error object
+      const apiError = new Error(`API error: ${errorData.error || 'Unknown error'} - ${errorData.details || ''}`);
+      (apiError as any).status = response.status;
+      (apiError as any).details = errorData;
+      (apiError as any).requestId = requestId;
+      
+      throw apiError;
     } else {
-      console.log(`Successfully updated server state for crypto ${cryptoId}`);
+      console.log(`[${requestId}] Successfully updated server state for crypto ${cryptoId}`);
     }
   } catch (error) {
-    console.error(`Error updating server state for crypto ${cryptoId}:`, error);
+    console.error(`[${requestId}] Error updating server state for crypto ${cryptoId}:`, error);
+    
+    // Add request ID to error for tracking
+    if (error instanceof Error) {
+      (error as any).requestId = requestId;
+    }
+    
     // Re-throw the error to allow the caller to handle it
     throw error;
   }

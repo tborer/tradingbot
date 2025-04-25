@@ -3,6 +3,9 @@ import prisma from '@/lib/prisma';
 import { createClient } from '@/util/supabase/api';
 import { MicroProcessingSettings } from '@prisma/client';
 
+// Enable detailed authentication debugging with this flag
+const DEBUG_AUTH = false;
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   console.log(`[MICRO-SETTINGS] API handler started: ${req.method} request received`);
   console.log(`[MICRO-SETTINGS] Request URL: ${req.url}`);
@@ -22,22 +25,47 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
     
-    // Get user with error handling
+    // Get user with enhanced error handling
     let data;
     try {
+      if (DEBUG_AUTH) console.log('[MICRO-SETTINGS] Calling supabase.auth.getUser()');
       const authResponse = await supabase.auth.getUser();
+      
+      if (DEBUG_AUTH) {
+        console.log('[MICRO-SETTINGS] Auth response received:', {
+          status: authResponse.error ? 'error' : 'success',
+          hasData: !!authResponse.data,
+          hasUser: !!(authResponse.data && authResponse.data.user),
+          error: authResponse.error ? authResponse.error.message : null
+        });
+      }
+      
       data = authResponse.data;
+      
+      if (authResponse.error) {
+        console.error('[MICRO-SETTINGS] Supabase auth error:', authResponse.error);
+        return res.status(401).json({ 
+          error: 'Authentication error', 
+          details: authResponse.error.message || 'Failed to authenticate user',
+          errorType: 'SupabaseAuthError'
+        });
+      }
     } catch (authError) {
       console.error('[MICRO-SETTINGS] Authentication error:', authError);
       return res.status(401).json({ 
         error: 'Authentication error', 
-        details: 'Failed to authenticate user'
+        details: authError instanceof Error ? authError.message : 'Failed to authenticate user',
+        errorType: authError instanceof Error ? authError.name : 'Unknown'
       });
     }
     
     if (!data || !data.user) {
-      console.error('[MICRO-SETTINGS] Authentication failed: No user found');
-      return res.status(401).json({ error: 'Unauthorized' });
+      console.error('[MICRO-SETTINGS] Authentication failed: No user found in response data');
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        details: 'No authenticated user found',
+        errorType: 'NoUserFound'
+      });
     }
     
     const user = data.user;

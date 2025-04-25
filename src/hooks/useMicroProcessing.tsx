@@ -27,64 +27,97 @@ export function useMicroProcessing() {
     headers: {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
-      'Cache-Control': 'no-cache'
+      'Cache-Control': 'no-cache',
+      'X-Client-Info': 'useMicroProcessing-hook'
     }
   };
 
-  // Retry mechanism for API requests during authentication transitions
+  // Enhanced retry mechanism for API requests with better error handling
   const fetchWithRetry = useCallback(async (url: string, config = {}, maxRetries = 3, retryDelay = 1000) => {
     const mergedConfig = { ...standardRequestConfig, ...config };
     let lastError;
     
+    // Add request ID for tracking in logs
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    mergedConfig.headers = {
+      ...mergedConfig.headers,
+      'X-Request-ID': requestId
+    };
+    
+    console.log(`[${requestId}] Starting request to ${url}`);
+    
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         if (attempt > 0) {
-          console.log(`Retry attempt ${attempt + 1}/${maxRetries} for ${url}`);
+          // Calculate backoff delay with jitter to prevent thundering herd
+          const jitter = Math.random() * 0.3 * retryDelay;
+          const backoffDelay = retryDelay * Math.pow(1.5, attempt - 1) + jitter;
+          console.log(`[${requestId}] Retry attempt ${attempt + 1}/${maxRetries} for ${url} after ${backoffDelay.toFixed(0)}ms`);
+          await new Promise(resolve => setTimeout(resolve, backoffDelay));
         }
         
-        const response = await fetch(url, mergedConfig);
+        // Add attempt number to headers for debugging
+        const attemptConfig = {
+          ...mergedConfig,
+          headers: {
+            ...mergedConfig.headers,
+            'X-Attempt-Number': `${attempt + 1}`
+          }
+        };
+        
+        console.log(`[${requestId}] Sending request (attempt ${attempt + 1}/${maxRetries})`);
+        const response = await fetch(url, attemptConfig);
         
         if (!response.ok) {
           // Try to get more detailed error information
           let errorMessage = `Request failed with status ${response.status}`;
+          let errorDetails = {};
+          
           try {
             const contentType = response.headers.get("content-type");
             if (contentType && contentType.includes("application/json")) {
               const errorData = await response.json();
               errorMessage = errorData.error || errorData.details || errorMessage;
-              console.error("API error details:", errorData);
+              errorDetails = errorData;
+              console.error(`[${requestId}] API error details:`, errorData);
+            } else {
+              // Try to get text response for non-JSON errors
+              const textResponse = await response.text();
+              console.error(`[${requestId}] Non-JSON error response:`, textResponse.substring(0, 200));
             }
           } catch (parseError) {
-            console.error("Could not parse error response:", parseError);
+            console.error(`[${requestId}] Could not parse error response:`, parseError);
           }
           
-          throw new Error(errorMessage);
+          // Create a detailed error object
+          const responseError = new Error(errorMessage);
+          (responseError as any).status = response.status;
+          (responseError as any).details = errorDetails;
+          (responseError as any).requestId = requestId;
+          
+          throw responseError;
         }
         
+        console.log(`[${requestId}] Request successful`);
         return response;
       } catch (error: any) {
-        console.error(`Attempt ${attempt + 1} failed:`, error);
+        console.error(`[${requestId}] Attempt ${attempt + 1} failed:`, error);
         lastError = error;
-        
-        // If this is an authentication error and we're still initializing, wait longer
-        if (initializing && error.message && error.message.includes('Unauthorized')) {
-          console.log('Authentication still initializing, waiting longer before retry...');
-          await new Promise(resolve => setTimeout(resolve, retryDelay * 2));
-        } else {
-          await new Promise(resolve => setTimeout(resolve, retryDelay));
-        }
         
         // If this is the last attempt, prepare a more detailed error
         if (attempt === maxRetries - 1) {
           const detailedError = new Error(`Failed to fetch after ${maxRetries} attempts: ${error.message || 'Unknown error'}`);
           detailedError.stack = error.stack;
+          (detailedError as any).originalError = error;
+          (detailedError as any).requestId = requestId;
           lastError = detailedError;
         }
       }
     }
     
+    console.error(`[${requestId}] All ${maxRetries} attempts failed`);
     throw lastError;
-  }, [initializing]);
+  }, []);
 
   // Fetch cryptos with micro processing settings - consolidated into a single API call
   const fetchMicroProcessingCryptos = useCallback(async () => {

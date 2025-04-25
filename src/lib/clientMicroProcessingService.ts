@@ -335,6 +335,7 @@ export async function processMicroTrade(
     }
     
     // Execute the trade via API with standardized request configuration
+    console.log(`Executing ${action} trade for ${crypto.symbol} using Binance platform`);
     const response = await fetch('/api/cryptos/trade', {
       ...getStandardRequestConfig(),
       method: 'POST',

@@ -26,15 +26,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     const user = data.user;
     
-    // Extract request body
+    // Extract request body - support both formats (from direct calls and from trade.ts)
     const { 
       cryptoId, 
       action, 
       quantity, 
+      shares, 
       price, 
       orderType = 'MARKET',
-      testMode = false 
+      testMode = false,
+      microProcessing = false
     } = req.body;
+    
+    // Use shares if quantity is not provided (for compatibility with trade.ts)
+    const tradeQuantity = quantity || shares;
     
     // Validate required parameters
     if (!cryptoId) {
@@ -45,8 +50,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Invalid action parameter. Must be "buy" or "sell"' });
     }
     
-    if (!quantity || isNaN(parseFloat(quantity)) || parseFloat(quantity) <= 0) {
-      return res.status(400).json({ error: 'Invalid quantity parameter. Must be a positive number' });
+    if (!tradeQuantity || isNaN(parseFloat(tradeQuantity)) || parseFloat(tradeQuantity) <= 0) {
+      return res.status(400).json({ error: 'Invalid quantity/shares parameter. Must be a positive number' });
     }
     
     // For limit orders, price is required

@@ -88,7 +88,14 @@ const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
               {isConnected ? 'Connected' : 'Disconnected'}
             </Badge>
             {!isConnected && connect && (
-              <Button size="sm" variant="outline" onClick={connect}>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={() => {
+                  console.log('Connect button clicked');
+                  connect();
+                }}
+              >
                 Connect
               </Button>
             )}

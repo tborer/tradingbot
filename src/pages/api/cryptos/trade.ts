@@ -144,12 +144,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       autoTradeLogger.log(`Micro processing ${action}: ${sharesToTrade} shares of ${crypto.symbol} at $${currentPrice}. Total: $${totalAmount.toFixed(2)}`);
     }
     
-    // Execute the order using the Kraken API
+    // Determine which trading platform to use
+    const tradingPlatform = req.body.tradingPlatform || 'kraken';
+    console.log(`Using trading platform: ${tradingPlatform}`);
+    
     try {
-      // Call the execute-order API endpoint to use the Kraken API
-      // Use absolute URL with proper base URL for server-side API calls
-      const apiUrl = getApiUrl('/api/cryptos/execute-order');
-      console.log('Calling execute-order API at:', apiUrl);
+      // Determine which API endpoint to call based on the trading platform
+      let apiUrl;
+      if (tradingPlatform.toLowerCase() === 'binance') {
+        apiUrl = getApiUrl('/api/cryptos/binance-trade');
+        console.log('Using Binance trading API');
+      } else {
+        apiUrl = getApiUrl('/api/cryptos/execute-order'); // Default to Kraken
+        console.log('Using Kraken trading API');
+      }
+      
+      console.log('Calling trading API at:', apiUrl);
       
       // Pass the cookies from the original request to maintain authentication
       const cookies = req.headers.cookie;

@@ -40,12 +40,19 @@ export default function BinanceWebSocketSettings() {
       return 'wss://stream.binance.us:9443/ws';
     }
     
-    const streams = subscribedSymbols.flatMap(symbol => {
-      const lowerSymbol = symbol.toLowerCase();
-      return [`${lowerSymbol}@aggTrade`, `${lowerSymbol}@depth`];
-    });
-    
-    return `wss://stream.binance.us:9443/stream?streams=${streams.join('/')}`;
+    if (subscribedSymbols.length === 1) {
+      // For a single symbol, use the direct /ws/<symbol>@bookTicker format
+      const lowerSymbol = subscribedSymbols[0].toLowerCase();
+      return `wss://stream.binance.us:9443/ws/${lowerSymbol}@bookTicker`;
+    } else {
+      // For multiple symbols, use the combined stream format
+      const streams = subscribedSymbols.map(symbol => {
+        const lowerSymbol = symbol.toLowerCase();
+        return `${lowerSymbol}@bookTicker`;
+      });
+      
+      return `wss://stream.binance.us:9443/stream?streams=${streams.join('/')}`;
+    }
   };
 
   const handleSelectCrypto = (cryptoId: string, symbol: string) => {

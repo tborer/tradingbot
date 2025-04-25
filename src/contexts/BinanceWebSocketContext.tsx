@@ -55,13 +55,19 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
       return `${baseUrl}/ws`;
     }
     
-    // Create combined stream URL with all subscribed symbols
-    const streams = subscribedSymbols.flatMap(symbol => {
-      const lowerSymbol = symbol.toLowerCase();
-      return [`${lowerSymbol}@aggTrade`, `${lowerSymbol}@depth`];
-    });
-    
-    return `${baseUrl}/stream?streams=${streams.join('/')}`;
+    if (subscribedSymbols.length === 1) {
+      // For a single symbol, use the direct /ws/<symbol>@bookTicker format
+      const lowerSymbol = subscribedSymbols[0].toLowerCase();
+      return `${baseUrl}/ws/${lowerSymbol}@bookTicker`;
+    } else {
+      // For multiple symbols, use the combined stream format
+      const streams = subscribedSymbols.map(symbol => {
+        const lowerSymbol = symbol.toLowerCase();
+        return `${lowerSymbol}@bookTicker`;
+      });
+      
+      return `${baseUrl}/stream?streams=${streams.join('/')}`;
+    }
   }, [subscribedSymbols]);
   
   // Update subscribed symbols when enabled cryptos change
@@ -134,9 +140,9 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
         
         // Subscribe to the streams for each symbol
         if (subscribedSymbols.length > 0) {
-          const streams = subscribedSymbols.flatMap(symbol => {
+          const streams = subscribedSymbols.map(symbol => {
             const lowerSymbol = symbol.toLowerCase();
-            return [`${lowerSymbol}@aggTrade`, `${lowerSymbol}@depth`];
+            return `${lowerSymbol}@bookTicker`;
           });
           
           const subscribeMessage = {
@@ -182,33 +188,14 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
             return;
           }
           
-          // Handle depth (order book) updates
-          if (data.stream && data.stream.includes('@depth')) {
+          // Handle bookTicker updates
+          if (data.stream && data.stream.includes('@bookTicker')) {
             const symbol = data.stream.split('@')[0].toUpperCase();
             const bestBidPrice = parseFloat(data.data.b);
+            const bestAskPrice = parseFloat(data.data.a);
             
-            // Update price in the micro processing service
-            if (!isNaN(bestBidPrice) && bestBidPrice > 0) {
-              handlePriceUpdate({
-                symbol,
-                price: bestBidPrice
-              });
-              
-              // Log price update (but not too frequently to avoid flooding logs)
-              if (Math.random() < 0.05) { // Log approximately 5% of updates
-                addLog('info', `Received price update for ${symbol}: $${bestBidPrice}`, {
-                  symbol,
-                  price: bestBidPrice,
-                  source: 'binance-depth'
-                });
-              }
-            }
-          }
-          
-          // Handle trade updates
-          if (data.stream && data.stream.includes('@aggTrade')) {
-            const symbol = data.stream.split('@')[0].toUpperCase();
-            const price = parseFloat(data.data.p);
+            // Use the best bid price for updates
+            const price = bestBidPrice;
             
             // Update price in the micro processing service
             if (!isNaN(price) && price > 0) {
@@ -219,10 +206,40 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
               
               // Log price update (but not too frequently to avoid flooding logs)
               if (Math.random() < 0.05) { // Log approximately 5% of updates
-                addLog('info', `Received trade update for ${symbol}: $${price}`, {
+                addLog('info', `Received bookTicker update for ${symbol}: $${price}`, {
                   symbol,
                   price,
-                  source: 'binance-trade'
+                  bestBid: bestBidPrice,
+                  bestAsk: bestAskPrice,
+                  source: 'binance-bookTicker'
+                });
+              }
+            }
+          }
+          // Handle direct bookTicker updates (for single symbol subscriptions)
+          else if (data.e === 'bookTicker') {
+            const symbol = data.s;
+            const bestBidPrice = parseFloat(data.b);
+            const bestAskPrice = parseFloat(data.a);
+            
+            // Use the best bid price for updates
+            const price = bestBidPrice;
+            
+            // Update price in the micro processing service
+            if (!isNaN(price) && price > 0) {
+              handlePriceUpdate({
+                symbol,
+                price
+              });
+              
+              // Log price update (but not too frequently to avoid flooding logs)
+              if (Math.random() < 0.05) { // Log approximately 5% of updates
+                addLog('info', `Received direct bookTicker update for ${symbol}: $${price}`, {
+                  symbol,
+                  price,
+                  bestBid: bestBidPrice,
+                  bestAsk: bestAskPrice,
+                  source: 'binance-bookTicker-direct'
                 });
               }
             }
@@ -287,9 +304,9 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
       
       // If connected, send unsubscribe message before closing
       if (wsRef.current.readyState === WebSocket.OPEN && subscribedSymbols.length > 0) {
-        const streams = subscribedSymbols.flatMap(symbol => {
+        const streams = subscribedSymbols.map(symbol => {
           const lowerSymbol = symbol.toLowerCase();
-          return [`${lowerSymbol}@aggTrade`, `${lowerSymbol}@depth`];
+          return `${lowerSymbol}@bookTicker`;
         });
         
         const unsubscribeMessage = {

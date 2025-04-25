@@ -6,6 +6,7 @@ import { useRouter } from 'next/router';
 
 interface AuthContextType {
   user: User | null;
+  token: string | null;
   createUser: (user: User) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
@@ -18,6 +19,7 @@ interface AuthContextType {
 
 export const AuthContext = createContext<AuthContextType>({
   user: null,
+  token: null,
   createUser: async () => {},
   signIn: async () => {},
   signUp: async () => {},
@@ -31,21 +33,39 @@ export const AuthContext = createContext<AuthContextType>({
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [initializing, setInitializing] = useState(true);
   const supabase = createClient();
   const { toast } = useToast();
 
   React.useEffect(() => {
     const fetchSession = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-      setInitializing(false);
+      try {
+        // Get both user and session
+        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        setUser(user);
+        setToken(session?.access_token || null);
+        console.log("[AUTH] Session initialized:", { 
+          hasUser: !!user, 
+          hasToken: !!session?.access_token,
+          userId: user?.id
+        });
+        
+        setInitializing(false);
+      } catch (error) {
+        console.error("[AUTH] Error fetching session:", error);
+        setInitializing(false);
+      }
     };
 
     fetchSession();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("[AUTH] Auth state changed:", { event, hasSession: !!session });
       setUser(session?.user ?? null);
+      setToken(session?.access_token || null);
       setInitializing(false);
     });
 
@@ -214,6 +234,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   return (
     <AuthContext.Provider value={{
       user,
+      token,
       createUser,
       signIn,
       signUp,
@@ -222,7 +243,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       signOut,
       resetPassword,
       initializing,
-
     }}>
       {children}
     </AuthContext.Provider>

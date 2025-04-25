@@ -10,7 +10,7 @@ import {
 } from '@/lib/clientMicroProcessingService';
 
 export function useMicroProcessing() {
-  const { user, initializing } = useAuth();
+  const { user, token, initializing } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -29,10 +29,10 @@ export function useMicroProcessing() {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-cache',
       'X-Client-Info': 'useMicroProcessing-hook',
-      // Add auth token if it's not being included via credentials
-      ...(user?.token ? { 'Authorization': `Bearer ${user.token}` } : {})
+      // Add auth token if available
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     }
-  }), [user]);
+  }), [token]);
 
   // Enhanced retry mechanism for API requests with better error handling
   const fetchWithRetry = useCallback(async (url: string, config = {}, maxRetries = 3, retryDelay = 1000) => {
@@ -131,7 +131,7 @@ export function useMicroProcessing() {
       hasUser: !!user, 
       userId: user?.id,
       userIdType: user ? typeof user.id : 'N/A',
-      hasToken: !!user?.token
+      hasToken: !!token
     });
     
     if (initializing) {

@@ -55,6 +55,23 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
   
   const baseUrl = 'wss://stream.binance.us:9443';
   
+  // Function to format symbol for Binance API
+  const formatSymbolForBinance = useCallback((symbol: string): string => {
+    // Convert symbol to lowercase and ensure it has the correct format
+    // Binance expects symbols like "btcusdt" (all lowercase)
+    let formattedSymbol = symbol.toLowerCase();
+    
+    // If the symbol ends with "USD", replace it with "usdt"
+    if (formattedSymbol.endsWith('usd')) {
+      formattedSymbol = formattedSymbol.replace(/usd$/, 'usdt');
+    } else if (!formattedSymbol.endsWith('usdt')) {
+      // If it doesn't end with "usdt", append it
+      formattedSymbol = `${formattedSymbol}usdt`;
+    }
+    
+    return formattedSymbol;
+  }, []);
+
   // Function to get WebSocket URL based on subscribed symbols
   const getWebSocketUrl = useCallback(() => {
     if (subscribedSymbols.length === 0) {
@@ -63,13 +80,13 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
     
     if (subscribedSymbols.length === 1) {
       // For a single symbol, use the direct /ws/<symbol>@aggTrade format
-      const lowerSymbol = subscribedSymbols[0].toLowerCase();
-      return `${baseUrl}/ws/${lowerSymbol}@aggTrade`;
+      const formattedSymbol = formatSymbolForBinance(subscribedSymbols[0]);
+      return `${baseUrl}/ws/${formattedSymbol}@aggTrade`;
     } else {
       // For multiple symbols, use the combined stream format
       const streams = subscribedSymbols.flatMap(symbol => {
-        const lowerSymbol = symbol.toLowerCase();
-        return [`${lowerSymbol}@aggTrade`, `${lowerSymbol}@depth`];
+        const formattedSymbol = formatSymbolForBinance(symbol);
+        return [`${formattedSymbol}@aggTrade`, `${formattedSymbol}@depth`];
       });
       
       return `${baseUrl}/stream?streams=${streams.join('/')}`;
@@ -167,9 +184,13 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
         
         // Subscribe to the streams for each symbol
         if (subscribedSymbols.length > 0) {
+          // Format symbols correctly for Binance API (lowercase with usdt suffix)
           const streams = subscribedSymbols.flatMap(symbol => {
-            const lowerSymbol = symbol.toLowerCase();
-            return [`${lowerSymbol}@aggTrade`, `${lowerSymbol}@depth`];
+            const formattedSymbol = formatSymbolForBinance(symbol);
+            console.log(`BinanceWebSocketContext: Formatted symbol ${symbol} to ${formattedSymbol}`);
+            
+            // Return the correctly formatted stream names
+            return [`${formattedSymbol}@aggTrade`, `${formattedSymbol}@depth`];
           });
           
           // Get the next message ID
@@ -180,6 +201,8 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
             params: streams,
             id: subscribeId
           };
+          
+          console.log(`BinanceWebSocketContext: Subscribe message format:`, JSON.stringify(subscribeMessage, null, 2));
           
           console.log(`BinanceWebSocketContext: Sending subscribe message with ID ${subscribeId}`, subscribeMessage);
           wsRef.current?.send(JSON.stringify(subscribeMessage));
@@ -246,11 +269,14 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
             
             if (data.stream) {
               // Stream format (combined streams)
-              symbol = data.stream.split('@')[0].toUpperCase();
+              // Extract symbol from stream name and convert back to our format (e.g., "btcusdt" -> "BTC")
+              const rawSymbol = data.stream.split('@')[0];
+              // Convert from "btcusdt" to "BTC"
+              symbol = rawSymbol.replace(/usdt$/, '').toUpperCase();
               bestBidPrice = parseFloat(data.data.b && data.data.b[0] ? data.data.b[0][0] : 0);
             } else {
               // Direct message format
-              symbol = data.s; // Symbol is in the 's' field
+              symbol = data.s.replace(/USDT$/, ''); // Symbol is in the 's' field, remove USDT suffix
               bestBidPrice = parseFloat(data.b && data.b[0] ? data.b[0][0] : 0);
             }
             
@@ -274,7 +300,10 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
           
           // Handle trade updates
           if (data.stream && data.stream.includes('@aggTrade')) {
-            const symbol = data.stream.split('@')[0].toUpperCase();
+            // Extract symbol from stream name and convert back to our format (e.g., "btcusdt" -> "BTC")
+            const rawSymbol = data.stream.split('@')[0];
+            // Convert from "btcusdt" to "BTC"
+            const symbol = rawSymbol.replace(/usdt$/, '').toUpperCase();
             const price = parseFloat(data.data.p);
             
             // Update price in the micro processing service

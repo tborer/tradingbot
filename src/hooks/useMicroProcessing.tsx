@@ -125,43 +125,99 @@ export function useMicroProcessing() {
 
   // Check authentication before making API calls
   const checkAuthAndFetch = useCallback(async (url: string, config = {}) => {
+    console.log(`[AUTH-CHECK] checkAuthAndFetch called for URL: ${url}`);
+    console.log(`[AUTH-CHECK] Authentication state:`, { 
+      initializing, 
+      hasUser: !!user, 
+      userId: user?.id,
+      userIdType: user ? typeof user.id : 'N/A',
+      hasToken: !!user?.token
+    });
+    
     if (initializing) {
-      console.log('Authentication is still initializing, skipping fetch');
+      console.log('[AUTH-CHECK] Authentication is still initializing, skipping fetch');
       throw new Error('Authentication is initializing');
     }
     
     // More thorough validation of user object
-    if (!user || !user.id || typeof user.id !== 'string') {
-      console.log('User not properly authenticated, skipping fetch');
+    if (!user) {
+      console.log('[AUTH-CHECK] No user object found, skipping fetch');
       router.push('/login'); // Redirect to login if needed
-      throw new Error('User not authenticated');
+      throw new Error('User not authenticated - no user object');
     }
     
-    console.log('User authenticated, proceeding with fetch', { userId: user.id });
+    if (!user.id) {
+      console.log('[AUTH-CHECK] User object exists but has no ID, skipping fetch');
+      router.push('/login');
+      throw new Error('User not authenticated - missing user ID');
+    }
+    
+    if (typeof user.id !== 'string') {
+      console.log(`[AUTH-CHECK] User ID is not a string (type: ${typeof user.id}), skipping fetch`);
+      router.push('/login');
+      throw new Error(`User not authenticated - invalid user ID type: ${typeof user.id}`);
+    }
+    
+    console.log('[AUTH-CHECK] User authenticated, proceeding with fetch', { 
+      userId: user.id,
+      url: url
+    });
     
     // Add timestamp to prevent caching
     const urlWithTimestamp = url.includes('?') 
       ? `${url}&_t=${Date.now()}` 
       : `${url}?_t=${Date.now()}`;
     
-    return fetchWithRetry(urlWithTimestamp, config);
+    try {
+      console.log(`[AUTH-CHECK] Calling fetchWithRetry for ${urlWithTimestamp}`);
+      const response = await fetchWithRetry(urlWithTimestamp, config);
+      console.log(`[AUTH-CHECK] fetchWithRetry succeeded for ${url}`);
+      return response;
+    } catch (error) {
+      console.error(`[AUTH-CHECK] fetchWithRetry failed for ${url}:`, error);
+      
+      // Check for 401 Unauthorized errors
+      if (error && typeof error === 'object' && 'status' in error && (error as any).status === 401) {
+        console.error('[AUTH-CHECK] 401 Unauthorized error detected, redirecting to login');
+        router.push('/login');
+      }
+      
+      throw error;
+    }
   }, [user, initializing, fetchWithRetry, router]);
 
   // Fetch cryptos with micro processing settings - consolidated into a single API call
   const fetchMicroProcessingCryptos = useCallback(async () => {
+    console.log('[FETCH-CRYPTOS] Starting fetchMicroProcessingCryptos');
+    console.log('[FETCH-CRYPTOS] Current auth state:', { 
+      initializing, 
+      hasUser: !!user, 
+      userId: user?.id 
+    });
+    
     try {
       setLoading(true);
       setError(null); // Clear any previous errors
       
       // Use a single consolidated API endpoint to get cryptos with their enabled settings
-      console.log('Fetching micro processing settings with includeEnabledCryptos=true');
+      console.log('[FETCH-CRYPTOS] Fetching micro processing settings with includeEnabledCryptos=true');
       
       // Ensure the parameter is explicitly set to a string value
       const url = '/api/cryptos/micro-processing-settings?includeEnabledCryptos=true';
-      console.log(`Making request to: ${url}`);
+      console.log(`[FETCH-CRYPTOS] Making request to: ${url}`);
+      
+      // Verify authentication before making the request
+      if (!user || !user.id) {
+        console.error('[FETCH-CRYPTOS] Cannot fetch cryptos: User not authenticated');
+        setError('User not authenticated. Please log in.');
+        setLoading(false);
+        return;
+      }
       
       // Use the checkAuthAndFetch function to ensure we only make the request if authenticated
+      console.log('[FETCH-CRYPTOS] Calling checkAuthAndFetch');
       const response = await checkAuthAndFetch(url);
+      console.log('[FETCH-CRYPTOS] checkAuthAndFetch returned a response');
       
       // Validate response before parsing JSON
       if (!response) {
@@ -297,40 +353,66 @@ export function useMicroProcessing() {
 
   // Process micro trades
   const processMicroTrades = useCallback(async () => {
+    console.log('[PROCESS-TRADES] processMicroTrades called');
+    console.log('[PROCESS-TRADES] Current state:', { 
+      isProcessing, 
+      isInitialized: isInitializedRef.current,
+      hasUser: !!user,
+      initializing
+    });
+    
     if (isProcessing || !isInitializedRef.current) {
-      console.log('Skipping micro trades processing', { 
+      console.log('[PROCESS-TRADES] Skipping micro trades processing', { 
         isProcessing, 
         isInitialized: isInitializedRef.current 
       });
       return;
     }
     
+    // Verify user authentication before proceeding
+    if (!user || !user.id) {
+      console.error('[PROCESS-TRADES] Cannot process trades: User not authenticated');
+      return;
+    }
+    
     setIsProcessing(true);
+    console.log('[PROCESS-TRADES] Set isProcessing to true');
     
     try {
       // Check authentication before processing
+      console.log('[PROCESS-TRADES] Verifying authentication before processing');
       try {
         // Make a simple auth check request to verify authentication
+        console.log('[PROCESS-TRADES] Making auth check request');
         await checkAuthAndFetch('/api/cryptos/micro-processing-settings?checkAuth=true');
+        console.log('[PROCESS-TRADES] Auth check request successful');
       } catch (authError) {
-        console.log('Skipping micro trades processing due to authentication issue:', authError.message);
+        console.error('[PROCESS-TRADES] Authentication check failed:', authError);
+        console.log('[PROCESS-TRADES] Skipping micro trades processing due to authentication issue');
         setIsProcessing(false);
         return;
       }
       
+      console.log('[PROCESS-TRADES] Calling processAllMicroProcessingCryptos');
       const result = await processAllMicroProcessingCryptos();
+      console.log('[PROCESS-TRADES] processAllMicroProcessingCryptos result:', result);
       
       if (result.processed > 0) {
+        console.log(`[PROCESS-TRADES] Successfully processed ${result.processed} trades`);
         toast({
           title: "Micro Processing",
           description: `Processed ${result.processed} trades successfully.`,
         });
         
         // Refresh the list of enabled cryptos
+        console.log('[PROCESS-TRADES] Refreshing crypto list after successful processing');
         fetchMicroProcessingCryptos();
+      } else {
+        console.log('[PROCESS-TRADES] No trades were processed');
       }
       
       if (result.errors > 0) {
+        console.error(`[PROCESS-TRADES] Encountered ${result.errors} errors during processing`);
         toast({
           variant: "destructive",
           title: "Micro Processing Errors",
@@ -338,7 +420,18 @@ export function useMicroProcessing() {
         });
       }
     } catch (err) {
-      console.error('Error processing micro trades:', err);
+      console.error('[PROCESS-TRADES] Error processing micro trades:', err);
+      
+      // Check for authentication errors
+      if (err instanceof Error && (
+        err.message.includes('auth') || 
+        err.message.includes('unauthorized') || 
+        err.message.includes('unauthenticated')
+      )) {
+        console.error('[PROCESS-TRADES] Authentication error detected:', err.message);
+        router.push('/login');
+      }
+      
       setError('Failed to process micro trades');
       
       toast({
@@ -347,32 +440,50 @@ export function useMicroProcessing() {
         description: err instanceof Error ? err.message : 'Unknown error',
       });
     } finally {
+      console.log('[PROCESS-TRADES] Setting isProcessing back to false');
       setIsProcessing(false);
     }
-  }, [user, initializing, isProcessing, fetchMicroProcessingCryptos, toast, checkAuthAndFetch]);
+  }, [user, initializing, isProcessing, fetchMicroProcessingCryptos, toast, checkAuthAndFetch, router]);
 
   // Initialize data on component mount with improved authentication state handling
   useEffect(() => {
+    console.log('[INIT-EFFECT] Initialization useEffect triggered');
+    console.log('[INIT-EFFECT] Current auth state:', { 
+      initializing, 
+      hasUser: !!user, 
+      userId: user?.id,
+      userIdType: user ? typeof user.id : 'N/A'
+    });
+    
     let authCheckTimer: NodeJS.Timeout | null = null;
     let retryCount = 0;
     const maxRetries = 5;
     
     // Function to check auth state and fetch data when ready
     const checkAuthAndFetch = () => {
+      console.log('[INIT-EFFECT] Running checkAuthAndFetch');
+      console.log('[INIT-EFFECT] Current auth state:', { 
+        initializing, 
+        hasUser: !!user, 
+        userId: user?.id,
+        retryCount
+      });
+      
       if (initializing) {
-        console.log('Authentication is still initializing, waiting...');
+        console.log('[INIT-EFFECT] Authentication is still initializing, waiting...');
         // Set a timer to check again
         authCheckTimer = setTimeout(checkAuthAndFetch, 500);
         return;
       }
       
       if (!user) {
-        console.log('No authenticated user found after initialization');
+        console.log('[INIT-EFFECT] No authenticated user found after initialization');
         
         // If we've tried several times and still no user, we might need to redirect to login
         if (retryCount >= maxRetries) {
-          console.log(`Max retries (${maxRetries}) reached without finding user, stopping retries`);
+          console.log(`[INIT-EFFECT] Max retries (${maxRetries}) reached without finding user, stopping retries`);
           setError('Authentication failed. Please try logging in again.');
+          console.log('[INIT-EFFECT] Redirecting to login page');
           router.push('/login');
           return;
         }
@@ -380,27 +491,40 @@ export function useMicroProcessing() {
         // Try again after a delay with exponential backoff
         retryCount++;
         const delay = Math.min(1000 * Math.pow(1.5, retryCount), 10000); // Max 10 seconds
-        console.log(`Retry ${retryCount}/${maxRetries} for auth check in ${delay}ms`);
+        console.log(`[INIT-EFFECT] Retry ${retryCount}/${maxRetries} for auth check in ${delay}ms`);
         authCheckTimer = setTimeout(checkAuthAndFetch, delay);
+        return;
+      }
+      
+      // Validate user object
+      if (!user.id) {
+        console.log('[INIT-EFFECT] User object exists but has no ID');
+        setError('Invalid user data. Please try logging in again.');
+        router.push('/login');
         return;
       }
       
       // Reset retry count if we have a user
       retryCount = 0;
       
-      console.log('Authentication initialized and user available, fetching data', { userId: user.id });
+      console.log('[INIT-EFFECT] Authentication initialized and user available, fetching data', { 
+        userId: user.id,
+        userEmail: user.email || 'no email'
+      });
       
-      // Add a small delay to ensure supabase client is fully ready
-      console.log('Adding delay before initial fetch to ensure supabase client is ready');
+      // Add a longer delay to ensure supabase client is fully ready
+      console.log('[INIT-EFFECT] Adding delay before initial fetch to ensure supabase client is ready');
       setTimeout(() => {
+        console.log('[INIT-EFFECT] Delay completed, proceeding with data fetch');
         // Wrap in try/catch to prevent unhandled promise rejections
         try {
+          console.log('[INIT-EFFECT] Calling fetchMicroProcessingCryptos');
           fetchMicroProcessingCryptos();
         } catch (error) {
-          console.error('Error during initial data fetch:', error);
+          console.error('[INIT-EFFECT] Error during initial data fetch:', error);
           setError('Failed to load initial data');
         }
-      }, 1000); // 1 second delay to ensure supabase client is ready
+      }, 2000); // 2 second delay to ensure supabase client is ready
     };
     
     // Start the auth check process

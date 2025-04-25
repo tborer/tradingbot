@@ -4,7 +4,7 @@ import { createClient } from '@/util/supabase/api';
 import { MicroProcessingSettings } from '@prisma/client';
 
 // Enable detailed authentication debugging with this flag
-const DEBUG_AUTH = false;
+const DEBUG_AUTH = true;
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   console.log(`[MICRO-SETTINGS] API handler started: ${req.method} request received`);
@@ -247,6 +247,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log(`[MICRO-SETTINGS] Validating cryptoId: ${cryptoId} for userId: ${user.id}`);
         
         // Check if the crypto belongs to the user
+        // First, validate that user exists and has an ID
+        if (!user || !user.id) {
+          console.error('[MICRO-SETTINGS] User or user.id is missing when checking crypto ownership');
+          return res.status(401).json({ 
+            error: 'Authentication error', 
+            details: 'User not properly authenticated',
+            errorType: 'MissingUserID'
+          });
+        }
+        
+        console.log(`[MICRO-SETTINGS] Checking crypto ownership with userId: ${user.id}`);
         const crypto = await prisma.crypto.findFirst({
           where: {
             id: cryptoId,

@@ -32,34 +32,6 @@ export function useMicroProcessing() {
     }
   };
 
-  // Check authentication before making API calls
-  const checkAuthAndFetch = useCallback(async (url: string, config = {}) => {
-    if (initializing) {
-      console.log('Authentication is still initializing, skipping fetch');
-      throw new Error('Authentication is initializing');
-    }
-    
-    if (!user) {
-      console.log('User not authenticated, skipping fetch');
-      throw new Error('User not authenticated');
-    }
-    
-    // Verify user has an ID
-    if (!user.id) {
-      console.error('Invalid user object: missing ID');
-      throw new Error('Invalid authentication state');
-    }
-    
-    console.log('User authenticated, proceeding with fetch', { userId: user.id });
-    
-    // Add timestamp to prevent caching
-    const urlWithTimestamp = url.includes('?') 
-      ? `${url}&_t=${Date.now()}` 
-      : `${url}?_t=${Date.now()}`;
-    
-    return fetchWithRetry(urlWithTimestamp, config);
-  }, [user, initializing, fetchWithRetry]);
-
   // Enhanced retry mechanism for API requests with better error handling
   const fetchWithRetry = useCallback(async (url: string, config = {}, maxRetries = 3, retryDelay = 1000) => {
     const mergedConfig = { ...standardRequestConfig, ...config };
@@ -146,6 +118,34 @@ export function useMicroProcessing() {
     console.error(`[${requestId}] All ${maxRetries} attempts failed`);
     throw lastError;
   }, []);
+
+  // Check authentication before making API calls
+  const checkAuthAndFetch = useCallback(async (url: string, config = {}) => {
+    if (initializing) {
+      console.log('Authentication is still initializing, skipping fetch');
+      throw new Error('Authentication is initializing');
+    }
+    
+    if (!user) {
+      console.log('User not authenticated, skipping fetch');
+      throw new Error('User not authenticated');
+    }
+    
+    // Verify user has an ID
+    if (!user.id) {
+      console.error('Invalid user object: missing ID');
+      throw new Error('Invalid authentication state');
+    }
+    
+    console.log('User authenticated, proceeding with fetch', { userId: user.id });
+    
+    // Add timestamp to prevent caching
+    const urlWithTimestamp = url.includes('?') 
+      ? `${url}&_t=${Date.now()}` 
+      : `${url}?_t=${Date.now()}`;
+    
+    return fetchWithRetry(urlWithTimestamp, config);
+  }, [user, initializing, fetchWithRetry]);
 
   // Fetch cryptos with micro processing settings - consolidated into a single API call
   const fetchMicroProcessingCryptos = useCallback(async () => {
@@ -261,7 +261,7 @@ export function useMicroProcessing() {
     } finally {
       setLoading(false);
     }
-  }, [user, initializing, toast, fetchWithRetry]);
+  }, [user, initializing, toast, fetchWithRetry, checkAuthAndFetch]);
 
   // Handle price updates from WebSocket
   const handlePriceUpdate = useCallback((priceData: any) => {
@@ -349,7 +349,7 @@ export function useMicroProcessing() {
     } finally {
       setIsProcessing(false);
     }
-  }, [user, initializing, isProcessing, fetchMicroProcessingCryptos, toast]);
+  }, [user, initializing, isProcessing, fetchMicroProcessingCryptos, toast, checkAuthAndFetch]);
 
   // Initialize data on component mount with improved authentication state handling
   useEffect(() => {

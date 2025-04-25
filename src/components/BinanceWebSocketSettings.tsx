@@ -162,7 +162,7 @@ export default function BinanceWebSocketSettings() {
                   <Label htmlFor="test-url">Test URL</Label>
                   <input
                     id="test-url"
-                    className="w-full p-2 border rounded-md font-mono text-sm"
+                    className="w-full p-2 border rounded-md font-mono text-sm bg-background text-foreground"
                     value={testUrl}
                     onChange={(e) => setTestUrl(e.target.value)}
                     placeholder="wss://stream.binance.us:9443/ws"
@@ -176,7 +176,7 @@ export default function BinanceWebSocketSettings() {
                   <Label htmlFor="test-body">Test Body</Label>
                   <textarea
                     id="test-body"
-                    className="w-full p-2 border rounded-md font-mono text-sm min-h-[100px]"
+                    className="w-full p-2 border rounded-md font-mono text-sm min-h-[100px] bg-background text-foreground"
                     value={testBody}
                     onChange={(e) => setTestBody(e.target.value)}
                     placeholder='{"method": "ping"}'

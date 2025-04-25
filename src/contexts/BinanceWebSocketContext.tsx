@@ -92,26 +92,35 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
   // Connect to WebSocket
   const connect = useCallback(() => {
     console.log('BinanceWebSocketContext: connect() called');
+    addLog('info', 'Connect function called for Binance WebSocket');
     
     // Clear any existing reconnect timeout
     if (reconnectTimeoutRef.current) {
+      console.log('BinanceWebSocketContext: Clearing existing reconnect timeout');
+      addLog('info', 'Clearing existing reconnect timeout');
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
     
     // Clear any existing ping interval
     if (pingIntervalRef.current) {
+      console.log('BinanceWebSocketContext: Clearing existing ping interval');
+      addLog('info', 'Clearing existing ping interval');
       clearInterval(pingIntervalRef.current);
       pingIntervalRef.current = null;
     }
     
     // Don't connect if there are no symbols to subscribe to
     if (subscribedSymbols.length === 0) {
-      addLog('info', 'No symbols to subscribe to. WebSocket connection not established.');
-      console.log('No symbols to subscribe to. Adding BTC as default symbol.');
+      console.log('BinanceWebSocketContext: No symbols to subscribe to, adding BTC as default');
+      addLog('info', 'No symbols to subscribe to. Adding BTC as default symbol.');
       
       // Add BTC as a default symbol for testing
       setSubscribedSymbols(['BTCUSD']);
+      
+      // Return early - the useEffect that watches subscribedSymbols will trigger connect again
+      console.log('BinanceWebSocketContext: Returning early, will reconnect when symbols are updated');
+      addLog('info', 'Will connect once symbols are updated');
       return;
     }
     

@@ -92,7 +92,15 @@ const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
                 size="sm" 
                 variant="outline" 
                 onClick={() => {
-                  console.log('Connect button clicked');
+                  console.log('Connect button clicked in WebSocketConnectionStatus');
+                  // Add a visual indicator that the button was clicked
+                  const button = document.activeElement as HTMLButtonElement;
+                  if (button) {
+                    button.classList.add('bg-primary/10');
+                    setTimeout(() => {
+                      button.classList.remove('bg-primary/10');
+                    }, 300);
+                  }
                   connect();
                 }}
               >

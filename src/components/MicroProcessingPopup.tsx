@@ -138,7 +138,13 @@ export default function MicroProcessingPopup({
       ? initialSettings.purchasePrice 
       : undefined;
     
+    // Explicitly check for testMode being true, otherwise it defaults to false
     const testMode = initialSettings?.testMode === true;
+    
+    console.log('MicroProcessingPopup: Updating settings from initialSettings', { 
+      initialTestMode: initialSettings?.testMode,
+      testMode 
+    });
     
     setSettings({
       enabled,

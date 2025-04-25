@@ -470,6 +470,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           console.error('[MICRO-SETTINGS] Could not stringify settings:', jsonError);
         }
         
+        // Log testMode specifically for debugging
+        console.log('[MICRO-SETTINGS] testMode value:', settings.testMode);
+        console.log('[MICRO-SETTINGS] testMode type:', typeof settings.testMode);
+        
         // Safely extract values with explicit type checking
         const validatedSettings = {
           enabled: settings.enabled === true,
@@ -495,8 +499,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             ? settings.purchasePrice 
             : null,
           processingStatus: settings.processingStatus || defaultSettings.processingStatus,
+          // Explicitly check for testMode being true, otherwise it defaults to false
           testMode: settings.testMode === true
         };
+        
+        console.log('[MICRO-SETTINGS] Validated testMode:', validatedSettings.testMode);
         
         console.log('[MICRO-SETTINGS] Validated settings:', validatedSettings);
         

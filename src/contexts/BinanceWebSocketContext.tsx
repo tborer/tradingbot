@@ -74,6 +74,12 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
 
   // Function to get WebSocket URL based on subscribed symbols
   const getWebSocketUrl = useCallback(() => {
+    // Always use the base WebSocket endpoint for dynamic subscriptions
+    // This allows us to use the SUBSCRIBE method after connection
+    return `${baseUrl}/ws`;
+    
+    /* 
+    // Previous implementation with direct stream URLs - not using this approach anymore
     if (subscribedSymbols.length === 0) {
       return `${baseUrl}/ws`;
     }
@@ -91,7 +97,8 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
       
       return `${baseUrl}/stream?streams=${streams.join('/')}`;
     }
-  }, [subscribedSymbols]);
+    */
+  }, []);
   
   // Update subscribed symbols when enabled cryptos change
   useEffect(() => {
@@ -193,11 +200,11 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
             return [`${formattedSymbol}@aggTrade`, `${formattedSymbol}@depth`];
           });
           
-          // Get the next message ID
-          const subscribeId = messageIdRef.current++;
+          // Use a simple numeric ID for the subscription message
+          const subscribeId = 1; // Use a simple ID as shown in the example
           
           const subscribeMessage = {
-            method: 'SUBSCRIBE',
+            method: 'SUBSCRIBE', // Uppercase 'SUBSCRIBE' as shown in the example
             params: streams,
             id: subscribeId
           };
@@ -205,6 +212,11 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
           // Log the exact message that will be sent to ensure it matches the expected format
           const subscribeMessageString = JSON.stringify(subscribeMessage);
           console.log(`BinanceWebSocketContext: Subscribe message format:`, subscribeMessageString);
+          
+          // Log the raw message for debugging
+          addLog('info', `Raw subscription message to be sent:`, {
+            rawMessage: subscribeMessageString
+          });
           
           console.log(`BinanceWebSocketContext: Sending subscribe message with ID ${subscribeId}`, subscribeMessage);
           
@@ -227,9 +239,10 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
         // Set up ping interval (every 2.5 minutes to keep connection alive)
         pingIntervalRef.current = setInterval(() => {
           if (wsRef.current?.readyState === WebSocket.OPEN) {
-            const pingId = messageIdRef.current++;
+            // Use a UUID for the ping ID to match the format in the test connection
+            const pingId = crypto.randomUUID();
             const pingMessage = { 
-              method: 'PING',
+              method: 'ping', // lowercase 'ping' to match Binance API format
               id: pingId
             };
             
@@ -255,14 +268,18 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
         
         try {
           // Log the raw message occasionally to verify format
-          if (Math.random() < 0.01) { // Log approximately 1% of messages
+          if (Math.random() < 0.05) { // Log approximately 5% of messages
             console.log(`BinanceWebSocketContext: Raw message received:`, event.data);
+            // Also log to the WebSocketLogger for visibility
+            addLog('info', `Raw message received from Binance WebSocket:`, {
+              rawData: event.data
+            });
           }
           
           const data = JSON.parse(event.data);
           
-          // Handle subscription response
-          if (data.id && data.id >= INITIAL_MESSAGE_ID) {
+          // Handle subscription response - check for both numeric and UUID IDs
+          if (data.id !== undefined) {
             console.log(`BinanceWebSocketContext: Received response for message ID ${data.id}`, data);
             
             if (data.result === null) {
@@ -282,11 +299,21 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
             return;
           }
           
-          // Handle pong response
-          if (data.result && data.result === 'pong') {
+          // Handle pong response - check for both formats
+          if ((data.result && data.result === 'pong') || 
+              (data.id && data.result === null && data.method === 'ping')) {
             setLastPongTime(new Date());
-            addLog('info', 'Received pong from Binance WebSocket');
+            addLog('info', 'Received pong from Binance WebSocket', data);
             return;
+          }
+          
+          // Log the message type for debugging
+          if (data.e) {
+            addLog('info', `Received message with event type: ${data.e}`, {
+              messageType: data.e,
+              hasStream: !!data.stream,
+              dataKeys: Object.keys(data)
+            });
           }
           
           // Handle depth (order book) updates
@@ -301,10 +328,37 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
               // Convert from "btcusdt" to "BTC"
               symbol = rawSymbol.replace(/usdt$/, '').toUpperCase();
               bestBidPrice = parseFloat(data.data.b && data.data.b[0] ? data.data.b[0][0] : 0);
+              
+              // Log the stream data structure for debugging
+              if (Math.random() < 0.1) { // Log 10% of stream messages
+                addLog('info', `Stream format depth update for ${symbol}`, {
+                  stream: data.stream,
+                  symbol,
+                  bestBidPrice,
+                  dataStructure: {
+                    hasDataField: !!data.data,
+                    hasBids: !!(data.data && data.data.b),
+                    firstBid: data.data && data.data.b && data.data.b[0] ? data.data.b[0] : null
+                  }
+                });
+              }
             } else {
               // Direct message format
               symbol = data.s.replace(/USDT$/, ''); // Symbol is in the 's' field, remove USDT suffix
               bestBidPrice = parseFloat(data.b && data.b[0] ? data.b[0][0] : 0);
+              
+              // Log the direct message data structure for debugging
+              if (Math.random() < 0.1) { // Log 10% of direct messages
+                addLog('info', `Direct format depth update for ${symbol}`, {
+                  eventType: data.e,
+                  symbol: data.s,
+                  bestBidPrice,
+                  dataStructure: {
+                    hasBids: !!data.b,
+                    firstBid: data.b && data.b[0] ? data.b[0] : null
+                  }
+                });
+              }
             }
             
             // Update price in the micro processing service
@@ -327,12 +381,46 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
           }
           
           // Handle trade updates
-          if (data.stream && data.stream.includes('@aggTrade')) {
-            // Extract symbol from stream name and convert back to our format (e.g., "btcusdt" -> "BTC")
-            const rawSymbol = data.stream.split('@')[0];
-            // Convert from "btcusdt" to "BTC"
-            const symbol = rawSymbol.replace(/usdt$/, '').toUpperCase();
-            const price = parseFloat(data.data.p);
+          if ((data.stream && data.stream.includes('@aggTrade')) || (data.e === 'aggTrade')) {
+            let symbol, price;
+            
+            if (data.stream) {
+              // Stream format
+              // Extract symbol from stream name and convert back to our format (e.g., "btcusdt" -> "BTC")
+              const rawSymbol = data.stream.split('@')[0];
+              // Convert from "btcusdt" to "BTC"
+              symbol = rawSymbol.replace(/usdt$/, '').toUpperCase();
+              price = parseFloat(data.data.p);
+              
+              // Log the stream data structure for debugging
+              if (Math.random() < 0.1) { // Log 10% of stream messages
+                addLog('info', `Stream format trade update for ${symbol}`, {
+                  stream: data.stream,
+                  symbol,
+                  price,
+                  dataStructure: {
+                    hasDataField: !!data.data,
+                    hasPrice: !!(data.data && data.data.p)
+                  }
+                });
+              }
+            } else {
+              // Direct message format for aggTrade
+              symbol = data.s.replace(/USDT$/, ''); // Symbol is in the 's' field, remove USDT suffix
+              price = parseFloat(data.p); // Price is in the 'p' field for direct messages
+              
+              // Log the direct message data structure for debugging
+              if (Math.random() < 0.1) { // Log 10% of direct messages
+                addLog('info', `Direct format trade update for ${symbol}`, {
+                  eventType: data.e,
+                  symbol: data.s,
+                  price,
+                  dataStructure: {
+                    hasPrice: !!data.p
+                  }
+                });
+              }
+            }
             
             // Update price in the micro processing service
             if (!isNaN(price) && price > 0) {
@@ -369,11 +457,30 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
       
       wsRef.current.onclose = (event) => {
         setIsConnected(false);
-        addLog('warning', `Binance WebSocket connection closed: ${event.code} ${event.reason}`, {
+        
+        // Enhanced logging for connection close events
+        const closeInfo = {
           code: event.code,
-          reason: event.reason,
-          wasClean: event.wasClean
-        });
+          reason: event.reason || 'No reason provided',
+          wasClean: event.wasClean,
+          timestamp: new Date().toISOString()
+        };
+        
+        console.error(`BinanceWebSocketContext: Connection closed with code ${event.code}`, closeInfo);
+        
+        // Log with more detailed information
+        addLog('warning', `Binance WebSocket connection closed: ${event.code} ${event.reason || 'No reason provided'}`, closeInfo);
+        
+        // Add specific guidance based on close code
+        if (event.code === 1006) {
+          addLog('error', 'Abnormal closure (1006) - This typically indicates a network issue or server-side termination', {
+            suggestion: 'Check network connection and verify subscription format'
+          });
+        } else if (event.code === 1008) {
+          addLog('error', 'Policy violation (1008) - Server rejected the connection due to policy reasons', {
+            suggestion: 'Check subscription message format and parameters'
+          });
+        }
         
         // Attempt to reconnect if auto-connect is enabled and not a normal closure
         if (autoConnect && event.code !== 1000) {

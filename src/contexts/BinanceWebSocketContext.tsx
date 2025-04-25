@@ -189,9 +189,19 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
           }
           
           // Handle depth (order book) updates
-          if (data.stream && data.stream.includes('@depth')) {
-            const symbol = data.stream.split('@')[0].toUpperCase();
-            const bestBidPrice = parseFloat(data.data.b && data.data.b[0] ? data.data.b[0][0] : 0);
+          if ((data.stream && data.stream.includes('@depth')) || (data.e === 'depthUpdate')) {
+            // Handle both stream format and direct message format
+            let symbol, bestBidPrice;
+            
+            if (data.stream) {
+              // Stream format (combined streams)
+              symbol = data.stream.split('@')[0].toUpperCase();
+              bestBidPrice = parseFloat(data.data.b && data.data.b[0] ? data.data.b[0][0] : 0);
+            } else {
+              // Direct message format
+              symbol = data.s; // Symbol is in the 's' field
+              bestBidPrice = parseFloat(data.b && data.b[0] ? data.b[0][0] : 0);
+            }
             
             // Update price in the micro processing service
             if (!isNaN(bestBidPrice) && bestBidPrice > 0) {
@@ -202,7 +212,7 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
               
               // Log price update (but not too frequently to avoid flooding logs)
               if (Math.random() < 0.05) { // Log approximately 5% of updates
-                addLog('info', `Received price update for ${symbol}: $${bestBidPrice}`, {
+                addLog('info', `Received price update for ${symbol}: $${bestBidPrice} (best bid from depth)`, {
                   symbol,
                   price: bestBidPrice,
                   source: 'binance-depth'

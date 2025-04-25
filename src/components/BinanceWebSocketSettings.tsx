@@ -167,6 +167,9 @@ export default function BinanceWebSocketSettings() {
                     onChange={(e) => setTestUrl(e.target.value)}
                     placeholder="wss://stream.binance.us:9443/ws"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Example: wss://stream.binance.us:9443/ws/btc@aggTrade or wss://stream.binance.us:9443/ws
+                  </p>
                 </div>
                 
                 <div className="space-y-2">
@@ -178,6 +181,9 @@ export default function BinanceWebSocketSettings() {
                     onChange={(e) => setTestBody(e.target.value)}
                     placeholder='{"method": "ping"}'
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Example subscription: {"{"}"method": "SUBSCRIBE", "params": ["btcusdt@aggTrade", "btcusdt@depth"], "id": 1{"}"}
+                  </p>
                 </div>
                 
                 <div className="space-y-2">
@@ -198,6 +204,22 @@ export default function BinanceWebSocketSettings() {
                     readOnly
                     placeholder="Response will appear here"
                   />
+                  <div className="mt-2 p-3 bg-muted/50 rounded-md text-xs space-y-2">
+                    <h4 className="font-medium">About Depth Updates</h4>
+                    <p>
+                      Depth updates contain order book data with the following key fields:
+                    </p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li><span className="font-mono">e</span>: Event type (e.g., "depthUpdate")</li>
+                      <li><span className="font-mono">s</span>: Symbol (e.g., "BTCUSDT")</li>
+                      <li><span className="font-mono">b</span>: Bids array [[price, quantity], ...] - Best bid is first element</li>
+                      <li><span className="font-mono">a</span>: Asks array [[price, quantity], ...] - Best ask is first element</li>
+                    </ul>
+                    <p>
+                      The system uses the best bid price (<span className="font-mono">b[0][0]</span>) from depth updates for the current price 
+                      in the micro processing logic, as it represents the highest price buyers are willing to pay.
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>

@@ -12,7 +12,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Get the user from Supabase auth - simplified authentication
     console.log('[MICRO-SETTINGS] Authenticating user with Supabase');
     const supabase = createClient({ req, res });
-    const { data } = await supabase.auth.getUser();
+    
+    // Add more defensive error handling for auth
+    if (!supabase) {
+      console.error('[MICRO-SETTINGS] Failed to create Supabase client');
+      return res.status(500).json({ 
+        error: 'Internal server error', 
+        details: 'Failed to initialize authentication client'
+      });
+    }
+    
+    // Get user with error handling
+    let data;
+    try {
+      const authResponse = await supabase.auth.getUser();
+      data = authResponse.data;
+    } catch (authError) {
+      console.error('[MICRO-SETTINGS] Authentication error:', authError);
+      return res.status(401).json({ 
+        error: 'Authentication error', 
+        details: 'Failed to authenticate user'
+      });
+    }
     
     if (!data || !data.user) {
       console.error('[MICRO-SETTINGS] Authentication failed: No user found');
@@ -30,6 +51,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // New consolidated endpoint to get all cryptos with their micro processing settings
       if (includeEnabledCryptos === 'true') {
         console.log('[MICRO-SETTINGS] Fetching all cryptos with micro processing settings');
+        console.log('[MICRO-SETTINGS] User ID for query:', user.id);
         
         try {
           // Validate user ID before querying
@@ -41,15 +63,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             });
           }
           
+          // Validate prisma connection
+          if (!prisma) {
+            console.error('[MICRO-SETTINGS] Prisma client is not initialized');
+            return res.status(500).json({ 
+              error: 'Database error', 
+              details: 'Database client is not initialized'
+            });
+          }
+          
           // Get all cryptos for this user with their micro processing settings in a single query
-          const cryptosWithSettings = await prisma.crypto.findMany({
-            where: {
-              userId: user.id
-            },
-            include: {
-              microProcessingSettings: true
-            }
-          });
+          let cryptosWithSettings;
+          try {
+            cryptosWithSettings = await prisma.crypto.findMany({
+              where: {
+                userId: user.id
+              },
+              include: {
+                microProcessingSettings: true
+              }
+            });
+            console.log(`[MICRO-SETTINGS] Database query successful, found ${cryptosWithSettings?.length || 0} cryptos`);
+          } catch (dbError) {
+            console.error('[MICRO-SETTINGS] Database query error:', dbError);
+            return res.status(500).json({ 
+              error: 'Database error', 
+              details: dbError instanceof Error ? dbError.message : 'Failed to query database',
+              errorType: dbError instanceof Error ? dbError.name : 'Unknown',
+              timestamp: new Date().toISOString()
+            });
+          }
           
           // Validate the result from the database
           if (!cryptosWithSettings) {
@@ -63,7 +106,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           console.log(`[MICRO-SETTINGS] Found ${cryptosWithSettings.length} cryptos for user`);
           
           // Map the results to include currentPrice from lastPrice with additional validation and error handling
-          const formattedCryptos = [];
+          const formattedCryptos: any[] = [];
+          
+          // Extra safety check
+          if (!cryptosWithSettings || !Array.isArray(cryptosWithSettings)) {
+            console.warn('[MICRO-SETTINGS] cryptosWithSettings is not an array, using empty array');
+            // Return empty array instead of processing further
+            return res.status(200).json([]);
+          }
           
           for (const crypto of cryptosWithSettings) {
             // Skip null/undefined cryptos
@@ -73,6 +123,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
             
             try {
+              console.log(`[MICRO-SETTINGS] Processing crypto: ${crypto.id} (${crypto.symbol})`);
+              
               // Determine the current price with fallbacks
               let currentPrice = null;
               if (crypto.lastPrice !== null && crypto.lastPrice !== undefined) {

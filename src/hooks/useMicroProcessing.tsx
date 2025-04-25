@@ -99,6 +99,11 @@ export function useMicroProcessing() {
     }
     
     console.log('User authenticated, proceeding with fetch', { userId: user.id });
+    console.log('User object:', { 
+      id: user.id, 
+      email: user.email ? 'present' : 'missing',
+      authenticated: !!user
+    });
     
     try {
       setLoading(true);
@@ -117,7 +122,11 @@ export function useMicroProcessing() {
       const url = '/api/cryptos/micro-processing-settings?includeEnabledCryptos=true';
       console.log(`Making request to: ${url}`);
       
-      const response = await fetchWithRetry(url);
+      // Add timestamp to prevent caching
+      const urlWithTimestamp = `${url}&_t=${Date.now()}`;
+      console.log(`Adding timestamp to prevent caching: ${urlWithTimestamp}`);
+      
+      const response = await fetchWithRetry(urlWithTimestamp);
       
       // Validate response before parsing JSON
       if (!response) {
@@ -127,10 +136,19 @@ export function useMicroProcessing() {
       // Parse the JSON response with error handling
       let data;
       try {
-        data = await response.json();
+        const text = await response.text();
+        console.log('Raw response text:', text.substring(0, 200) + (text.length > 200 ? '...' : ''));
+        
+        try {
+          data = JSON.parse(text);
+        } catch (parseError) {
+          console.error('JSON parse error:', parseError);
+          console.error('Invalid JSON response:', text);
+          throw new Error('Failed to parse server response: Invalid JSON');
+        }
       } catch (jsonError) {
-        console.error('Error parsing JSON response:', jsonError);
-        throw new Error('Failed to parse server response');
+        console.error('Error processing response:', jsonError);
+        throw new Error(`Failed to process server response: ${jsonError.message}`);
       }
       
       // Validate the data structure with fallback to empty array
@@ -140,7 +158,8 @@ export function useMicroProcessing() {
       }
       
       if (!Array.isArray(data)) {
-        console.error('Expected array but received:', typeof data, data);
+        console.error('Expected array but received:', typeof data);
+        console.error('Data content:', JSON.stringify(data).substring(0, 200));
         // Fallback to empty array instead of throwing
         console.warn('Using empty array as fallback');
         data = [];
@@ -155,13 +174,22 @@ export function useMicroProcessing() {
           return false;
         }
         
-        // Check if microProcessingSettings exists and is an object
-        if (!item.microProcessingSettings || typeof item.microProcessingSettings !== 'object') {
-          console.warn('Item missing microProcessingSettings or invalid format:', item);
+        // Check if item has required fields
+        if (!item.id || !item.symbol) {
+          console.warn('Item missing required fields:', item);
           return false;
         }
         
-        return item.microProcessingSettings.enabled === true;
+        // Check if microProcessingSettings exists and is an object
+        if (!item.microProcessingSettings || typeof item.microProcessingSettings !== 'object') {
+          console.warn(`Item ${item.symbol} (${item.id}) missing microProcessingSettings or invalid format`);
+          return false;
+        }
+        
+        // Check if enabled is true
+        const isEnabled = item.microProcessingSettings.enabled === true;
+        console.log(`Crypto ${item.symbol} (${item.id}) enabled status: ${isEnabled}`);
+        return isEnabled;
       });
       
       console.log(`Found ${cryptosWithSettings.length} enabled cryptos for micro processing`);

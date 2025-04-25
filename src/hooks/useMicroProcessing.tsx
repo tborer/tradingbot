@@ -32,6 +32,34 @@ export function useMicroProcessing() {
     }
   };
 
+  // Check authentication before making API calls
+  const checkAuthAndFetch = useCallback(async (url: string, config = {}) => {
+    if (initializing) {
+      console.log('Authentication is still initializing, skipping fetch');
+      throw new Error('Authentication is initializing');
+    }
+    
+    if (!user) {
+      console.log('User not authenticated, skipping fetch');
+      throw new Error('User not authenticated');
+    }
+    
+    // Verify user has an ID
+    if (!user.id) {
+      console.error('Invalid user object: missing ID');
+      throw new Error('Invalid authentication state');
+    }
+    
+    console.log('User authenticated, proceeding with fetch', { userId: user.id });
+    
+    // Add timestamp to prevent caching
+    const urlWithTimestamp = url.includes('?') 
+      ? `${url}&_t=${Date.now()}` 
+      : `${url}?_t=${Date.now()}`;
+    
+    return fetchWithRetry(urlWithTimestamp, config);
+  }, [user, initializing, fetchWithRetry]);
+
   // Enhanced retry mechanism for API requests with better error handling
   const fetchWithRetry = useCallback(async (url: string, config = {}, maxRetries = 3, retryDelay = 1000) => {
     const mergedConfig = { ...standardRequestConfig, ...config };
@@ -121,32 +149,9 @@ export function useMicroProcessing() {
 
   // Fetch cryptos with micro processing settings - consolidated into a single API call
   const fetchMicroProcessingCryptos = useCallback(async () => {
-    if (initializing) {
-      console.log('Authentication is still initializing, skipping fetch');
-      return;
-    }
-    
-    if (!user) {
-      console.log('User not authenticated, skipping fetch');
-      return;
-    }
-    
-    console.log('User authenticated, proceeding with fetch', { userId: user.id });
-    console.log('User object:', { 
-      id: user.id, 
-      email: user.email ? 'present' : 'missing',
-      authenticated: !!user
-    });
-    
     try {
       setLoading(true);
       setError(null); // Clear any previous errors
-      
-      // Verify user is authenticated before making the request
-      if (!user || !user.id) {
-        console.error('Cannot fetch micro processing settings: User not authenticated');
-        throw new Error('Authentication required');
-      }
       
       // Use a single consolidated API endpoint to get cryptos with their enabled settings
       console.log('Fetching micro processing settings with includeEnabledCryptos=true');
@@ -155,11 +160,8 @@ export function useMicroProcessing() {
       const url = '/api/cryptos/micro-processing-settings?includeEnabledCryptos=true';
       console.log(`Making request to: ${url}`);
       
-      // Add timestamp to prevent caching
-      const urlWithTimestamp = `${url}&_t=${Date.now()}`;
-      console.log(`Adding timestamp to prevent caching: ${urlWithTimestamp}`);
-      
-      const response = await fetchWithRetry(urlWithTimestamp);
+      // Use the checkAuthAndFetch function to ensure we only make the request if authenticated
+      const response = await checkAuthAndFetch(url);
       
       // Validate response before parsing JSON
       if (!response) {
@@ -295,10 +297,8 @@ export function useMicroProcessing() {
 
   // Process micro trades
   const processMicroTrades = useCallback(async () => {
-    if (initializing || !user || isProcessing || !isInitializedRef.current) {
+    if (isProcessing || !isInitializedRef.current) {
       console.log('Skipping micro trades processing', { 
-        initializing, 
-        userAuthenticated: !!user, 
         isProcessing, 
         isInitialized: isInitializedRef.current 
       });
@@ -308,6 +308,16 @@ export function useMicroProcessing() {
     setIsProcessing(true);
     
     try {
+      // Check authentication before processing
+      try {
+        // Make a simple auth check request to verify authentication
+        await checkAuthAndFetch('/api/cryptos/micro-processing-settings?checkAuth=true');
+      } catch (authError) {
+        console.log('Skipping micro trades processing due to authentication issue:', authError.message);
+        setIsProcessing(false);
+        return;
+      }
+      
       const result = await processAllMicroProcessingCryptos();
       
       if (result.processed > 0) {
@@ -414,7 +424,16 @@ export function useMicroProcessing() {
     
     // Set up a new interval to process trades every 5 seconds
     processingIntervalRef.current = setInterval(() => {
-      processMicroTrades();
+      // Only process if we have a user and initialization is complete
+      if (user && !initializing && isInitializedRef.current) {
+        processMicroTrades();
+      } else {
+        console.log('Skipping scheduled micro processing due to auth state', {
+          hasUser: !!user,
+          initializing,
+          isInitialized: isInitializedRef.current
+        });
+      }
     }, 5000);
     
     return () => {

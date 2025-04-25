@@ -202,28 +202,48 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
             id: subscribeId
           };
           
-          console.log(`BinanceWebSocketContext: Subscribe message format:`, JSON.stringify(subscribeMessage, null, 2));
+          // Log the exact message that will be sent to ensure it matches the expected format
+          const subscribeMessageString = JSON.stringify(subscribeMessage);
+          console.log(`BinanceWebSocketContext: Subscribe message format:`, subscribeMessageString);
           
           console.log(`BinanceWebSocketContext: Sending subscribe message with ID ${subscribeId}`, subscribeMessage);
-          wsRef.current?.send(JSON.stringify(subscribeMessage));
-          addLog('info', `Sent subscription request with ID ${subscribeId}`, { 
-            subscribeMessage,
-            messageId: subscribeId,
-            streams
-          });
+          
+          // Send the stringified message to the WebSocket
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(subscribeMessageString);
+            addLog('info', `Sent subscription request with ID ${subscribeId}`, { 
+              subscribeMessage,
+              messageId: subscribeId,
+              streams,
+              sentMessage: subscribeMessageString // Log the exact string that was sent
+            });
+          } else {
+            addLog('error', `Failed to send subscription - WebSocket not open`, {
+              readyState: wsRef.current?.readyState
+            });
+          }
         }
         
         // Set up ping interval (every 2.5 minutes to keep connection alive)
         pingIntervalRef.current = setInterval(() => {
           if (wsRef.current?.readyState === WebSocket.OPEN) {
             const pingId = messageIdRef.current++;
-            wsRef.current.send(JSON.stringify({ 
+            const pingMessage = { 
               method: 'PING',
               id: pingId
-            }));
+            };
+            
+            // Stringify the ping message
+            const pingMessageString = JSON.stringify(pingMessage);
+            
+            // Send the ping message
+            wsRef.current.send(pingMessageString);
             setLastPingTime(new Date());
-            console.log(`BinanceWebSocketContext: Sent ping with ID ${pingId}`);
-            addLog('info', `Sent ping to Binance WebSocket with ID ${pingId}`);
+            console.log(`BinanceWebSocketContext: Sent ping with ID ${pingId}`, pingMessageString);
+            addLog('info', `Sent ping to Binance WebSocket with ID ${pingId}`, {
+              pingMessage,
+              sentMessage: pingMessageString
+            });
           }
         }, 150000); // 2.5 minutes
       };
@@ -232,6 +252,11 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
         setLastMessageTime(new Date());
         
         try {
+          // Log the raw message occasionally to verify format
+          if (Math.random() < 0.01) { // Log approximately 1% of messages
+            console.log(`BinanceWebSocketContext: Raw message received:`, event.data);
+          }
+          
           const data = JSON.parse(event.data);
           
           // Handle subscription response

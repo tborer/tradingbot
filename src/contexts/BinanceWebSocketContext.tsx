@@ -305,7 +305,7 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
   }, [addLog, logError, subscribedSymbols, getWebSocketUrl, autoConnect, handlePriceUpdate]);
   
   // Disconnect from WebSocket
-  const disconnect = useCallback((skipUnsubscribe = false) => {
+  const disconnect = useCallback(() => {
     // Clear any existing reconnect timeout
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -319,47 +319,43 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
     }
     
     if (wsRef.current) {
-      addLog('info', `Disconnecting from Binance WebSocket${skipUnsubscribe ? ' (skipping unsubscribe)' : ''}`);
+      addLog('info', 'Disconnecting from Binance WebSocket');
       
-      // If connected, send unsubscribe message before closing ONLY if this is a user-initiated disconnect
-      // This prevents the automatic unsubscribe that was happening during reconnection
-      if (!skipUnsubscribe && wsRef.current.readyState === WebSocket.OPEN && subscribedSymbols.length > 0) {
-        const streams = subscribedSymbols.flatMap(symbol => {
-          const lowerSymbol = symbol.toLowerCase();
-          return [`${lowerSymbol}@aggTrade`, `${lowerSymbol}@depth`];
-        });
-        
-        const unsubscribeMessage = {
-          method: 'UNSUBSCRIBE',
-          params: streams,
-          id: 2
-        };
-        
-        // Only send unsubscribe message if skipUnsubscribe is false (user-initiated disconnect)
-        wsRef.current.send(JSON.stringify(unsubscribeMessage));
-        addLog('info', 'Sent unsubscribe request', { unsubscribeMessage });
-      }
-      
-      // Close the connection
-      wsRef.current.close(1000, skipUnsubscribe ? 'Reconnecting' : 'User initiated disconnect');
+      // Simply close the connection without sending unsubscribe message
+      wsRef.current.close(1000, 'User initiated disconnect');
       wsRef.current = null;
       setIsConnected(false);
     }
-  }, [addLog, subscribedSymbols]);
+  }, [addLog]);
   
   // Reconnect to WebSocket
   const reconnect = useCallback(() => {
-    // For reconnect, we want to close the connection without sending an unsubscribe message
     addLog('info', 'Reconnecting Binance WebSocket - closing current connection');
     
-    // Use disconnect with skipUnsubscribe=true to avoid sending unsubscribe message
-    disconnect(true);
+    // Close any existing connection
+    if (wsRef.current) {
+      wsRef.current.close(1000, 'Reconnecting');
+      wsRef.current = null;
+      setIsConnected(false);
+    }
+    
+    // Clear any existing reconnect timeout
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    
+    // Clear any existing ping interval
+    if (pingIntervalRef.current) {
+      clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = null;
+    }
     
     // Short delay before reconnecting
     setTimeout(() => {
       connect();
     }, 1000);
-  }, [connect, disconnect, addLog]);
+  }, [connect, addLog]);
   
   // Auto-connect on mount if enabled
   useEffect(() => {
@@ -401,7 +397,7 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
       connect();
     } else if (!autoConnect && isConnected) {
       // This is a user-initiated disconnect via the auto-connect toggle
-      disconnect(false); // false = don't skip unsubscribe
+      disconnect();
     }
   }, [autoConnect, isConnected, connect, disconnect, subscribedSymbols]);
   

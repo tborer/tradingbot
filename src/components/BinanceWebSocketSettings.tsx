@@ -132,7 +132,7 @@ export default function BinanceWebSocketSettings() {
   // Enhanced disconnect function with logging
   const handleDisconnect = () => {
     addLog('info', 'Disconnect button clicked in BinanceWebSocketSettings');
-    disconnect(false); // false = don't skip unsubscribe (user-initiated disconnect)
+    disconnect();
   };
   
   // Enhanced reconnect function with logging

@@ -38,6 +38,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const supabase = createClient();
   const { toast } = useToast();
 
+  // Expose auth state to window for non-React components
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__AUTH_STATE__ = { user, token };
+    }
+  }, [user, token]);
+
   React.useEffect(() => {
     const fetchSession = async () => {
       try {

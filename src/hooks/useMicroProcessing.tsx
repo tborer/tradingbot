@@ -21,18 +21,26 @@ export function useMicroProcessing() {
   const isInitializedRef = useRef(false);
 
   // Standard request configuration for all API calls
-  const standardRequestConfig = useCallback(() => ({
-    method: 'GET',
-    credentials: 'include' as RequestCredentials,
-    headers: {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-cache',
-      'X-Client-Info': 'useMicroProcessing-hook',
-      // Add auth token if available
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    }
-  }), [token]);
+  const standardRequestConfig = useCallback(() => {
+    // Log token status for debugging
+    console.log('[REQUEST-CONFIG] Preparing request config:', { 
+      hasToken: !!token,
+      tokenLength: token ? token.length : 0
+    });
+    
+    return {
+      method: 'GET',
+      credentials: 'include' as RequestCredentials,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'X-Client-Info': 'useMicroProcessing-hook',
+        // Always include Authorization header with token if available
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    };
+  }, [token]);
 
   // Enhanced retry mechanism for API requests with better error handling
   const fetchWithRetry = useCallback(async (url: string, config = {}, maxRetries = 3, retryDelay = 1000) => {
@@ -43,10 +51,33 @@ export function useMicroProcessing() {
     
     // Add request ID for tracking in logs
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    
+    // Ensure headers object exists
+    if (!mergedConfig.headers) {
+      mergedConfig.headers = {};
+    }
+    
+    // Add request ID to headers
     mergedConfig.headers = {
       ...mergedConfig.headers,
       'X-Request-ID': requestId
     };
+    
+    // Double-check that Authorization header is set if token is available
+    if (token && !mergedConfig.headers.Authorization && !mergedConfig.headers.authorization) {
+      console.log(`[${requestId}] Adding missing Authorization header with token`);
+      mergedConfig.headers.Authorization = `Bearer ${token}`;
+    }
+    
+    // Log the headers being sent (without showing the full token)
+    console.log(`[${requestId}] Request headers:`, {
+      ...mergedConfig.headers,
+      Authorization: mergedConfig.headers.Authorization ? 
+        `Bearer ${mergedConfig.headers.Authorization.split(' ')[1]?.substring(0, 5)}...` : 
+        (mergedConfig.headers.authorization ? 
+          `Bearer ${mergedConfig.headers.authorization.split(' ')[1]?.substring(0, 5)}...` : 
+          'Not set')
+    });
     
     console.log(`[${requestId}] Starting request to ${url}`);
     

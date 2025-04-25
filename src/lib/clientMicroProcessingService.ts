@@ -315,7 +315,7 @@ export async function processMicroTrade(
     
     // Execute the trade via API with standardized request configuration
     const response = await fetch('/api/cryptos/trade', {
-      ...standardRequestConfig,
+      ...getStandardRequestConfig(),
       method: 'POST',
       body: JSON.stringify({
         cryptoId,
@@ -399,16 +399,44 @@ export async function processMicroTrade(
   }
 }
 
-// Standard request configuration for all API calls
-const standardRequestConfig = {
-  credentials: 'include' as RequestCredentials,
-  headers: {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
-    'Cache-Control': 'no-cache',
-    'X-Client-Info': 'client-micro-processing-service'
+// Get the authentication token from the AuthContext
+function getAuthToken(): string | null {
+  try {
+    // Check if we're in a browser environment
+    if (typeof window !== 'undefined') {
+      // Access the AuthContext from the global window object
+      // This is a workaround since we can't use React hooks directly in a non-component file
+      const authState = (window as any).__AUTH_STATE__;
+      return authState?.token || null;
+    }
+  } catch (error) {
+    console.error('Error getting auth token:', error);
   }
-};
+  return null;
+}
+
+// Standard request configuration for all API calls with dynamic token
+function getStandardRequestConfig() {
+  const token = getAuthToken();
+  
+  // Log token status for debugging (without revealing the actual token)
+  console.log('[MICRO-SERVICE] Preparing request config:', { 
+    hasToken: !!token,
+    tokenLength: token ? token.length : 0
+  });
+  
+  return {
+    credentials: 'include' as RequestCredentials,
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache',
+      'X-Client-Info': 'client-micro-processing-service',
+      // Add auth token if available
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
+  };
+}
 
 /**
  * Update the server-side state of micro processing with enhanced error handling
@@ -445,10 +473,10 @@ async function updateServerState(
     
     // Create request config with request ID for tracking
     const requestConfig = {
-      ...standardRequestConfig,
+      ...getStandardRequestConfig(),
       method: 'POST',
       headers: {
-        ...standardRequestConfig.headers,
+        ...getStandardRequestConfig().headers,
         'X-Request-ID': requestId
       },
       body: JSON.stringify({

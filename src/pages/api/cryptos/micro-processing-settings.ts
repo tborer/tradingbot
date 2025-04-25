@@ -12,63 +12,128 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   console.log(`[MICRO-SETTINGS] Request query params:`, req.query);
   
   try {
-    // Get the user from Supabase auth - simplified authentication
+    // Get the user from Supabase auth with enhanced debugging
     console.log('[MICRO-SETTINGS] Authenticating user with Supabase');
-    const supabase = createClient({ req, res });
+    console.log('[MICRO-SETTINGS] Request headers:', {
+      authorization: req.headers.authorization ? 'Present' : 'Missing',
+      cookie: req.headers.cookie ? 'Present' : 'Missing',
+    });
     
-    // Add more defensive error handling for auth
-    if (!supabase) {
-      console.error('[MICRO-SETTINGS] Failed to create Supabase client');
+    // Create Supabase client with defensive error handling
+    let supabase;
+    try {
+      supabase = createClient(req, res);
+      console.log('[MICRO-SETTINGS] Supabase client created successfully');
+    } catch (clientError) {
+      console.error('[MICRO-SETTINGS] Failed to create Supabase client:', clientError);
       return res.status(500).json({ 
         error: 'Internal server error', 
-        details: 'Failed to initialize authentication client'
+        details: 'Failed to initialize authentication client',
+        errorMessage: clientError instanceof Error ? clientError.message : 'Unknown error'
       });
     }
     
-    // Get user with enhanced error handling
-    let data;
+    if (!supabase) {
+      console.error('[MICRO-SETTINGS] Supabase client is null or undefined after creation');
+      return res.status(500).json({ 
+        error: 'Internal server error', 
+        details: 'Failed to initialize authentication client - client is null'
+      });
+    }
+    
+    // Get session first to check if we have a valid session
+    console.log('[MICRO-SETTINGS] Getting session from Supabase');
+    let session;
     try {
-      if (DEBUG_AUTH) console.log('[MICRO-SETTINGS] Calling supabase.auth.getUser()');
-      const authResponse = await supabase.auth.getUser();
+      const sessionResponse = await supabase.auth.getSession();
       
       if (DEBUG_AUTH) {
-        console.log('[MICRO-SETTINGS] Auth response received:', {
-          status: authResponse.error ? 'error' : 'success',
-          hasData: !!authResponse.data,
-          hasUser: !!(authResponse.data && authResponse.data.user),
-          error: authResponse.error ? authResponse.error.message : null
+        console.log('[MICRO-SETTINGS] Session response:', {
+          status: sessionResponse.error ? 'error' : 'success',
+          hasData: !!sessionResponse.data,
+          hasSession: !!(sessionResponse.data && sessionResponse.data.session),
+          error: sessionResponse.error ? sessionResponse.error.message : null
         });
       }
       
-      data = authResponse.data;
-      
-      if (authResponse.error) {
-        console.error('[MICRO-SETTINGS] Supabase auth error:', authResponse.error);
+      if (sessionResponse.error) {
+        console.error('[MICRO-SETTINGS] Session error:', sessionResponse.error);
         return res.status(401).json({ 
           error: 'Authentication error', 
-          details: authResponse.error.message || 'Failed to authenticate user',
-          errorType: 'SupabaseAuthError'
+          details: sessionResponse.error.message || 'Failed to get session',
+          errorType: 'SessionError'
         });
       }
-    } catch (authError) {
-      console.error('[MICRO-SETTINGS] Authentication error:', authError);
+      
+      session = sessionResponse.data.session;
+      
+      if (!session) {
+        console.error('[MICRO-SETTINGS] No active session found');
+        return res.status(401).json({ 
+          error: 'Unauthorized', 
+          details: 'No active session found',
+          errorType: 'NoSession'
+        });
+      }
+      
+      console.log('[MICRO-SETTINGS] Valid session found:', {
+        userId: session.user.id,
+        hasAccessToken: !!session.access_token
+      });
+      
+    } catch (sessionError) {
+      console.error('[MICRO-SETTINGS] Error getting session:', sessionError);
       return res.status(401).json({ 
         error: 'Authentication error', 
-        details: authError instanceof Error ? authError.message : 'Failed to authenticate user',
-        errorType: authError instanceof Error ? authError.name : 'Unknown'
+        details: sessionError instanceof Error ? sessionError.message : 'Failed to get session',
+        errorType: sessionError instanceof Error ? sessionError.name : 'Unknown'
       });
     }
     
-    if (!data || !data.user) {
-      console.error('[MICRO-SETTINGS] Authentication failed: No user found in response data');
+    // Now get the user with the validated session
+    console.log('[MICRO-SETTINGS] Getting user from validated session');
+    let user;
+    try {
+      const userResponse = await supabase.auth.getUser();
+      
+      if (DEBUG_AUTH) {
+        console.log('[MICRO-SETTINGS] User response:', {
+          status: userResponse.error ? 'error' : 'success',
+          hasData: !!userResponse.data,
+          hasUser: !!(userResponse.data && userResponse.data.user),
+          error: userResponse.error ? userResponse.error.message : null
+        });
+      }
+      
+      if (userResponse.error) {
+        console.error('[MICRO-SETTINGS] User error:', userResponse.error);
+        return res.status(401).json({ 
+          error: 'Authentication error', 
+          details: userResponse.error.message || 'Failed to get user',
+          errorType: 'UserError'
+        });
+      }
+      
+      user = userResponse.data.user;
+      
+      if (!user) {
+        console.error('[MICRO-SETTINGS] No user found in response data');
+        return res.status(401).json({ 
+          error: 'Unauthorized', 
+          details: 'No authenticated user found',
+          errorType: 'NoUserFound'
+        });
+      }
+      
+    } catch (userError) {
+      console.error('[MICRO-SETTINGS] Error getting user:', userError);
       return res.status(401).json({ 
-        error: 'Unauthorized', 
-        details: 'No authenticated user found',
-        errorType: 'NoUserFound'
+        error: 'Authentication error', 
+        details: userError instanceof Error ? userError.message : 'Failed to get user',
+        errorType: userError instanceof Error ? userError.name : 'Unknown'
       });
     }
     
-    const user = data.user;
     console.log(`[MICRO-SETTINGS] User authenticated: ${user.id}`);
     
     // Handle GET request to fetch settings

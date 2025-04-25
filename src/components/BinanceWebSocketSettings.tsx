@@ -41,17 +41,77 @@ export default function BinanceWebSocketSettings() {
     }
     
     if (subscribedSymbols.length === 1) {
-      // For a single symbol, use the direct /ws/<symbol>@bookTicker format
+      // For a single symbol, use the direct /ws/<symbol>@aggTrade format
       const lowerSymbol = subscribedSymbols[0].toLowerCase();
-      return `wss://stream.binance.us:9443/ws/${lowerSymbol}@bookTicker`;
+      return `wss://stream.binance.us:9443/ws/${lowerSymbol}@aggTrade`;
     } else {
       // For multiple symbols, use the combined stream format
-      const streams = subscribedSymbols.map(symbol => {
+      const streams = subscribedSymbols.flatMap(symbol => {
         const lowerSymbol = symbol.toLowerCase();
-        return `${lowerSymbol}@bookTicker`;
+        return [`${lowerSymbol}@aggTrade`, `${lowerSymbol}@depth`];
       });
       
       return `wss://stream.binance.us:9443/stream?streams=${streams.join('/')}`;
+    }
+  };
+
+  // Test connection functionality
+  const [testUrl, setTestUrl] = useState('wss://stream.binance.us:9443/ws');
+  const [testBody, setTestBody] = useState(`{
+  "id": "922bcc6e-9de8-440d-9e84-7c80933a8d0d",
+  "method": "ping"
+}`);
+  const [testResponse, setTestResponse] = useState('');
+  const [testWs, setTestWs] = useState<WebSocket | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
+
+  const handleTestConnection = () => {
+    setIsTesting(true);
+    setTestResponse('Connecting...');
+    
+    try {
+      // Close existing test connection if any
+      if (testWs) {
+        testWs.close();
+      }
+      
+      // Create new WebSocket connection
+      const ws = new WebSocket(testUrl);
+      setTestWs(ws);
+      
+      ws.onopen = () => {
+        setTestResponse('Connected. Sending test message...');
+        try {
+          const parsedBody = JSON.parse(testBody);
+          ws.send(JSON.stringify(parsedBody));
+        } catch (err) {
+          setTestResponse(`Error parsing test body: ${err instanceof Error ? err.message : String(err)}`);
+          ws.close();
+          setIsTesting(false);
+        }
+      };
+      
+      ws.onmessage = (event) => {
+        setTestResponse(`Received response:\n${event.data}`);
+        // Close the connection after receiving a response
+        setTimeout(() => {
+          ws.close();
+          setIsTesting(false);
+        }, 1000);
+      };
+      
+      ws.onerror = (event) => {
+        setTestResponse(`WebSocket error occurred`);
+        setIsTesting(false);
+      };
+      
+      ws.onclose = () => {
+        setTestWs(null);
+        setIsTesting(false);
+      };
+    } catch (err) {
+      setTestResponse(`Failed to establish WebSocket connection: ${err instanceof Error ? err.message : String(err)}`);
+      setIsTesting(false);
     }
   };
 
@@ -89,6 +149,58 @@ export default function BinanceWebSocketSettings() {
               autoConnect={autoConnect}
               onAutoConnectChange={setAutoConnect}
             />
+            
+            <Card className="mt-4">
+              <CardHeader>
+                <CardTitle>Test Connection</CardTitle>
+                <CardDescription>
+                  Test WebSocket connection with custom URL and message
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="test-url">Test URL</Label>
+                  <input
+                    id="test-url"
+                    className="w-full p-2 border rounded-md font-mono text-sm"
+                    value={testUrl}
+                    onChange={(e) => setTestUrl(e.target.value)}
+                    placeholder="wss://stream.binance.us:9443/ws"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="test-body">Test Body</Label>
+                  <textarea
+                    id="test-body"
+                    className="w-full p-2 border rounded-md font-mono text-sm min-h-[100px]"
+                    value={testBody}
+                    onChange={(e) => setTestBody(e.target.value)}
+                    placeholder='{"method": "ping"}'
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Label htmlFor="test-response">Test Response</Label>
+                    <Button 
+                      size="sm" 
+                      onClick={handleTestConnection}
+                      disabled={isTesting}
+                    >
+                      {isTesting ? 'Testing...' : 'Test Connection'}
+                    </Button>
+                  </div>
+                  <textarea
+                    id="test-response"
+                    className="w-full p-2 border rounded-md font-mono text-sm min-h-[100px] bg-muted"
+                    value={testResponse}
+                    readOnly
+                    placeholder="Response will appear here"
+                  />
+                </div>
+              </CardContent>
+            </Card>
             
             <div className="mt-4">
               <h3 className="text-lg font-medium mb-2">Subscribed Symbols</h3>

@@ -12,7 +12,7 @@ interface WebSocketConnectionStatusProps {
   error: Error | null;
   reconnect?: () => void;
   connect?: () => void;
-  disconnect?: () => void;
+  disconnect?: (skipUnsubscribe?: boolean) => void;
   lastMessageTime?: Date | null;
   lastPingTime?: Date | null;
   lastPongTime?: Date | null;
@@ -108,7 +108,7 @@ const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
               </Button>
             )}
             {isConnected && disconnect && (
-              <Button size="sm" variant="outline" onClick={disconnect}>
+              <Button size="sm" variant="outline" onClick={() => disconnect(false)}>
                 Disconnect
               </Button>
             )}
@@ -229,7 +229,7 @@ const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
                       <Button 
                         variant="outline" 
                         size="sm" 
-                        onClick={disconnect}
+                        onClick={() => disconnect(false)}
                       >
                         Disconnect
                       </Button>

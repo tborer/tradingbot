@@ -123,6 +123,17 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
       addLog('info', 'Will connect once symbols are updated');
       return;
     }
+
+    // If we're already connected, disconnect first to avoid duplicate connections
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      console.log('BinanceWebSocketContext: Already connected, disconnecting first');
+      addLog('info', 'Already connected, disconnecting first before reconnecting');
+      
+      // Just close the connection without sending unsubscribe message
+      wsRef.current.close(1000, 'Reconnecting');
+      wsRef.current = null;
+      setIsConnected(false);
+    }
     
     // Increment connection attempt counter
     connectionAttemptRef.current += 1;
@@ -294,7 +305,7 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
   }, [addLog, logError, subscribedSymbols, getWebSocketUrl, autoConnect, handlePriceUpdate]);
   
   // Disconnect from WebSocket
-  const disconnect = useCallback(() => {
+  const disconnect = useCallback((skipUnsubscribe = false) => {
     // Clear any existing reconnect timeout
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -308,10 +319,11 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
     }
     
     if (wsRef.current) {
-      addLog('info', 'Disconnecting from Binance WebSocket');
+      addLog('info', `Disconnecting from Binance WebSocket${skipUnsubscribe ? ' (skipping unsubscribe)' : ''}`);
       
-      // If connected, send unsubscribe message before closing
-      if (wsRef.current.readyState === WebSocket.OPEN && subscribedSymbols.length > 0) {
+      // If connected, send unsubscribe message before closing ONLY if this is a user-initiated disconnect
+      // This prevents the automatic unsubscribe that was happening during reconnection
+      if (!skipUnsubscribe && wsRef.current.readyState === WebSocket.OPEN && subscribedSymbols.length > 0) {
         const streams = subscribedSymbols.flatMap(symbol => {
           const lowerSymbol = symbol.toLowerCase();
           return [`${lowerSymbol}@aggTrade`, `${lowerSymbol}@depth`];
@@ -323,12 +335,13 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
           id: 2
         };
         
+        // Only send unsubscribe message if skipUnsubscribe is false (user-initiated disconnect)
         wsRef.current.send(JSON.stringify(unsubscribeMessage));
         addLog('info', 'Sent unsubscribe request', { unsubscribeMessage });
       }
       
       // Close the connection
-      wsRef.current.close(1000, 'User initiated disconnect');
+      wsRef.current.close(1000, skipUnsubscribe ? 'Reconnecting' : 'User initiated disconnect');
       wsRef.current = null;
       setIsConnected(false);
     }
@@ -336,12 +349,17 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
   
   // Reconnect to WebSocket
   const reconnect = useCallback(() => {
-    disconnect();
+    // For reconnect, we want to close the connection without sending an unsubscribe message
+    addLog('info', 'Reconnecting Binance WebSocket - closing current connection');
+    
+    // Use disconnect with skipUnsubscribe=true to avoid sending unsubscribe message
+    disconnect(true);
+    
     // Short delay before reconnecting
     setTimeout(() => {
       connect();
     }, 1000);
-  }, [disconnect, connect]);
+  }, [connect, disconnect, addLog]);
   
   // Auto-connect on mount if enabled
   useEffect(() => {
@@ -382,7 +400,8 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
     if (autoConnect && !isConnected && subscribedSymbols.length > 0) {
       connect();
     } else if (!autoConnect && isConnected) {
-      disconnect();
+      // This is a user-initiated disconnect via the auto-connect toggle
+      disconnect(false); // false = don't skip unsubscribe
     }
   }, [autoConnect, isConnected, connect, disconnect, subscribedSymbols]);
   

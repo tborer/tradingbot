@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useBinanceWebSocket } from '@/contexts/BinanceWebSocketContext';
+import { useWebSocketLogs } from '@/contexts/WebSocketLogContext';
 import WebSocketConnectionStatus from './WebSocketConnectionStatus';
 import { useMicroProcessing } from '@/hooks/useMicroProcessing';
 import BinanceTradingTest from './BinanceTradingTest';
@@ -24,6 +25,8 @@ export default function BinanceWebSocketSettings() {
     autoConnect,
     setAutoConnect
   } = useBinanceWebSocket();
+  
+  const { addLog } = useWebSocketLogs();
   
   const { enabledCryptos } = useMicroProcessing();
   const [selectedCryptoId, setSelectedCryptoId] = useState<string | null>(null);
@@ -120,6 +123,24 @@ export default function BinanceWebSocketSettings() {
     setSelectedSymbol(symbol);
   };
   
+  // Enhanced connect function with logging
+  const handleConnect = () => {
+    addLog('info', 'Connect button clicked in BinanceWebSocketSettings');
+    connect();
+  };
+  
+  // Enhanced disconnect function with logging
+  const handleDisconnect = () => {
+    addLog('info', 'Disconnect button clicked in BinanceWebSocketSettings');
+    disconnect(false); // false = don't skip unsubscribe (user-initiated disconnect)
+  };
+  
+  // Enhanced reconnect function with logging
+  const handleReconnect = () => {
+    addLog('info', 'Reconnect button clicked in BinanceWebSocketSettings');
+    reconnect();
+  };
+  
   return (
     <Card className="w-full">
       <CardHeader>
@@ -140,8 +161,8 @@ export default function BinanceWebSocketSettings() {
               isConnected={isConnected}
               url={getWebSocketUrl()}
               error={error}
-              reconnect={reconnect}
-              connect={connect}
+              reconnect={handleReconnect}
+              connect={handleConnect}
               disconnect={disconnect}
               lastMessageTime={lastMessageTime}
               lastPingTime={lastPingTime}

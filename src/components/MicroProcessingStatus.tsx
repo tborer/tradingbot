@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, CheckCircle, AlertCircle } from "lucide-react";
+import { Loader2, RefreshCw, CheckCircle, AlertCircle, AlertTriangle } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useMicroProcessing } from '@/hooks/useMicroProcessing';
 import { formatDecimal } from '@/util/number';
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function MicroProcessingStatus() {
   const { toast } = useToast();
@@ -19,6 +20,7 @@ export default function MicroProcessingStatus() {
   
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const [logs, setLogs] = useState<string[]>([]);
+  const [manualTradingEnabled, setManualTradingEnabled] = useState<boolean | null>(null);
   
   // Fetch logs from local storage on mount
   useEffect(() => {
@@ -44,6 +46,30 @@ export default function MicroProcessingStatus() {
       const currentLogs = JSON.parse(localStorage.getItem('microProcessingLogs') || '[]');
       localStorage.setItem('microProcessingLogs', JSON.stringify([unmountLog, ...currentLogs].slice(0, 100)));
     };
+  }, []);
+  
+  // Check if manual trading is enabled
+  useEffect(() => {
+    const checkManualTradingEnabled = async () => {
+      try {
+        const response = await fetch('/api/settings');
+        if (response.ok) {
+          const settings = await response.json();
+          setManualTradingEnabled(settings.enableManualCryptoTrading === true);
+          
+          if (settings.enableManualCryptoTrading !== true) {
+            addLog('Manual crypto trading is not enabled. Micro-processing trades will fail.', 'warning');
+          } else {
+            addLog('Manual crypto trading is enabled. Micro-processing can execute trades.', 'info');
+          }
+        }
+      } catch (error) {
+        console.error('Error checking manual trading settings:', error);
+        addLog('Failed to check manual trading settings', 'error');
+      }
+    };
+    
+    checkManualTradingEnabled();
   }, []);
   
   // Add a log entry
@@ -155,6 +181,41 @@ export default function MicroProcessingStatus() {
             <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" />
             <span>{error}</span>
           </div>
+        )}
+        
+        {manualTradingEnabled === false && (
+          <Alert variant="warning" className="mb-4 bg-yellow-50 dark:bg-yellow-900/20 border-yellow-500">
+            <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+            <AlertDescription className="text-yellow-700 dark:text-yellow-300">
+              Manual crypto trading is not enabled. Micro-processing trades will fail. 
+              <Button 
+                variant="link" 
+                className="p-0 h-auto text-yellow-700 dark:text-yellow-300 underline font-medium"
+                onClick={() => {
+                  // Navigate to settings tab
+                  const settingsTab = document.querySelector('[value="settings"]') as HTMLElement;
+                  if (settingsTab) {
+                    settingsTab.click();
+                    // Add a small delay to ensure the tab has changed
+                    setTimeout(() => {
+                      // Try to scroll to the manual trading section
+                      const manualTradingSection = document.getElementById('enableManualCryptoTrading');
+                      if (manualTradingSection) {
+                        manualTradingSection.scrollIntoView({ behavior: 'smooth' });
+                        // Add a highlight effect
+                        manualTradingSection.classList.add('ring-2', 'ring-yellow-500', 'ring-opacity-50');
+                        setTimeout(() => {
+                          manualTradingSection.classList.remove('ring-2', 'ring-yellow-500', 'ring-opacity-50');
+                        }, 3000);
+                      }
+                    }, 300);
+                  }
+                }}
+              >
+                Enable it in settings
+              </Button>
+            </AlertDescription>
+          </Alert>
         )}
         
         {loading ? (

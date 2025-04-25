@@ -1812,6 +1812,39 @@ export default function Dashboard() {
                             />
                             <Label htmlFor="enableAutoCryptoTrading">Enable Auto Crypto Trading</Label>
                           </div>
+                          
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="enableManualCryptoTrading"
+                              checked={settings.enableManualCryptoTrading || false}
+                              onCheckedChange={(checked) => {
+                                setSettings({ ...settings, enableManualCryptoTrading: checked as boolean });
+                                
+                                // Save the setting immediately when changed
+                                fetch("/api/settings", {
+                                  method: "PUT",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    ...settings,
+                                    enableManualCryptoTrading: checked
+                                  }),
+                                }).then(response => {
+                                  if (response.ok) {
+                                    toast({
+                                      title: "Settings Updated",
+                                      description: `Manual crypto trading ${checked ? 'enabled' : 'disabled'} successfully.`,
+                                    });
+                                  }
+                                }).catch(error => {
+                                  console.error("Error updating manual trading setting:", error);
+                                });
+                              }}
+                            />
+                            <Label htmlFor="enableManualCryptoTrading">
+                              <span className="font-medium">Enable Manual Crypto Trading</span>
+                              <span className="ml-2 text-sm text-yellow-600 dark:text-yellow-400">(Required for micro-processing)</span>
+                            </Label>
+                          </div>
                           <p className="text-sm text-muted-foreground">
                             These credentials are required for automatic and manual trading functionality.
                           </p>
@@ -1896,6 +1929,27 @@ export default function Dashboard() {
                         onEnableManualCryptoTradingChange={(enabled) => {
                           console.log("Setting enableManualCryptoTrading to:", enabled);
                           setSettings({ ...settings, enableManualCryptoTrading: enabled });
+                          
+                          // Save the setting immediately when changed
+                          if (settings) {
+                            fetch("/api/settings", {
+                              method: "PUT",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                ...settings,
+                                enableManualCryptoTrading: enabled
+                              }),
+                            }).then(response => {
+                              if (response.ok) {
+                                toast({
+                                  title: "Settings Updated",
+                                  description: `Manual crypto trading ${enabled ? 'enabled' : 'disabled'} successfully.`,
+                                });
+                              }
+                            }).catch(error => {
+                              console.error("Error updating manual trading setting:", error);
+                            });
+                          }
                         }}
                         onAutoConnectWebSocketChange={() => {}}
                         onEnableKrakenWebSocketChange={(enabled) => {

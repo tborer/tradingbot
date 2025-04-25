@@ -313,6 +313,27 @@ export async function processMicroTrade(
       }
     }
     
+    // Check if manual trading is enabled in settings
+    try {
+      const settingsResponse = await fetch('/api/settings', {
+        ...getStandardRequestConfig(),
+        method: 'GET'
+      });
+      
+      if (!settingsResponse.ok) {
+        throw new Error('Failed to fetch settings');
+      }
+      
+      const settings = await settingsResponse.json();
+      
+      if (settings.enableManualCryptoTrading !== true) {
+        throw new Error('Manual crypto trading is not enabled. Please enable it in settings.');
+      }
+    } catch (settingsError) {
+      console.error('Error checking manual trading settings:', settingsError);
+      throw settingsError;
+    }
+    
     // Execute the trade via API with standardized request configuration
     const response = await fetch('/api/cryptos/trade', {
       ...getStandardRequestConfig(),
@@ -323,7 +344,8 @@ export async function processMicroTrade(
         shares,
         price: currentPrice,
         orderType: 'market',
-        microProcessing: true
+        microProcessing: true,
+        tradingPlatform: 'binance' // Explicitly set to use Binance
       })
     });
     

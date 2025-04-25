@@ -211,12 +211,12 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
           // Send the stringified message to the WebSocket
           if (wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send(subscribeMessageString);
-            addLog('info', `Sent subscription request with ID ${subscribeId}`, { 
-              subscribeMessage,
-              messageId: subscribeId,
-              streams,
-              sentMessage: subscribeMessageString // Log the exact string that was sent
-            });
+            
+            // Log only the exact message that was sent to match the expected format
+            addLog('info', `Sent subscription request with ID ${subscribeId}`, 
+              // Parse the stringified message back to an object to ensure clean formatting in logs
+              JSON.parse(subscribeMessageString)
+            );
           } else {
             addLog('error', `Failed to send subscription - WebSocket not open`, {
               readyState: wsRef.current?.readyState
@@ -240,10 +240,12 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
             wsRef.current.send(pingMessageString);
             setLastPingTime(new Date());
             console.log(`BinanceWebSocketContext: Sent ping with ID ${pingId}`, pingMessageString);
-            addLog('info', `Sent ping to Binance WebSocket with ID ${pingId}`, {
-              pingMessage,
-              sentMessage: pingMessageString
-            });
+            
+            // Log only the exact ping message that was sent
+            addLog('info', `Sent ping to Binance WebSocket with ID ${pingId}`, 
+              // Parse the stringified message back to an object to ensure clean formatting in logs
+              JSON.parse(pingMessageString)
+            );
           }
         }, 150000); // 2.5 minutes
       };
@@ -265,10 +267,10 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
             
             if (data.result === null) {
               console.log(`BinanceWebSocketContext: Successfully subscribed with ID ${data.id}`);
-              addLog('success', `Successfully subscribed to Binance streams with ID ${data.id}`, { data });
+              addLog('success', `Successfully subscribed to Binance streams with ID ${data.id}`, data);
             } else {
               console.error(`BinanceWebSocketContext: Failed to subscribe with ID ${data.id}`, data);
-              addLog('error', `Failed to subscribe to Binance streams with ID ${data.id}`, { data });
+              addLog('error', `Failed to subscribe to Binance streams with ID ${data.id}`, data);
               
               // If subscription fails, attempt to reconnect after a delay
               setTimeout(() => {
@@ -314,11 +316,12 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
               
               // Log price update (but not too frequently to avoid flooding logs)
               if (Math.random() < 0.05) { // Log approximately 5% of updates
-                addLog('info', `Received price update for ${symbol}: $${bestBidPrice} (best bid from depth)`, {
+                const priceUpdate = {
                   symbol,
                   price: bestBidPrice,
                   source: 'binance-depth'
-                });
+                };
+                addLog('info', `Received price update for ${symbol}: $${bestBidPrice} (best bid from depth)`, priceUpdate);
               }
             }
           }
@@ -340,11 +343,12 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
               
               // Log price update (but not too frequently to avoid flooding logs)
               if (Math.random() < 0.05) { // Log approximately 5% of updates
-                addLog('info', `Received trade update for ${symbol}: $${price}`, {
+                const priceUpdate = {
                   symbol,
                   price,
                   source: 'binance-trade'
-                });
+                };
+                addLog('info', `Received trade update for ${symbol}: $${price}`, priceUpdate);
               }
             }
           }

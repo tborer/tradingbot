@@ -168,70 +168,60 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
         addLog('success', 'Connected to Binance WebSocket');
         console.log('BinanceWebSocketContext: WebSocket connection established');
         
-        // Add a small delay before sending the subscription message
-        // This ensures the connection is fully established
-        setTimeout(() => {
-          // Subscribe to the streams for each symbol
-          if (subscribedSymbols.length > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
-            // Format symbols correctly for Binance API (lowercase with usdt suffix)
-            const streams = subscribedSymbols.flatMap(symbol => {
-              const formattedSymbol = formatSymbolForBinance(symbol);
-              console.log(`BinanceWebSocketContext: Formatted symbol ${symbol} to ${formattedSymbol}`);
-              
-              // Return the correctly formatted stream names
-              return [`${formattedSymbol}@aggTrade`, `${formattedSymbol}@depth`];
+        // Send subscription message immediately after connection is established
+        // Subscribe to the streams for each symbol
+        if (subscribedSymbols.length > 0) {
+          // Format symbols correctly for Binance API (lowercase with usdt suffix)
+          const streams = subscribedSymbols.flatMap(symbol => {
+            const formattedSymbol = formatSymbolForBinance(symbol);
+            console.log(`BinanceWebSocketContext: Formatted symbol ${symbol} to ${formattedSymbol}`);
+            
+            // Return the correctly formatted stream names
+            return [`${formattedSymbol}@aggTrade`, `${formattedSymbol}@depth`];
+          });
+          
+          // Use a simple numeric ID for the subscription message
+          const subscribeId = 1; // Use a simple ID as shown in the example
+          
+          const subscribeMessage = {
+            method: "SUBSCRIBE", // Uppercase 'SUBSCRIBE' as shown in the example
+            params: streams,
+            id: subscribeId
+          };
+          
+          // Log the exact message that will be sent to ensure it matches the expected format
+          const subscribeMessageString = JSON.stringify(subscribeMessage);
+          console.log(`BinanceWebSocketContext: Subscribe message format:`, subscribeMessageString);
+          
+          // Log the raw message for debugging
+          addLog('info', `Raw subscription message to be sent:`, {
+            rawMessage: subscribeMessageString
+          });
+          
+          console.log(`BinanceWebSocketContext: Sending subscribe message with ID ${subscribeId}`, subscribeMessage);
+          
+          try {
+            // Send the stringified message to the WebSocket
+            wsRef.current.send(subscribeMessageString);
+            
+            // Log successful subscription
+            addLog('success', `Sent subscription request with ID ${subscribeId}`, 
+              // Parse the stringified message back to an object to ensure clean formatting in logs
+              JSON.parse(subscribeMessageString)
+            );
+          } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            addLog('error', `Failed to send subscription message: ${error.message}`, {
+              error: error.message,
+              stack: error.stack,
+              readyState: wsRef.current?.readyState
             });
-            
-            // Use a simple numeric ID for the subscription message
-            const subscribeId = 1; // Use a simple ID as shown in the example
-            
-            const subscribeMessage = {
-              method: "SUBSCRIBE", // Uppercase 'SUBSCRIBE' as shown in the example
-              params: streams,
-              id: subscribeId
-            };
-            
-            // Log the exact message that will be sent to ensure it matches the expected format
-            const subscribeMessageString = JSON.stringify(subscribeMessage);
-            console.log(`BinanceWebSocketContext: Subscribe message format:`, subscribeMessageString);
-            
-            // Log the raw message for debugging
-            addLog('info', `Raw subscription message to be sent:`, {
-              rawMessage: subscribeMessageString
-            });
-            
-            console.log(`BinanceWebSocketContext: Sending subscribe message with ID ${subscribeId}`, subscribeMessage);
-            
-            try {
-              // Send the stringified message to the WebSocket
-              wsRef.current.send(subscribeMessageString);
-              
-              // Log only the exact message that was sent to match the expected format
-              addLog('info', `Sent subscription request with ID ${subscribeId}`, 
-                // Parse the stringified message back to an object to ensure clean formatting in logs
-                JSON.parse(subscribeMessageString)
-              );
-            } catch (err) {
-              const error = err instanceof Error ? err : new Error(String(err));
-              addLog('error', `Failed to send subscription message: ${error.message}`, {
-                error: error.message,
-                stack: error.stack,
-                readyState: wsRef.current?.readyState
-              });
-            }
-          } else {
-            if (subscribedSymbols.length === 0) {
-              addLog('warning', 'No symbols to subscribe to', {
-                readyState: wsRef.current?.readyState
-              });
-            } else {
-              addLog('error', `Failed to send subscription - WebSocket not open`, {
-                readyState: wsRef.current?.readyState,
-                subscribedSymbols
-              });
-            }
           }
-        }, 500); // 500ms delay before sending subscription
+        } else {
+          addLog('warning', 'No symbols to subscribe to', {
+            readyState: wsRef.current?.readyState
+          });
+        }
         
         // Set up ping interval (every 2.5 minutes to keep connection alive)
         pingIntervalRef.current = setInterval(() => {
@@ -493,10 +483,22 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
             suggestion: 'Server may be experiencing issues, retry later',
             subscribedSymbols: subscribedSymbols
           });
+        } else if (event.code === 1000) {
+          // Normal closure - could be due to server expecting immediate subscription
+          addLog('info', 'Normal closure (1000) - This could be due to server expecting immediate subscription', {
+            suggestion: 'Check if subscription message was sent in time',
+            subscribedSymbols: subscribedSymbols
+          });
         }
         
-        // Attempt to reconnect if auto-connect is enabled and not a normal closure
-        if (autoConnect && event.code !== 1000) {
+        // Attempt to reconnect if auto-connect is enabled
+        // For code 1000 (normal closure), we still want to reconnect if it happened too quickly
+        // This helps with the case where the server closes the connection because it didn't receive a subscription
+        const shouldReconnect = autoConnect && 
+          (event.code !== 1000 || // Reconnect for abnormal closures
+           (event.code === 1000 && !event.wasClean)); // Also reconnect for normal closures that weren't clean
+        
+        if (shouldReconnect) {
           // Exponential backoff for reconnection attempts
           const delay = Math.min(30000, 1000 * Math.pow(1.5, Math.min(connectionAttemptRef.current, 10)));
           

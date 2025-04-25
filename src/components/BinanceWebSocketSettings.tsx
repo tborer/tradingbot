@@ -245,22 +245,113 @@ export default function BinanceWebSocketSettings() {
               </CardContent>
             </Card>
             
-            <div className="mt-4">
-              <h3 className="text-lg font-medium mb-2">Subscribed Symbols</h3>
-              {subscribedSymbols.length === 0 ? (
-                <div className="text-sm text-muted-foreground">
-                  No symbols subscribed. Enable Binance WebSocket provider in Micro Processing settings.
+            <Card className="mt-4">
+              <CardHeader>
+                <CardTitle>Subscription Status</CardTitle>
+                <CardDescription>
+                  Current subscription status and symbol information
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Subscribed Symbols</h3>
+                  {subscribedSymbols.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">
+                      No symbols subscribed. Enable Binance WebSocket provider in Micro Processing settings.
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {subscribedSymbols.map(symbol => (
+                        <Badge key={symbol} variant="outline">
+                          {symbol}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {subscribedSymbols.map(symbol => (
-                    <Badge key={symbol} variant="outline">
-                      {symbol}
-                    </Badge>
-                  ))}
+                
+                <div className="p-3 bg-muted/50 rounded-md text-xs space-y-2">
+                  <h4 className="font-medium">Subscription Message Format</h4>
+                  <p>
+                    The WebSocket sends this subscription message immediately after connection:
+                  </p>
+                  <pre className="p-2 bg-background rounded-md overflow-auto text-xs">
+{`{
+  "method": "SUBSCRIBE",
+  "params": ${JSON.stringify(subscribedSymbols.flatMap(symbol => {
+    const formattedSymbol = symbol.toLowerCase().endsWith('usdt') 
+      ? symbol.toLowerCase() 
+      : `${symbol.toLowerCase()}usdt`;
+    return [`${formattedSymbol}@aggTrade`, `${formattedSymbol}@depth`];
+  }), null, 2)},
+  "id": 1
+}`}
+                  </pre>
+                  <p>
+                    This format follows the Binance WebSocket API requirements for subscription messages.
+                  </p>
                 </div>
-              )}
-            </div>
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-sm font-medium">Connection Diagnostics</h4>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => {
+                        if (isConnected && subscribedSymbols.length > 0) {
+                          // Create a manual subscription message
+                          const streams = subscribedSymbols.flatMap(symbol => {
+                            const formattedSymbol = symbol.toLowerCase().endsWith('usdt') 
+                              ? symbol.toLowerCase() 
+                              : `${symbol.toLowerCase()}usdt`;
+                            return [`${formattedSymbol}@aggTrade`, `${formattedSymbol}@depth`];
+                          });
+                          
+                          const subscribeMessage = {
+                            method: "SUBSCRIBE",
+                            params: streams,
+                            id: 1
+                          };
+                          
+                          // Set up test connection with the current WebSocket URL
+                          setTestUrl('wss://stream.binance.us:9443/ws');
+                          setTestBody(JSON.stringify(subscribeMessage, null, 2));
+                          
+                          // Log the action
+                          addLog('info', 'Manual subscription test prepared', subscribeMessage);
+                        } else {
+                          addLog('warning', 'Cannot prepare subscription test - WebSocket not connected or no symbols available');
+                        }
+                      }}
+                      disabled={!isConnected || subscribedSymbols.length === 0}
+                    >
+                      Prepare Manual Subscription Test
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="p-2 bg-muted/30 rounded-md">
+                      <span className="font-medium">Last Message:</span>{' '}
+                      {lastMessageTime ? new Date(lastMessageTime).toLocaleTimeString() : 'None'}
+                    </div>
+                    <div className="p-2 bg-muted/30 rounded-md">
+                      <span className="font-medium">Connection Status:</span>{' '}
+                      <Badge variant={isConnected ? "success" : "destructive"} className="ml-1">
+                        {isConnected ? 'Connected' : 'Disconnected'}
+                      </Badge>
+                    </div>
+                    <div className="p-2 bg-muted/30 rounded-md">
+                      <span className="font-medium">Last Ping:</span>{' '}
+                      {lastPingTime ? new Date(lastPingTime).toLocaleTimeString() : 'None'}
+                    </div>
+                    <div className="p-2 bg-muted/30 rounded-md">
+                      <span className="font-medium">Last Pong:</span>{' '}
+                      {lastPongTime ? new Date(lastPongTime).toLocaleTimeString() : 'None'}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
             
             <div className="mt-4">
               <h3 className="text-lg font-medium mb-2">Enabled Cryptos with Binance WebSocket</h3>

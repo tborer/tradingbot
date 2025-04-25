@@ -139,7 +139,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Handle GET request to fetch settings
     if (req.method === 'GET') {
       console.log('[MICRO-SETTINGS] Processing GET request');
-      const { cryptoId, includeEnabledCryptos } = req.query;
+      const { cryptoId, includeEnabledCryptos, checkAuth } = req.query;
+      
+      // Special case for authentication check only
+      if (checkAuth === 'true') {
+        console.log('[MICRO-SETTINGS] Authentication check request received');
+        // If we've reached this point, the user is already authenticated
+        return res.status(200).json({ 
+          authenticated: true, 
+          userId: user.id,
+          message: 'Authentication successful'
+        });
+      }
       
       // New consolidated endpoint to get all cryptos with their micro processing settings
       if (includeEnabledCryptos === 'true') {

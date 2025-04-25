@@ -48,8 +48,8 @@ export default function MicroProcessingPopup({
     tradeByShares: 0,
     tradeByValue: false,
     totalValue: 0,
-    websocketProvider: 'kraken',
-    tradingPlatform: 'kraken',
+    websocketProvider: 'binance',
+    tradingPlatform: 'binance',
     purchasePrice: undefined,
     testMode: false
   };
@@ -201,10 +201,10 @@ export default function MicroProcessingPopup({
         : 0,
       websocketProvider: settings.websocketProvider && ['kraken', 'coinbase', 'binance'].includes(settings.websocketProvider)
         ? settings.websocketProvider 
-        : 'kraken',
+        : 'binance',
       tradingPlatform: settings.tradingPlatform && ['kraken', 'coinbase', 'binance'].includes(settings.tradingPlatform)
         ? settings.tradingPlatform 
-        : 'kraken',
+        : 'binance',
       purchasePrice: typeof settings.purchasePrice === 'number' && !isNaN(settings.purchasePrice) 
         ? settings.purchasePrice 
         : undefined,
@@ -235,7 +235,7 @@ export default function MicroProcessingPopup({
   
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Micro Processing Settings - {symbol}</DialogTitle>
           <DialogDescription>

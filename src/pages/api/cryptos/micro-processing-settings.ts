@@ -363,8 +363,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           tradeByShares: 0,
           tradeByValue: false,
           totalValue: 0,
-          websocketProvider: 'kraken',
-          tradingPlatform: 'kraken',
+          websocketProvider: 'binance',
+          tradingPlatform: 'binance',
           purchasePrice: null,
           processingStatus: 'idle',
           testMode: false
@@ -452,8 +452,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           tradeByShares: 0,
           tradeByValue: false,
           totalValue: 0,
-          websocketProvider: 'kraken',
-          tradingPlatform: 'kraken',
+          websocketProvider: 'binance',
+          tradingPlatform: 'binance',
           purchasePrice: null,
           processingStatus: 'idle',
           testMode: false

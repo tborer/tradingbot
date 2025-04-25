@@ -2,6 +2,9 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { useWebSocketLogs } from './WebSocketLogContext';
 import { useMicroProcessing } from '@/hooks/useMicroProcessing';
 
+// Starting message ID for Binance WebSocket messages
+const INITIAL_MESSAGE_ID = 999999;
+
 interface BinanceWebSocketContextType {
   isConnected: boolean;
   connect: () => void;
@@ -41,6 +44,9 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
   const [lastPongTime, setLastPongTime] = useState<Date | null>(null);
   const [subscribedSymbols, setSubscribedSymbols] = useState<string[]>([]);
   const [autoConnect, setAutoConnect] = useState<boolean>(false);
+  
+  // Message ID counter for WebSocket messages
+  const messageIdRef = useRef<number>(INITIAL_MESSAGE_ID);
   
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -157,6 +163,7 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
         connectionAttemptRef.current = 0; // Reset connection attempt counter on successful connection
         
         addLog('success', 'Connected to Binance WebSocket');
+        console.log('BinanceWebSocketContext: WebSocket connection established');
         
         // Subscribe to the streams for each symbol
         if (subscribedSymbols.length > 0) {
@@ -165,22 +172,35 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
             return [`${lowerSymbol}@aggTrade`, `${lowerSymbol}@depth`];
           });
           
+          // Get the next message ID
+          const subscribeId = messageIdRef.current++;
+          
           const subscribeMessage = {
             method: 'SUBSCRIBE',
             params: streams,
-            id: 1
+            id: subscribeId
           };
           
+          console.log(`BinanceWebSocketContext: Sending subscribe message with ID ${subscribeId}`, subscribeMessage);
           wsRef.current?.send(JSON.stringify(subscribeMessage));
-          addLog('info', 'Sent subscription request', { subscribeMessage });
+          addLog('info', `Sent subscription request with ID ${subscribeId}`, { 
+            subscribeMessage,
+            messageId: subscribeId,
+            streams
+          });
         }
         
         // Set up ping interval (every 2.5 minutes to keep connection alive)
         pingIntervalRef.current = setInterval(() => {
           if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ method: 'PING' }));
+            const pingId = messageIdRef.current++;
+            wsRef.current.send(JSON.stringify({ 
+              method: 'PING',
+              id: pingId
+            }));
             setLastPingTime(new Date());
-            addLog('info', 'Sent ping to Binance WebSocket');
+            console.log(`BinanceWebSocketContext: Sent ping with ID ${pingId}`);
+            addLog('info', `Sent ping to Binance WebSocket with ID ${pingId}`);
           }
         }, 150000); // 2.5 minutes
       };
@@ -192,11 +212,22 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
           const data = JSON.parse(event.data);
           
           // Handle subscription response
-          if (data.id === 1) {
+          if (data.id && data.id >= INITIAL_MESSAGE_ID) {
+            console.log(`BinanceWebSocketContext: Received response for message ID ${data.id}`, data);
+            
             if (data.result === null) {
-              addLog('success', 'Successfully subscribed to Binance streams', { data });
+              console.log(`BinanceWebSocketContext: Successfully subscribed with ID ${data.id}`);
+              addLog('success', `Successfully subscribed to Binance streams with ID ${data.id}`, { data });
             } else {
-              addLog('error', 'Failed to subscribe to Binance streams', { data });
+              console.error(`BinanceWebSocketContext: Failed to subscribe with ID ${data.id}`, data);
+              addLog('error', `Failed to subscribe to Binance streams with ID ${data.id}`, { data });
+              
+              // If subscription fails, attempt to reconnect after a delay
+              setTimeout(() => {
+                console.log('BinanceWebSocketContext: Attempting to reconnect after subscription failure');
+                addLog('info', 'Attempting to reconnect after subscription failure');
+                reconnect();
+              }, 5000);
             }
             return;
           }

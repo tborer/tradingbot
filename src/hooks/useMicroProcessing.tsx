@@ -21,20 +21,24 @@ export function useMicroProcessing() {
   const isInitializedRef = useRef(false);
 
   // Standard request configuration for all API calls
-  const standardRequestConfig = {
+  const standardRequestConfig = useCallback(() => ({
     method: 'GET',
     credentials: 'include' as RequestCredentials,
     headers: {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
       'Cache-Control': 'no-cache',
-      'X-Client-Info': 'useMicroProcessing-hook'
+      'X-Client-Info': 'useMicroProcessing-hook',
+      // Add auth token if it's not being included via credentials
+      ...(user?.token ? { 'Authorization': `Bearer ${user.token}` } : {})
     }
-  };
+  }), [user]);
 
   // Enhanced retry mechanism for API requests with better error handling
   const fetchWithRetry = useCallback(async (url: string, config = {}, maxRetries = 3, retryDelay = 1000) => {
-    const mergedConfig = { ...standardRequestConfig, ...config };
+    // Get the latest config with current auth token
+    const currentConfig = standardRequestConfig();
+    const mergedConfig = { ...currentConfig, ...config };
     let lastError;
     
     // Add request ID for tracking in logs
@@ -117,7 +121,7 @@ export function useMicroProcessing() {
     
     console.error(`[${requestId}] All ${maxRetries} attempts failed`);
     throw lastError;
-  }, []);
+  }, [standardRequestConfig]);
 
   // Check authentication before making API calls
   const checkAuthAndFetch = useCallback(async (url: string, config = {}) => {
@@ -126,15 +130,11 @@ export function useMicroProcessing() {
       throw new Error('Authentication is initializing');
     }
     
-    if (!user) {
-      console.log('User not authenticated, skipping fetch');
+    // More thorough validation of user object
+    if (!user || !user.id || typeof user.id !== 'string') {
+      console.log('User not properly authenticated, skipping fetch');
+      router.push('/login'); // Redirect to login if needed
       throw new Error('User not authenticated');
-    }
-    
-    // Verify user has an ID
-    if (!user.id) {
-      console.error('Invalid user object: missing ID');
-      throw new Error('Invalid authentication state');
     }
     
     console.log('User authenticated, proceeding with fetch', { userId: user.id });
@@ -145,7 +145,7 @@ export function useMicroProcessing() {
       : `${url}?_t=${Date.now()}`;
     
     return fetchWithRetry(urlWithTimestamp, config);
-  }, [user, initializing, fetchWithRetry]);
+  }, [user, initializing, fetchWithRetry, router]);
 
   // Fetch cryptos with micro processing settings - consolidated into a single API call
   const fetchMicroProcessingCryptos = useCallback(async () => {
@@ -373,6 +373,7 @@ export function useMicroProcessing() {
         if (retryCount >= maxRetries) {
           console.log(`Max retries (${maxRetries}) reached without finding user, stopping retries`);
           setError('Authentication failed. Please try logging in again.');
+          router.push('/login');
           return;
         }
         
@@ -389,13 +390,17 @@ export function useMicroProcessing() {
       
       console.log('Authentication initialized and user available, fetching data', { userId: user.id });
       
-      // Wrap in try/catch to prevent unhandled promise rejections
-      try {
-        fetchMicroProcessingCryptos();
-      } catch (error) {
-        console.error('Error during initial data fetch:', error);
-        setError('Failed to load initial data');
-      }
+      // Add a small delay to ensure supabase client is fully ready
+      console.log('Adding delay before initial fetch to ensure supabase client is ready');
+      setTimeout(() => {
+        // Wrap in try/catch to prevent unhandled promise rejections
+        try {
+          fetchMicroProcessingCryptos();
+        } catch (error) {
+          console.error('Error during initial data fetch:', error);
+          setError('Failed to load initial data');
+        }
+      }, 1000); // 1 second delay to ensure supabase client is ready
     };
     
     // Start the auth check process

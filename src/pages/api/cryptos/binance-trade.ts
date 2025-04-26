@@ -35,6 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       price, 
       orderType = 'MARKET',
       testMode = false,
+      useTestEndpoint = false,
       microProcessing = false
     } = req.body;
     
@@ -80,19 +81,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const parsedPrice = price ? parseFloat(price) : undefined;
     
     try {
+      // If useTestEndpoint is true, we'll force testMode to true as well
+      const effectiveTestMode = useTestEndpoint ? true : testMode;
+      
       if (action.toLowerCase() === 'buy') {
         if (orderType.toUpperCase() === 'MARKET') {
-          tradeResult = await executeBinanceMarketBuy(user.id, crypto.symbol, parsedQuantity, testMode);
+          tradeResult = await executeBinanceMarketBuy(user.id, crypto.symbol, parsedQuantity, effectiveTestMode, useTestEndpoint);
         } else if (orderType.toUpperCase() === 'LIMIT' && parsedPrice) {
-          tradeResult = await executeBinanceLimitBuy(user.id, crypto.symbol, parsedQuantity, parsedPrice, testMode);
+          tradeResult = await executeBinanceLimitBuy(user.id, crypto.symbol, parsedQuantity, parsedPrice, effectiveTestMode, useTestEndpoint);
         } else {
           return res.status(400).json({ error: 'Invalid order type or missing price for limit order' });
         }
       } else { // sell
         if (orderType.toUpperCase() === 'MARKET') {
-          tradeResult = await executeBinanceMarketSell(user.id, crypto.symbol, parsedQuantity, testMode);
+          tradeResult = await executeBinanceMarketSell(user.id, crypto.symbol, parsedQuantity, effectiveTestMode, useTestEndpoint);
         } else if (orderType.toUpperCase() === 'LIMIT' && parsedPrice) {
-          tradeResult = await executeBinanceLimitSell(user.id, crypto.symbol, parsedQuantity, parsedPrice, testMode);
+          tradeResult = await executeBinanceLimitSell(user.id, crypto.symbol, parsedQuantity, parsedPrice, effectiveTestMode, useTestEndpoint);
         } else {
           return res.status(400).json({ error: 'Invalid order type or missing price for limit order' });
         }
@@ -140,7 +144,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const transaction = await prisma.cryptoTransaction.create({
         data: {
           cryptoId: crypto.id,
-          action: testMode ? `test_${action.toLowerCase()}` : action.toLowerCase(),
+          action: testMode || useTestEndpoint ? `test_${action.toLowerCase()}` : action.toLowerCase(),
           shares: parsedQuantity,
           price: executedPrice,
           totalAmount,
@@ -151,7 +155,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             quantity: parsedQuantity,
             price: parsedPrice,
             symbol: crypto.symbol,
-            testMode
+            testMode,
+            useTestEndpoint
           }, null, 2),
           apiResponse: JSON.stringify(tradeResult, null, 2),
           logInfo: `Binance ${orderType.toLowerCase()} ${action.toLowerCase()}: ${parsedQuantity} shares of ${crypto.symbol} at ${executedPrice}`

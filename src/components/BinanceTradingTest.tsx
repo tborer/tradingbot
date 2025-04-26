@@ -21,7 +21,29 @@ export default function BinanceTradingTest({ cryptoId, symbol }: BinanceTradingT
   const [quantity, setQuantity] = useState<string>('');
   const [price, setPrice] = useState<string>('');
   const [testMode, setTestMode] = useState<boolean>(true);
+  const [useTestEndpoint, setUseTestEndpoint] = useState<boolean>(false);
   const [result, setResult] = useState<any>(null);
+  
+  // Listen for the custom event to use the test endpoint
+  useEffect(() => {
+    const handleUseTestEndpoint = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      if (customEvent.detail && customEvent.detail.cryptoId === cryptoId) {
+        setUseTestEndpoint(true);
+        setTestMode(true);
+        toast({
+          title: "Test Endpoint Activated",
+          description: `Using test endpoint for ${symbol}. This will not execute real trades.`,
+        });
+      }
+    };
+    
+    window.addEventListener('use-binance-test-endpoint', handleUseTestEndpoint);
+    
+    return () => {
+      window.removeEventListener('use-binance-test-endpoint', handleUseTestEndpoint);
+    };
+  }, [cryptoId, symbol, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +81,7 @@ export default function BinanceTradingTest({ cryptoId, symbol }: BinanceTradingT
           price: price ? parseFloat(price) : undefined,
           orderType,
           testMode,
+          useTestEndpoint,
         }),
       });
       
@@ -72,7 +95,7 @@ export default function BinanceTradingTest({ cryptoId, symbol }: BinanceTradingT
       
       toast({
         title: "Trade executed",
-        description: `Successfully ${action === 'buy' ? 'bought' : 'sold'} ${quantity} ${symbol} ${testMode ? '(Test Mode)' : ''}`,
+        description: `Successfully ${action === 'buy' ? 'bought' : 'sold'} ${quantity} ${symbol} ${testMode ? '(Test Mode)' : ''} ${useTestEndpoint ? '(Test Endpoint)' : ''}`,
       });
     } catch (error) {
       console.error('Error executing trade:', error);
@@ -156,13 +179,24 @@ export default function BinanceTradingTest({ cryptoId, symbol }: BinanceTradingT
             </div>
           )}
           
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="testMode"
-              checked={testMode}
-              onCheckedChange={setTestMode}
-            />
-            <Label htmlFor="testMode">Test Mode (No actual trades)</Label>
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="testMode"
+                checked={testMode}
+                onCheckedChange={setTestMode}
+              />
+              <Label htmlFor="testMode">Test Mode (No actual trades)</Label>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="useTestEndpoint"
+                checked={useTestEndpoint}
+                onCheckedChange={setUseTestEndpoint}
+              />
+              <Label htmlFor="useTestEndpoint">Use Test Endpoint (https://api.binance.us/api/v3/order/test)</Label>
+            </div>
           </div>
           
           <Button type="submit" disabled={isLoading} className="w-full">

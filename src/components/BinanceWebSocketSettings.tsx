@@ -413,13 +413,29 @@ export default function BinanceWebSocketSettings() {
                             </Badge>
                           </td>
                           <td className="py-2 px-4">
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => handleSelectCrypto(crypto.id, crypto.symbol)}
-                            >
-                              Test Trading
-                            </Button>
+                            <div className="flex space-x-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => handleSelectCrypto(crypto.id, crypto.symbol)}
+                              >
+                                Trading
+                              </Button>
+                              <Button 
+                                variant="secondary" 
+                                size="sm"
+                                onClick={() => {
+                                  handleSelectCrypto(crypto.id, crypto.symbol);
+                                  // Set a custom event to trigger the test endpoint in BinanceTradingTest
+                                  const event = new CustomEvent('use-binance-test-endpoint', {
+                                    detail: { cryptoId: crypto.id, symbol: crypto.symbol }
+                                  });
+                                  window.dispatchEvent(event);
+                                }}
+                              >
+                                Test Trading
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       ))}

@@ -64,7 +64,8 @@ function generateSignature(queryString: string, secretKey: string): string {
 export async function createBinanceOrder(
   userId: string,
   params: BinanceOrderParams,
-  testMode: boolean = false
+  testMode: boolean = false,
+  useTestEndpoint: boolean = false
 ): Promise<any> {
   try {
     // Get credentials
@@ -83,8 +84,10 @@ export async function createBinanceOrder(
     const baseUrl = apiUrl.split('/api/')[0]; // Extract base URL (e.g., https://api.binance.us)
     const uriPath = apiUrl.substring(baseUrl.length); // Extract URI path (e.g., /api/v3/order)
     
-    // Use test endpoint if in test mode
-    const endpoint = testMode ? uriPath.replace('/order', '/order/test') : uriPath;
+    // Use test endpoint if explicitly requested or in test mode
+    const endpoint = useTestEndpoint 
+      ? '/api/v3/order/test' 
+      : (testMode ? uriPath.replace('/order', '/order/test') : uriPath);
 
     // Prepare request parameters
     const timestamp = Date.now();
@@ -184,7 +187,8 @@ export async function executeBinanceMarketBuy(
   userId: string,
   symbol: string,
   quantity: number,
-  testMode: boolean = false
+  testMode: boolean = false,
+  useTestEndpoint: boolean = false
 ): Promise<any> {
   const formattedSymbol = formatBinanceSymbol(symbol);
   
@@ -197,7 +201,8 @@ export async function executeBinanceMarketBuy(
       quantity,
       newOrderRespType: 'FULL' // Get full response with fill information
     },
-    testMode
+    testMode,
+    useTestEndpoint
   );
 }
 
@@ -208,7 +213,8 @@ export async function executeBinanceMarketSell(
   userId: string,
   symbol: string,
   quantity: number,
-  testMode: boolean = false
+  testMode: boolean = false,
+  useTestEndpoint: boolean = false
 ): Promise<any> {
   const formattedSymbol = formatBinanceSymbol(symbol);
   
@@ -221,7 +227,8 @@ export async function executeBinanceMarketSell(
       quantity,
       newOrderRespType: 'FULL' // Get full response with fill information
     },
-    testMode
+    testMode,
+    useTestEndpoint
   );
 }
 
@@ -233,7 +240,8 @@ export async function executeBinanceLimitBuy(
   symbol: string,
   quantity: number,
   price: number,
-  testMode: boolean = false
+  testMode: boolean = false,
+  useTestEndpoint: boolean = false
 ): Promise<any> {
   const formattedSymbol = formatBinanceSymbol(symbol);
   
@@ -248,7 +256,8 @@ export async function executeBinanceLimitBuy(
       timeInForce: 'GTC', // Good Till Canceled
       newOrderRespType: 'FULL' // Get full response with fill information
     },
-    testMode
+    testMode,
+    useTestEndpoint
   );
 }
 
@@ -260,7 +269,8 @@ export async function executeBinanceLimitSell(
   symbol: string,
   quantity: number,
   price: number,
-  testMode: boolean = false
+  testMode: boolean = false,
+  useTestEndpoint: boolean = false
 ): Promise<any> {
   const formattedSymbol = formatBinanceSymbol(symbol);
   
@@ -275,6 +285,7 @@ export async function executeBinanceLimitSell(
       timeInForce: 'GTC', // Good Till Canceled
       newOrderRespType: 'FULL' // Get full response with fill information
     },
-    testMode
+    testMode,
+    useTestEndpoint
   );
 }

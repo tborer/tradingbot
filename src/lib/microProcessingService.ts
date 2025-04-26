@@ -6,16 +6,23 @@ import {
   executeBinanceMarketSell 
 } from '@/lib/binanceTradeApi';
 
+// Ensure autoTradeLogger is initialized with a fallback
+const logger = autoTradeLogger || {
+  log: (message: string) => {
+    console.log(`[AutoTradeLogger Fallback] ${message}`);
+  }
+};
+
 // Function to process a buy transaction for micro processing
 export async function processMicroBuy(cryptoId: string, symbol: string, userId: string, currentPrice: number) {
   // Validate input parameters
   try {
     if (!cryptoId || !symbol || !userId) {
-      autoTradeLogger.log(`Micro processing: Invalid parameters for buy. cryptoId: ${cryptoId}, symbol: ${symbol}, userId: ${userId}`);
+      logger.log(`Micro processing: Invalid parameters for buy. cryptoId: ${cryptoId}, symbol: ${symbol}, userId: ${userId}`);
       return;
     }
   } catch (error) {
-    autoTradeLogger.log(`Micro processing: Error validating input parameters: ${error.message}`);
+    logger.log(`Micro processing: Error validating input parameters: ${error.message}`);
     console.error('Error validating input parameters:', error);
     return;
   }

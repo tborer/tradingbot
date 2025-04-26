@@ -164,12 +164,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Pass the cookies from the original request to maintain authentication
       const cookies = req.headers.cookie;
       
+      // Get the authorization header from the request
+      const authHeader = req.headers.authorization;
+      
+      // Prepare headers with both cookie and authorization
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      // Add cookie header if available
+      if (cookies) {
+        headers['Cookie'] = cookies;
+      }
+      
+      // Add authorization header if available
+      if (authHeader) {
+        headers['Authorization'] = authHeader;
+      }
+      
       const executeOrderResponse = await fetch(apiUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Cookie': cookies || '', // Forward cookies to maintain authentication
-        },
+        headers,
         body: JSON.stringify({
           cryptoId: crypto.id,
           action,

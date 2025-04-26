@@ -5,6 +5,15 @@ import { useMicroProcessing } from '@/hooks/useMicroProcessing';
 // Starting message ID for Binance WebSocket messages
 const INITIAL_MESSAGE_ID = 999999;
 
+// Function to generate a UUID for WebSocket message IDs
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 interface BinanceWebSocketContextType {
   isConnected: boolean;
   connect: () => void;
@@ -235,8 +244,9 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
         pingIntervalRef.current = setInterval(() => {
           if (wsRef.current?.readyState === WebSocket.OPEN) {
             try {
-              // Simple ping message without ID - this matches Binance's expected format
+              // Ping message with UUID - this matches Binance's expected format
               const pingMessage = { 
+                id: generateUUID(),
                 method: "ping"
               };
               
@@ -307,6 +317,50 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
               data.method === 'pong') {
             setLastPongTime(new Date());
             addLog('info', 'Received pong from Binance WebSocket', data);
+            return;
+          }
+          
+          // Handle direct price update message format
+          if (data.symbol && data.price && data.source === 'binance-depth') {
+            const symbol = data.symbol;
+            const price = parseFloat(data.price);
+            
+            // Update price in the micro processing service
+            if (!isNaN(price) && price > 0) {
+              handlePriceUpdate({
+                symbol,
+                price
+              });
+              
+              // Log price update (but not too frequently to avoid flooding logs)
+              if (Math.random() < 0.05) { // Log approximately 5% of updates
+                addLog('info', `Received price update for ${symbol}: $${price} (from ${data.source})`, data);
+              }
+            }
+            return;
+          }
+          
+          // Handle depthUpdate with bestBidPrice format
+          if (data.eventType === 'depthUpdate' && data.symbol && data.bestBidPrice !== undefined) {
+            const symbol = data.symbol.replace(/USDT$/, '');
+            const price = parseFloat(data.bestBidPrice);
+            
+            // Update price in the micro processing service
+            if (!isNaN(price) && price > 0) {
+              handlePriceUpdate({
+                symbol,
+                price
+              });
+              
+              // Log price update (but not too frequently to avoid flooding logs)
+              if (Math.random() < 0.05) { // Log approximately 5% of updates
+                addLog('info', `Received depth update for ${symbol}: $${price} (best bid price)`, {
+                  symbol,
+                  price,
+                  source: 'binance-depth-update'
+                });
+              }
+            }
             return;
           }
           
@@ -387,7 +441,13 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
             } else {
               // Direct message format
               symbol = data.s.replace(/USDT$/, ''); // Symbol is in the 's' field, remove USDT suffix
-              bestBidPrice = parseFloat(data.b && data.b[0] ? data.b[0][0] : 0);
+              
+              // Check if bestBidPrice is directly available or needs to be extracted from bids array
+              if (data.bestBidPrice !== undefined) {
+                bestBidPrice = parseFloat(data.bestBidPrice);
+              } else {
+                bestBidPrice = parseFloat(data.b && data.b[0] ? data.b[0][0] : 0);
+              }
               
               // Log the direct message data structure for debugging
               if (Math.random() < 0.1) { // Log 10% of direct messages

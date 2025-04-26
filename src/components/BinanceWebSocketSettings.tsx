@@ -189,8 +189,11 @@ export default function BinanceWebSocketSettings() {
                     className="w-full p-2 border rounded-md font-mono text-sm min-h-[100px] bg-background text-foreground"
                     value={testBody}
                     onChange={(e) => setTestBody(e.target.value)}
-                    placeholder='{"method": "ping"}'
+                    placeholder='{"id": "922bcc6e-9de8-440d-9e84-7c80933a8d0d", "method": "ping"}'
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Example ping: {"{"}"id": "922bcc6e-9de8-440d-9e84-7c80933a8d0d", "method": "ping"{"}"}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     Example subscription: {"{"}"method": "SUBSCRIBE", "params": ["btcusdt@aggTrade", "btcusdt@depth"], "id": 1{"}"}
                   </p>
@@ -215,7 +218,21 @@ export default function BinanceWebSocketSettings() {
                     placeholder="Response will appear here"
                   />
                   <div className="mt-2 p-3 bg-muted/50 rounded-md text-xs space-y-2">
-                    <h4 className="font-medium">About BookTicker Updates</h4>
+                    <h4 className="font-medium">Ping Message Format</h4>
+                    <p>
+                      The WebSocket ping message must include a UUID to maintain the connection:
+                    </p>
+                    <pre className="p-2 bg-background rounded-md overflow-auto text-xs">
+{`{
+  "id": "922bcc6e-9de8-440d-9e84-7c80933a8d0d",
+  "method": "ping"
+}`}
+                    </pre>
+                    <p>
+                      Without the ID field, Binance will close the connection with an error.
+                    </p>
+                    
+                    <h4 className="font-medium mt-3">About BookTicker Updates</h4>
                     <p>
                       The system now uses the bookTicker stream which provides the best bid and ask prices directly:
                     </p>

@@ -70,7 +70,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(403).json({ error: 'Manual crypto trading is not enabled. Please enable it in settings.' });
     }
     
-    const { cryptoId, action, shares, orderType, totalValue, purchaseMethod, microProcessing } = req.body;
+    const { cryptoId, action, shares, orderType, totalValue, purchaseMethod, microProcessing, testMode } = req.body;
     
     // Determine if we're buying by total value
     const isBuyingByTotalValue = purchaseMethod === 'totalValue' && totalValue && totalValue > 0;
@@ -179,7 +179,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           isAutoOrder: req.body.isAutoOrder || false,
           microProcessing: microProcessing || false,
           totalValue: isBuyingByTotalValue ? Number(totalValue) : undefined,
-          purchaseMethod: isBuyingByTotalValue ? 'totalValue' : 'shares'
+          purchaseMethod: isBuyingByTotalValue ? 'totalValue' : 'shares',
+          testMode: testMode === true // Explicitly pass testMode parameter
         })
       }).catch(error => {
         console.error('Network error calling execute-order API:', error);

@@ -43,6 +43,20 @@ const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
   const [connectionStartTime, setConnectionStartTime] = useState<Date | null>(null);
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
 
+  // Load connection start time from localStorage on mount
+  useEffect(() => {
+    if (isConnected) {
+      const savedStartTime = localStorage.getItem('websocket-connection-start-time');
+      if (savedStartTime) {
+        setConnectionStartTime(new Date(savedStartTime));
+      } else {
+        const newStartTime = new Date();
+        setConnectionStartTime(newStartTime);
+        localStorage.setItem('websocket-connection-start-time', newStartTime.toISOString());
+      }
+    }
+  }, [isConnected]);
+
   // Track connection duration
   useEffect(() => {
     let intervalId: NodeJS.Timeout;
@@ -50,7 +64,9 @@ const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
     if (isConnected) {
       // If we just connected, set the start time
       if (!connectionStartTime) {
-        setConnectionStartTime(new Date());
+        const newStartTime = new Date();
+        setConnectionStartTime(newStartTime);
+        localStorage.setItem('websocket-connection-start-time', newStartTime.toISOString());
       }
       
       // Update the duration every second
@@ -70,6 +86,7 @@ const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
       // Reset when disconnected
       setConnectionStartTime(null);
       setConnectionDuration('');
+      localStorage.removeItem('websocket-connection-start-time');
     }
     
     return () => {

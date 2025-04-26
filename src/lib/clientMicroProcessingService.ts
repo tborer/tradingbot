@@ -283,6 +283,14 @@ export async function processMicroTrade(
   
   const { crypto, settings } = state;
   
+  // Log the current state and settings
+  console.log(`Processing micro trade for ${crypto.symbol}: ${action}`, {
+    currentPrice: crypto.currentPrice,
+    lastBuyPrice: settings.lastBuyPrice,
+    testMode: settings.testMode,
+    processingStatus: settings.processingStatus
+  });
+  
   // Acquire a lock for this trade
   if (!acquireLock(cryptoId, action)) {
     return { success: false, message: 'Trade already in progress' };
@@ -335,7 +343,7 @@ export async function processMicroTrade(
     }
     
     // Execute the trade via API with standardized request configuration
-    console.log(`Executing ${action} trade for ${crypto.symbol} using Binance platform`);
+    console.log(`Executing ${action} trade for ${crypto.symbol} using Binance platform (testMode: ${settings.testMode ? 'enabled' : 'disabled'})`);
     const response = await fetch('/api/cryptos/trade', {
       ...getStandardRequestConfig(),
       method: 'POST',
@@ -346,7 +354,8 @@ export async function processMicroTrade(
         price: currentPrice,
         orderType: 'market',
         microProcessing: true,
-        tradingPlatform: 'binance' // Explicitly set to use Binance
+        tradingPlatform: 'binance', // Explicitly set to use Binance
+        testMode: settings.testMode // Pass the testMode setting to the API
       })
     });
     

@@ -170,8 +170,8 @@ export default function MicroProcessingPopup({
       return;
     }
     
-    // Log the cryptoId to ensure it's being passed correctly
-    console.log("Saving settings for cryptoId:", cryptoId);
+    // Log the cryptoId and testMode to ensure they're being passed correctly
+    console.log("Saving settings for cryptoId:", cryptoId, "with testMode:", settings.testMode);
     
     if (settings.tradeByValue && (typeof settings.totalValue !== 'number' || isNaN(settings.totalValue) || settings.totalValue <= 0)) {
       toast({

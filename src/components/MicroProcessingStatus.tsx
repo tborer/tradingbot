@@ -268,6 +268,11 @@ export default function MicroProcessingStatus() {
                       </td>
                       <td className="py-2 px-4">
                         {crypto.microProcessingSettings?.sellPercentage}%
+                        {crypto.microProcessingSettings?.testMode && (
+                          <Badge variant="outline" className="ml-2 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300">
+                            Test Mode
+                          </Badge>
+                        )}
                       </td>
                     </tr>
                   ))}

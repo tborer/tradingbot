@@ -51,6 +51,7 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const minConnectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const connectionAttemptRef = useRef<number>(0);
   
   const baseUrl = 'wss://stream.binance.us:9443';
@@ -167,6 +168,18 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
         
         addLog('success', 'Connected to Binance WebSocket');
         console.log('BinanceWebSocketContext: WebSocket connection established');
+        
+        // Ensure connection stays open for at least 10 seconds after initial connect
+        // This helps prevent premature connection closure before subscription confirmation
+        if (minConnectionTimeoutRef.current) {
+          clearTimeout(minConnectionTimeoutRef.current);
+        }
+        
+        minConnectionTimeoutRef.current = setTimeout(() => {
+          console.log('BinanceWebSocketContext: Minimum connection time elapsed');
+          addLog('info', 'Minimum connection time elapsed (10 seconds)');
+          minConnectionTimeoutRef.current = null;
+        }, 10000);
         
         // Send subscription message immediately after connection is established
         // Subscribe to the streams for each symbol
@@ -453,6 +466,12 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
       wsRef.current.onclose = (event) => {
         setIsConnected(false);
         
+        // Clear minimum connection timeout if it exists
+        if (minConnectionTimeoutRef.current) {
+          clearTimeout(minConnectionTimeoutRef.current);
+          minConnectionTimeoutRef.current = null;
+        }
+        
         // Enhanced logging for connection close events
         const closeInfo = {
           code: event.code,
@@ -529,6 +548,12 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
       pingIntervalRef.current = null;
     }
     
+    // Clear minimum connection timeout if it exists
+    if (minConnectionTimeoutRef.current) {
+      clearTimeout(minConnectionTimeoutRef.current);
+      minConnectionTimeoutRef.current = null;
+    }
+    
     if (wsRef.current) {
       addLog('info', 'Disconnecting from Binance WebSocket');
       
@@ -562,23 +587,24 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
       pingIntervalRef.current = null;
     }
     
+    // Clear minimum connection timeout if it exists
+    if (minConnectionTimeoutRef.current) {
+      clearTimeout(minConnectionTimeoutRef.current);
+      minConnectionTimeoutRef.current = null;
+    }
+    
     // Short delay before reconnecting
     setTimeout(() => {
       connect();
     }, 1000);
   }, [connect, addLog]);
   
-  // Auto-connect on mount if enabled
+  // Single useEffect for auto-connect on mount and cleanup on unmount
   useEffect(() => {
     // Load auto-connect preference from localStorage
     const savedAutoConnect = localStorage.getItem('binance-ws-auto-connect');
     if (savedAutoConnect !== null) {
       setAutoConnect(savedAutoConnect === 'true');
-    }
-    
-    // Connect if auto-connect is enabled and there are symbols to subscribe to
-    if ((savedAutoConnect === 'true' || autoConnect) && subscribedSymbols.length > 0) {
-      connect();
     }
     
     // Clean up on unmount
@@ -589,6 +615,10 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
       
       if (pingIntervalRef.current) {
         clearInterval(pingIntervalRef.current);
+      }
+      
+      if (minConnectionTimeoutRef.current) {
+        clearTimeout(minConnectionTimeoutRef.current);
       }
       
       if (wsRef.current) {
@@ -602,7 +632,7 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
     localStorage.setItem('binance-ws-auto-connect', autoConnect.toString());
   }, [autoConnect]);
   
-  // Connect/disconnect when autoConnect changes
+  // Monitor autoConnect and connection state to manage connection
   useEffect(() => {
     if (autoConnect && !isConnected && subscribedSymbols.length > 0) {
       connect();
@@ -610,7 +640,7 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
       // This is a user-initiated disconnect via the auto-connect toggle
       disconnect();
     }
-  }, [autoConnect, isConnected, connect, disconnect, subscribedSymbols]);
+  }, [autoConnect, isConnected, subscribedSymbols, connect, disconnect]);
   
   return (
     <BinanceWebSocketContext.Provider value={{

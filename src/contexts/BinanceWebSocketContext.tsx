@@ -467,7 +467,7 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
           minConnectionTimeoutRef.current = null;
         }
         
-        // Enhanced logging for connection close events
+        // Log closure details
         const closeInfo = {
           code: event.code,
           reason: event.reason || 'No reason provided',
@@ -476,9 +476,7 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
           connectionAttempt: connectionAttemptRef.current
         };
         
-        console.error(`BinanceWebSocketContext: Connection closed with code ${event.code}`, closeInfo);
-        
-        // Log with more detailed information
+        console.log(`BinanceWebSocketContext: Connection closed with code ${event.code}`, closeInfo);
         addLog('warning', `Binance WebSocket connection closed: ${event.code} ${event.reason || 'No reason provided'}`, closeInfo);
         
         // Add specific guidance based on close code
@@ -505,53 +503,52 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
           });
         }
         
-        // Simplified reconnection logic - just check autoConnect and limit retries
-        const maxRetries = 5; // Limit retries to prevent infinite reconnection attempts
+        // Only reconnect if auto-connect is enabled and this wasn't a manual disconnect
+        const isManualDisconnect = event.reason === 'User initiated manual disconnect';
         
-        if (autoConnect && connectionAttemptRef.current < maxRetries) {
+        if (autoConnect && !isManualDisconnect && connectionAttemptRef.current < 5) {
           // Exponential backoff for reconnection attempts
           const delay = Math.min(30000, 1000 * Math.pow(1.5, Math.min(connectionAttemptRef.current, 10)));
           
-          addLog('info', `Will attempt to reconnect in ${delay / 1000} seconds (attempt ${connectionAttemptRef.current + 1}/${maxRetries})`);
+          addLog('info', `Will attempt to reconnect in ${delay / 1000} seconds (attempt ${connectionAttemptRef.current + 1}/5)`);
           
           reconnectTimeoutRef.current = setTimeout(() => {
             connect();
           }, delay);
-        } else if (connectionAttemptRef.current >= maxRetries) {
-          addLog('warning', `Maximum reconnection attempts (${maxRetries}) reached. Automatic reconnection stopped.`);
+        } else if (connectionAttemptRef.current >= 5) {
+          addLog('warning', 'Maximum reconnection attempts (5) reached. Automatic reconnection stopped.');
+        } else if (isManualDisconnect) {
+          addLog('info', 'No reconnection attempt because this was a manual disconnect.');
         }
       };
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
       logError('Failed to establish Binance WebSocket connection', err, 'BINANCE-WS-0003');
     }
-  }, [addLog, logError, subscribedSymbols, getWebSocketUrl, autoConnect, handlePriceUpdate]);
+  }, [addLog, logError, subscribedSymbols, getWebSocketUrl, handlePriceUpdate]);
   
-  // Disconnect from WebSocket
+  // Disconnect from WebSocket - only called manually
   const disconnect = useCallback(() => {
-    // Clear any existing reconnect timeout
+    // Clear any existing timers
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
     
-    // Clear any existing ping interval
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current);
       pingIntervalRef.current = null;
     }
     
-    // Clear minimum connection timeout if it exists
     if (minConnectionTimeoutRef.current) {
       clearTimeout(minConnectionTimeoutRef.current);
       minConnectionTimeoutRef.current = null;
     }
     
+    // Only close the connection if explicitly called
     if (wsRef.current) {
-      addLog('info', 'Disconnecting from Binance WebSocket');
-      
-      // Simply close the connection without sending unsubscribe message
-      wsRef.current.close(1000, 'User initiated disconnect');
+      addLog('info', 'Manual disconnect from Binance WebSocket requested');
+      wsRef.current.close(1000, 'User initiated manual disconnect');
       wsRef.current = null;
       setIsConnected(false);
     }
@@ -627,13 +624,14 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
   
   // Monitor autoConnect and connection state to manage connection
   useEffect(() => {
-    if (autoConnect && !isConnected && subscribedSymbols.length > 0) {
+    // Only connect if auto-connect is enabled and not already connected
+    if (autoConnect && !isConnected && subscribedSymbols.length > 0 && !wsRef.current) {
+      console.log('BinanceWebSocketContext: Auto-connecting because conditions are met');
       connect();
-    } else if (!autoConnect && isConnected) {
-      // This is a user-initiated disconnect via the auto-connect toggle
-      disconnect();
     }
-  }, [autoConnect, isConnected, subscribedSymbols, connect, disconnect]);
+    // Remove the automatic disconnect completely
+    // No else if branch for disconnect
+  }, [autoConnect, isConnected, subscribedSymbols, connect]);
   
   return (
     <BinanceWebSocketContext.Provider value={{

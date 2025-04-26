@@ -23,7 +23,9 @@ export default function BinanceWebSocketSettings() {
     error, 
     subscribedSymbols,
     autoConnect,
-    setAutoConnect
+    setAutoConnect,
+    pingEnabled,
+    setPingEnabled
   } = useBinanceWebSocket();
   
   const { addLog } = useWebSocketLogs();
@@ -158,6 +160,8 @@ export default function BinanceWebSocketSettings() {
               lastPongTime={lastPongTime}
               autoConnect={autoConnect}
               onAutoConnectChange={setAutoConnect}
+              pingEnabled={pingEnabled}
+              onPingEnabledChange={setPingEnabled}
             />
             
             <Card className="mt-4">
@@ -231,6 +235,14 @@ export default function BinanceWebSocketSettings() {
                     <p>
                       Without the ID field, Binance will close the connection with an error.
                     </p>
+                    <div className="mt-2 p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-md">
+                      <p className="font-medium">Note: Ping is currently {pingEnabled ? 'enabled' : 'disabled'}</p>
+                      <p>
+                        {pingEnabled 
+                          ? 'Ping messages will be sent every 2.5 minutes to keep the connection alive.' 
+                          : 'No ping messages will be sent. This may help if you are experiencing connection issues.'}
+                      </p>
+                    </div>
                     
                     <h4 className="font-medium mt-3">About BookTicker Updates</h4>
                     <p>
@@ -432,13 +444,23 @@ export default function BinanceWebSocketSettings() {
         <div className="text-xs text-muted-foreground">
           {isConnected ? 'Connected to Binance WebSocket' : 'Disconnected from Binance WebSocket'}
         </div>
-        <div className="flex items-center space-x-2">
-          <Label htmlFor="auto-connect" className="text-xs">Auto-Connect</Label>
-          <Switch
-            id="auto-connect"
-            checked={autoConnect}
-            onCheckedChange={setAutoConnect}
-          />
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            <Label htmlFor="ping-enabled" className="text-xs">Enable Ping</Label>
+            <Switch
+              id="ping-enabled"
+              checked={pingEnabled}
+              onCheckedChange={setPingEnabled}
+            />
+          </div>
+          <div className="flex items-center space-x-2">
+            <Label htmlFor="auto-connect" className="text-xs">Auto-Connect</Label>
+            <Switch
+              id="auto-connect"
+              checked={autoConnect}
+              onCheckedChange={setAutoConnect}
+            />
+          </div>
         </div>
       </CardFooter>
     </Card>

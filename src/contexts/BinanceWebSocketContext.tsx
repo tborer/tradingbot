@@ -26,6 +26,8 @@ interface BinanceWebSocketContextType {
   subscribedSymbols: string[];
   autoConnect: boolean;
   setAutoConnect: (autoConnect: boolean) => void;
+  pingEnabled: boolean;
+  setPingEnabled: (pingEnabled: boolean) => void;
 }
 
 const BinanceWebSocketContext = createContext<BinanceWebSocketContextType | undefined>(undefined);
@@ -53,6 +55,7 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
   const [lastPongTime, setLastPongTime] = useState<Date | null>(null);
   const [subscribedSymbols, setSubscribedSymbols] = useState<string[]>([]);
   const [autoConnect, setAutoConnect] = useState<boolean>(false);
+  const [pingEnabled, setPingEnabled] = useState<boolean>(false);
   
   // Message ID counter for WebSocket messages
   const messageIdRef = useRef<number>(INITIAL_MESSAGE_ID);
@@ -240,39 +243,43 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
           });
         }
         
-        // Set up ping interval (every 2.5 minutes to keep connection alive)
-        pingIntervalRef.current = setInterval(() => {
-          if (wsRef.current?.readyState === WebSocket.OPEN) {
-            try {
-              // Ping message with UUID - this matches Binance's expected format
-              const pingMessage = { 
-                id: generateUUID(),
-                method: "ping"
-              };
-              
-              // Stringify the ping message
-              const pingMessageString = JSON.stringify(pingMessage);
-              
-              // Send the ping message
-              wsRef.current.send(pingMessageString);
-              setLastPingTime(new Date());
-              console.log(`BinanceWebSocketContext: Sent ping`, pingMessageString);
-              
-              // Log only the exact ping message that was sent
-              addLog('info', `Sent ping to Binance WebSocket`, 
-                // Parse the stringified message back to an object to ensure clean formatting in logs
-                JSON.parse(pingMessageString)
-              );
-            } catch (err) {
-              const error = err instanceof Error ? err : new Error(String(err));
-              addLog('error', `Failed to send ping message: ${error.message}`, {
-                error: error.message,
-                stack: error.stack,
-                readyState: wsRef.current?.readyState
-              });
+        // Set up ping interval (every 2.5 minutes to keep connection alive) only if ping is enabled
+        if (pingEnabled) {
+          pingIntervalRef.current = setInterval(() => {
+            if (wsRef.current?.readyState === WebSocket.OPEN) {
+              try {
+                // Ping message with UUID - this matches Binance's expected format
+                const pingMessage = { 
+                  id: generateUUID(),
+                  method: "ping"
+                };
+                
+                // Stringify the ping message
+                const pingMessageString = JSON.stringify(pingMessage);
+                
+                // Send the ping message
+                wsRef.current.send(pingMessageString);
+                setLastPingTime(new Date());
+                console.log(`BinanceWebSocketContext: Sent ping`, pingMessageString);
+                
+                // Log only the exact ping message that was sent
+                addLog('info', `Sent ping to Binance WebSocket`, 
+                  // Parse the stringified message back to an object to ensure clean formatting in logs
+                  JSON.parse(pingMessageString)
+                );
+              } catch (err) {
+                const error = err instanceof Error ? err : new Error(String(err));
+                addLog('error', `Failed to send ping message: ${error.message}`, {
+                  error: error.message,
+                  stack: error.stack,
+                  readyState: wsRef.current?.readyState
+                });
+              }
             }
-          }
-        }, 150000); // 2.5 minutes
+          }, 150000); // 2.5 minutes
+        } else {
+          addLog('info', 'Ping is disabled, not setting up ping interval');
+        }
       };
       
       wsRef.current.onmessage = (event) => {
@@ -690,10 +697,15 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
   
   // Single useEffect for auto-connect on mount and cleanup on unmount
   useEffect(() => {
-    // Load auto-connect preference from localStorage
+    // Load auto-connect and ping preferences from localStorage
     const savedAutoConnect = localStorage.getItem('binance-ws-auto-connect');
     if (savedAutoConnect !== null) {
       setAutoConnect(savedAutoConnect === 'true');
+    }
+    
+    const savedPingEnabled = localStorage.getItem('binance-ws-ping-enabled');
+    if (savedPingEnabled !== null) {
+      setPingEnabled(savedPingEnabled === 'true');
     }
     
     // Clean up on unmount
@@ -716,10 +728,11 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
     };
   }, []);
   
-  // Save auto-connect preference to localStorage when it changes
+  // Save auto-connect and ping preferences to localStorage when they change
   useEffect(() => {
     localStorage.setItem('binance-ws-auto-connect', autoConnect.toString());
-  }, [autoConnect]);
+    localStorage.setItem('binance-ws-ping-enabled', pingEnabled.toString());
+  }, [autoConnect, pingEnabled]);
   
   // Monitor autoConnect and connection state to manage connection
   useEffect(() => {
@@ -744,7 +757,9 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
       error,
       subscribedSymbols,
       autoConnect,
-      setAutoConnect
+      setAutoConnect,
+      pingEnabled,
+      setPingEnabled
     }}>
       {children}
     </BinanceWebSocketContext.Provider>

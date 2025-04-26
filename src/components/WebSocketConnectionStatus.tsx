@@ -19,6 +19,8 @@ interface WebSocketConnectionStatusProps {
   autoConnect?: boolean;
   onAutoConnectChange?: (autoConnect: boolean) => void;
   compressionEnabled?: boolean;
+  pingEnabled?: boolean;
+  onPingEnabledChange?: (pingEnabled: boolean) => void;
 }
 
 const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
@@ -33,7 +35,9 @@ const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
   lastPongTime,
   autoConnect,
   onAutoConnectChange,
-  compressionEnabled
+  compressionEnabled,
+  pingEnabled,
+  onPingEnabledChange
 }) => {
   const [connectionDuration, setConnectionDuration] = useState<string>('');
   const [connectionStartTime, setConnectionStartTime] = useState<Date | null>(null);
@@ -181,25 +185,47 @@ const WebSocketConnectionStatus: React.FC<WebSocketConnectionStatusProps> = ({
             </Alert>
           )}
           
-          {onAutoConnectChange && (
-            <div className="flex items-center justify-between mt-4 p-3 border rounded-md">
-              <div>
-                <div className="font-medium">Auto-Connect</div>
-                <div className="text-sm text-muted-foreground">
-                  Automatically connect on page load
+          <div className="space-y-3 mt-4">
+            {onAutoConnectChange && (
+              <div className="flex items-center justify-between p-3 border rounded-md">
+                <div>
+                  <div className="font-medium">Auto-Connect</div>
+                  <div className="text-sm text-muted-foreground">
+                    Automatically connect on page load
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm">
+                    {autoConnect ? 'On' : 'Off'}
+                  </label>
+                  <Switch
+                    checked={autoConnect}
+                    onCheckedChange={onAutoConnectChange}
+                  />
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <label className="text-sm">
-                  {autoConnect ? 'On' : 'Off'}
-                </label>
-                <Switch
-                  checked={autoConnect}
-                  onCheckedChange={onAutoConnectChange}
-                />
+            )}
+            
+            {onPingEnabledChange && (
+              <div className="flex items-center justify-between p-3 border rounded-md">
+                <div>
+                  <div className="font-medium">Enable Ping</div>
+                  <div className="text-sm text-muted-foreground">
+                    Send periodic ping messages to keep connection alive
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm">
+                    {pingEnabled ? 'On' : 'Off'}
+                  </label>
+                  <Switch
+                    checked={pingEnabled}
+                    onCheckedChange={onPingEnabledChange}
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
           
           <Accordion type="single" collapsible>
             <AccordionItem value="troubleshooting">

@@ -122,12 +122,13 @@ export async function createBinanceOrder(
       data.newOrderRespType = params.newOrderRespType;
     }
 
-    // Generate signature
-    const postdata = Object.entries(data)
+    // Generate query string for signature
+    const queryString = Object.entries(data)
       .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
       .join('&');
     
-    const signature = generateSignature(postdata, credentials.secretKey);
+    // Generate signature using HMAC SHA256
+    const signature = generateSignature(queryString, credentials.secretKey);
 
     // Log the request details (without sensitive information)
     autoTradeLogger.log(`Sending Binance order request: ${params.side} ${params.quantity} ${params.symbol} at ${params.price || 'market price'}`);
@@ -140,7 +141,8 @@ export async function createBinanceOrder(
       data: data,
       endpoint: endpoint,
       isTestMode: testMode,
-      isTestEndpoint: useTestEndpoint
+      isTestEndpoint: useTestEndpoint,
+      queryString: queryString
     });
     
     autoTradeLogger.log('Binance API request details', {
@@ -148,25 +150,25 @@ export async function createBinanceOrder(
       data: JSON.stringify(data),
       endpoint: endpoint,
       isTestMode: testMode,
-      isTestEndpoint: useTestEndpoint
+      isTestEndpoint: useTestEndpoint,
+      queryString: queryString
     });
 
-    // Create payload with signature
-    const payload = {
-      ...data,
-      signature
-    };
+    // For Binance API, we can either:
+    // 1. Send parameters as query string with signature appended
+    // 2. Send parameters in request body with signature appended
+    // We'll use the query string approach as it's more commonly used
+
+    // Create the full URL with query string and signature
+    const fullUrl = `${baseUrl}${endpoint}?${queryString}&signature=${signature}`;
 
     // Make the request
-    const response = await fetch(`${baseUrl}${endpoint}`, {
+    const response = await fetch(fullUrl, {
       method: 'POST',
       headers: {
         'X-MBX-APIKEY': credentials.apiKey,
         'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: Object.entries(payload)
-        .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
-        .join('&')
+      }
     });
 
     // Get response as text first to handle potential JSON parse errors
@@ -219,11 +221,18 @@ export async function createBinanceOrder(
 
 /**
  * Format crypto symbol for Binance API
- * Removes any special characters and ensures proper format (e.g., BTC/USD -> BTCUSD)
+ * Removes any special characters and ensures proper format (e.g., BTC/USD -> BTCUSDT)
  */
 export function formatBinanceSymbol(symbol: string): string {
   // Remove any special characters and convert to uppercase
-  return symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const cleanSymbol = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  
+  // If the symbol doesn't end with USDT, append it
+  if (!cleanSymbol.endsWith('USDT')) {
+    return `${cleanSymbol}USDT`;
+  }
+  
+  return cleanSymbol;
 }
 
 /**

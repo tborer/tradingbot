@@ -149,8 +149,9 @@ export default function BinanceWebSocketSettings() {
         throw new Error('Binance API credentials not configured');
       }
 
-      // Format the symbol for Binance API (remove any special characters)
-      const formattedSymbol = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      // Format the symbol for Binance API (ensure it has USDT suffix)
+      const cleanSymbol = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      const formattedSymbol = cleanSymbol.endsWith('USDT') ? cleanSymbol : `${cleanSymbol}USDT`;
       
       // Prepare request data
       const timestamp = Date.now();
@@ -167,6 +168,7 @@ export default function BinanceWebSocketSettings() {
       };
       
       // This is what our API will transform into a request to Binance
+      // Format according to Binance API requirements
       const binanceData = {
         symbol: formattedSymbol,
         side: 'BUY',
@@ -175,12 +177,22 @@ export default function BinanceWebSocketSettings() {
         timestamp: timestamp.toString()
       };
       
-      // Store the test data for display
+      // Create the query string for signature (as shown in the example)
+      const queryString = Object.entries(binanceData)
+        .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+        .join('&');
+      
+      // Store the test data for display in a more readable format
       setTestTradingData(prev => ({ 
         ...prev, 
         [cryptoId]: JSON.stringify({
           requestToOurApi: requestData,
-          transformedForBinance: binanceData
+          transformedForBinance: binanceData,
+          apiKey: `${settingsData.binanceApiKey.substring(0, 5)}...${settingsData.binanceApiKey.substring(settingsData.binanceApiKey.length - 5)}`,
+          queryString: queryString,
+          fullRequestExample: `
+curl -X "POST" "${testUrl}?${queryString}&signature=<signature>" \\
+    -H "X-MBX-APIKEY: ${settingsData.binanceApiKey.substring(0, 5)}..."`
         }, null, 2)
       }));
       

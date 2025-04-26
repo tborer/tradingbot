@@ -10,6 +10,8 @@ import WebSocketConnectionStatus from './WebSocketConnectionStatus';
 import { useMicroProcessing } from '@/hooks/useMicroProcessing';
 import BinanceTradingTest from './BinanceTradingTest';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/components/ui/use-toast";
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function BinanceWebSocketSettings() {
   const { 
@@ -33,6 +35,10 @@ export default function BinanceWebSocketSettings() {
   const { enabledCryptos } = useMicroProcessing();
   const [selectedCryptoId, setSelectedCryptoId] = useState<string | null>(null);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const [testTradingResponses, setTestTradingResponses] = useState<Record<string, string>>({});
+  const [isTestTrading, setIsTestTrading] = useState<Record<string, boolean>>({});
   
   // Filter cryptos that use Binance as their WebSocket provider
   const binanceCryptos = enabledCryptos.filter(
@@ -106,6 +112,104 @@ export default function BinanceWebSocketSettings() {
     } catch (err) {
       setTestResponse(`Failed to establish WebSocket connection: ${err instanceof Error ? err.message : String(err)}`);
       setIsTesting(false);
+    }
+  };
+
+  // Function to execute a test trade using the Binance test endpoint
+  const executeTestTrade = async (cryptoId: string, symbol: string) => {
+    if (!user) {
+      toast({
+        variant: "destructive",
+        title: "Authentication required",
+        description: "You must be logged in to execute test trades.",
+      });
+      return;
+    }
+
+    // Mark this crypto as currently test trading
+    setIsTestTrading(prev => ({ ...prev, [cryptoId]: true }));
+    setTestTradingResponses(prev => ({ ...prev, [cryptoId]: "Executing test trade..." }));
+
+    try {
+      // Get API credentials from settings
+      const settingsResponse = await fetch('/api/settings');
+      const settingsData = await settingsResponse.json();
+      
+      if (!settingsResponse.ok) {
+        throw new Error(settingsData.error || 'Failed to fetch API credentials');
+      }
+      
+      if (!settingsData.binanceApiKey || !settingsData.binanceApiSecret) {
+        throw new Error('Binance API credentials not configured');
+      }
+
+      // Format the symbol for Binance API (remove any special characters)
+      const formattedSymbol = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      
+      // Prepare request data
+      const timestamp = Date.now();
+      const quantity = 0.001; // Small test quantity
+      
+      const data = {
+        symbol: formattedSymbol,
+        side: 'BUY',
+        type: 'MARKET',
+        quantity: quantity.toString(),
+        timestamp: timestamp.toString()
+      };
+      
+      // Generate signature
+      const queryString = Object.entries(data)
+        .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+        .join('&');
+      
+      // Make the request to our API endpoint which will handle the signature and request
+      const response = await fetch('/api/cryptos/binance-trade', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cryptoId,
+          action: 'buy',
+          quantity,
+          orderType: 'MARKET',
+          testMode: true,
+          useTestEndpoint: true,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || result.details || 'Failed to execute test trade');
+      }
+      
+      // Update the test trading response
+      setTestTradingResponses(prev => ({ 
+        ...prev, 
+        [cryptoId]: JSON.stringify(result, null, 2)
+      }));
+      
+      toast({
+        title: "Test trade executed",
+        description: `Successfully executed test trade for ${symbol}`,
+      });
+    } catch (error) {
+      console.error('Error executing test trade:', error);
+      setTestTradingResponses(prev => ({ 
+        ...prev, 
+        [cryptoId]: `Error: ${error.message || 'An unexpected error occurred'}`
+      }));
+      
+      toast({
+        variant: "destructive",
+        title: "Test trade failed",
+        description: error.message || 'An unexpected error occurred',
+      });
+    } finally {
+      // Mark this crypto as no longer test trading
+      setIsTestTrading(prev => ({ ...prev, [cryptoId]: false }));
     }
   };
 
@@ -402,42 +506,50 @@ export default function BinanceWebSocketSettings() {
                     </thead>
                     <tbody>
                       {binanceCryptos.map(crypto => (
-                        <tr key={crypto.id} className="border-b">
-                          <td className="py-2 px-4 font-medium">{crypto.symbol}</td>
-                          <td className="py-2 px-4">
-                            ${crypto.currentPrice ? crypto.currentPrice.toFixed(2) : 'N/A'}
-                          </td>
-                          <td className="py-2 px-4">
-                            <Badge variant={isConnected ? "success" : "destructive"}>
-                              {isConnected ? 'Connected' : 'Disconnected'}
-                            </Badge>
-                          </td>
-                          <td className="py-2 px-4">
-                            <div className="flex space-x-2">
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => handleSelectCrypto(crypto.id, crypto.symbol)}
-                              >
-                                Trading
-                              </Button>
-                              <Button 
-                                variant="secondary" 
-                                size="sm"
-                                onClick={() => {
-                                  handleSelectCrypto(crypto.id, crypto.symbol);
-                                  // Set a custom event to trigger the test endpoint in BinanceTradingTest
-                                  const event = new CustomEvent('use-binance-test-endpoint', {
-                                    detail: { cryptoId: crypto.id, symbol: crypto.symbol }
-                                  });
-                                  window.dispatchEvent(event);
-                                }}
-                              >
-                                Test Trading
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
+                        <React.Fragment key={crypto.id}>
+                          <tr className="border-b">
+                            <td className="py-2 px-4 font-medium">{crypto.symbol}</td>
+                            <td className="py-2 px-4">
+                              ${crypto.currentPrice ? crypto.currentPrice.toFixed(2) : 'N/A'}
+                            </td>
+                            <td className="py-2 px-4">
+                              <Badge variant={isConnected ? "success" : "destructive"}>
+                                {isConnected ? 'Connected' : 'Disconnected'}
+                              </Badge>
+                            </td>
+                            <td className="py-2 px-4">
+                              <div className="flex space-x-2">
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => handleSelectCrypto(crypto.id, crypto.symbol)}
+                                >
+                                  Trading
+                                </Button>
+                                <Button 
+                                  variant="secondary" 
+                                  size="sm"
+                                  onClick={() => executeTestTrade(crypto.id, crypto.symbol)}
+                                  disabled={isTestTrading[crypto.id]}
+                                >
+                                  {isTestTrading[crypto.id] ? 'Testing...' : 'Test Trading'}
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                          {testTradingResponses[crypto.id] && (
+                            <tr className="border-b bg-muted/20">
+                              <td colSpan={4} className="py-2 px-4">
+                                <div className="space-y-1">
+                                  <h4 className="text-sm font-medium">Test Trading Response</h4>
+                                  <pre className="p-2 bg-muted rounded-md overflow-auto text-xs max-h-40">
+                                    {testTradingResponses[crypto.id]}
+                                  </pre>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       ))}
                     </tbody>
                   </table>

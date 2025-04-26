@@ -77,7 +77,7 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
   const getWebSocketUrl = useCallback(() => {
     // Always use the base WebSocket endpoint for dynamic subscriptions
     // This allows us to use the SUBSCRIBE method after connection
-    return `${baseUrl}/ws`;
+    return `${baseUrl}/ws/btcusdt@bookTicker`;
   }, [baseUrl]);
   
   // Update subscribed symbols when enabled cryptos change
@@ -317,6 +317,45 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
               hasStream: !!data.stream,
               dataKeys: Object.keys(data)
             });
+          }
+          
+          // Handle bookTicker updates (for the specific URL we're using)
+          if (data.b) {
+            // Extract symbol and best bid price from bookTicker
+            const symbol = data.s ? data.s.replace(/USDT$/, '') : 'BTC';
+            const bestBidPrice = parseFloat(data.b);
+            
+            // Log the bookTicker data structure for debugging
+            if (Math.random() < 0.1) { // Log 10% of bookTicker messages
+              addLog('info', `BookTicker update for ${symbol}`, {
+                symbol: data.s,
+                bestBidPrice,
+                dataStructure: {
+                  bestBidPrice: data.b,
+                  bestBidQty: data.B,
+                  bestAskPrice: data.a,
+                  bestAskQty: data.A
+                }
+              });
+            }
+            
+            // Update price in the micro processing service
+            if (!isNaN(bestBidPrice) && bestBidPrice > 0) {
+              handlePriceUpdate({
+                symbol,
+                price: bestBidPrice
+              });
+              
+              // Log price update (but not too frequently to avoid flooding logs)
+              if (Math.random() < 0.05) { // Log approximately 5% of updates
+                const priceUpdate = {
+                  symbol,
+                  price: bestBidPrice,
+                  source: 'binance-bookTicker'
+                };
+                addLog('info', `Received price update for ${symbol}: $${bestBidPrice} (best bid from bookTicker)`, priceUpdate);
+              }
+            }
           }
           
           // Handle depth (order book) updates

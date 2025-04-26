@@ -39,30 +39,19 @@ export default function BinanceWebSocketSettings() {
   
   // Get the WebSocket URL
   const getWebSocketUrl = () => {
-    if (subscribedSymbols.length === 0) {
-      return 'wss://stream.binance.us:9443/ws';
-    }
-    
-    if (subscribedSymbols.length === 1) {
-      // For a single symbol, use the direct /ws/<symbol>@aggTrade format
-      const lowerSymbol = subscribedSymbols[0].toLowerCase();
-      return `wss://stream.binance.us:9443/ws/${lowerSymbol}@aggTrade`;
-    } else {
-      // For multiple symbols, use the combined stream format
-      const streams = subscribedSymbols.flatMap(symbol => {
-        const lowerSymbol = symbol.toLowerCase();
-        return [`${lowerSymbol}@aggTrade`, `${lowerSymbol}@depth`];
-      });
-      
-      return `wss://stream.binance.us:9443/stream?streams=${streams.join('/')}`;
-    }
+    // Always use the bookTicker endpoint for BTC as the main connection
+    return 'wss://stream.binance.us:9443/ws/btcusdt@bookTicker';
   };
 
   // Test connection functionality
-  const [testUrl, setTestUrl] = useState('wss://stream.binance.us:9443/ws');
+  const [testUrl, setTestUrl] = useState('wss://stream.binance.us:9443/ws/btcusdt@bookTicker');
   const [testBody, setTestBody] = useState(`{
-  "id": "922bcc6e-9de8-440d-9e84-7c80933a8d0d",
-  "method": "ping"
+  "method": "SUBSCRIBE",
+  "params": [
+    "btcusdt@aggTrade",
+    "btcusdt@depth"
+  ],
+  "id": 1
 }`);
   const [testResponse, setTestResponse] = useState('');
   const [testWs, setTestWs] = useState<WebSocket | null>(null);
@@ -226,7 +215,23 @@ export default function BinanceWebSocketSettings() {
                     placeholder="Response will appear here"
                   />
                   <div className="mt-2 p-3 bg-muted/50 rounded-md text-xs space-y-2">
-                    <h4 className="font-medium">About Depth Updates</h4>
+                    <h4 className="font-medium">About BookTicker Updates</h4>
+                    <p>
+                      The system now uses the bookTicker stream which provides the best bid and ask prices directly:
+                    </p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li><span className="font-mono">u</span>: Order book updateId</li>
+                      <li><span className="font-mono">s</span>: Symbol (e.g., "BNBUSDT")</li>
+                      <li><span className="font-mono">b</span>: Best bid price - Used for current price updates</li>
+                      <li><span className="font-mono">B</span>: Best bid quantity</li>
+                      <li><span className="font-mono">a</span>: Best ask price</li>
+                      <li><span className="font-mono">A</span>: Best ask quantity</li>
+                    </ul>
+                    <p>
+                      The system uses the best bid price (<span className="font-mono">b</span>) from bookTicker updates for the current price 
+                      in the micro processing logic, as it represents the highest price buyers are willing to pay.
+                    </p>
+                    <h4 className="font-medium mt-3">About Depth Updates</h4>
                     <p>
                       Depth updates contain order book data with the following key fields:
                     </p>
@@ -236,10 +241,6 @@ export default function BinanceWebSocketSettings() {
                       <li><span className="font-mono">b</span>: Bids array [[price, quantity], ...] - Best bid is first element</li>
                       <li><span className="font-mono">a</span>: Asks array [[price, quantity], ...] - Best ask is first element</li>
                     </ul>
-                    <p>
-                      The system uses the best bid price (<span className="font-mono">b[0][0]</span>) from depth updates for the current price 
-                      in the micro processing logic, as it represents the highest price buyers are willing to pay.
-                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -314,8 +315,8 @@ export default function BinanceWebSocketSettings() {
                             id: 1
                           };
                           
-                          // Set up test connection with the current WebSocket URL
-                          setTestUrl('wss://stream.binance.us:9443/ws');
+                          // Set up test connection with the correct WebSocket URL
+                          setTestUrl('wss://stream.binance.us:9443/ws/btcusdt@bookTicker');
                           setTestBody(JSON.stringify(subscribeMessage, null, 2));
                           
                           // Log the action

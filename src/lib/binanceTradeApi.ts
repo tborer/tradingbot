@@ -32,14 +32,14 @@ export async function getBinanceCredentials(userId: string): Promise<BinanceCred
       return null;
     }
 
-    if (!settings.binanceTradeApi || !settings.binanceApiToken) {
+    if (!settings.binanceApiKey || !settings.binanceApiSecret) {
       autoTradeLogger.log(`Binance API credentials not configured for user ${userId}`);
       return null;
     }
 
     return {
-      apiKey: settings.binanceTradeApi,
-      secretKey: settings.binanceApiToken
+      apiKey: settings.binanceApiKey,
+      secretKey: settings.binanceApiSecret
     };
   } catch (error) {
     autoTradeLogger.log(`Error retrieving Binance credentials: ${error.message}`);
@@ -73,13 +73,24 @@ export async function createBinanceOrder(
       throw new Error('Binance API credentials not configured');
     }
 
+    // Get settings to retrieve the API URL
+    const settings = await prisma.settings.findUnique({
+      where: { userId }
+    });
+
+    // Use the configured API URL or default to Binance US
+    const apiUrl = settings?.binanceTradeApi || 'https://api.binance.us/api/v3/order';
+    const baseUrl = apiUrl.split('/api/')[0]; // Extract base URL (e.g., https://api.binance.us)
+    const uriPath = apiUrl.substring(baseUrl.length); // Extract URI path (e.g., /api/v3/order)
+    
+    // Use test endpoint if in test mode
+    const endpoint = testMode ? uriPath.replace('/order', '/order/test') : uriPath;
+
     // Prepare request parameters
     const timestamp = Date.now();
-    const apiUrl = 'https://api.binance.us';
-    const endpoint = testMode ? '/api/v3/order/test' : '/api/v3/order';
 
-    // Build query string
-    let queryParams: Record<string, string> = {
+    // Build data object
+    let data: Record<string, string> = {
       symbol: params.symbol,
       side: params.side,
       type: params.type,
@@ -88,63 +99,68 @@ export async function createBinanceOrder(
 
     // Add quantity
     if (params.quantity) {
-      queryParams.quantity = params.quantity.toString();
+      data.quantity = params.quantity.toString();
     }
 
     // Add optional parameters if provided
     if (params.price) {
-      queryParams.price = params.price.toString();
+      data.price = params.price.toString();
     }
 
     if (params.timeInForce) {
-      queryParams.timeInForce = params.timeInForce;
+      data.timeInForce = params.timeInForce;
     }
 
     if (params.newClientOrderId) {
-      queryParams.newClientOrderId = params.newClientOrderId;
+      data.newClientOrderId = params.newClientOrderId;
     }
 
     if (params.newOrderRespType) {
-      queryParams.newOrderRespType = params.newOrderRespType;
+      data.newOrderRespType = params.newOrderRespType;
     }
 
-    // Convert query params to string
-    const queryString = Object.entries(queryParams)
-      .map(([key, value]) => `${key}=${value}`)
-      .join('&');
-
     // Generate signature
-    const signature = generateSignature(queryString, credentials.secretKey);
-
-    // Build full URL with signature
-    const url = `${apiUrl}${endpoint}?${queryString}&signature=${signature}`;
+    const postdata = Object.entries(data)
+      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .join('&');
+    
+    const signature = generateSignature(postdata, credentials.secretKey);
 
     // Log the request details (without sensitive information)
     autoTradeLogger.log(`Sending Binance order request: ${params.side} ${params.quantity} ${params.symbol} at ${params.price || 'market price'}`);
 
+    // Create payload with signature
+    const payload = {
+      ...data,
+      signature
+    };
+
     // Make the request
-    const response = await fetch(url, {
+    const response = await fetch(`${baseUrl}${endpoint}`, {
       method: 'POST',
       headers: {
         'X-MBX-APIKEY': credentials.apiKey,
-        'Content-Type': 'application/json'
-      }
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: Object.entries(payload)
+        .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+        .join('&')
     });
 
     // Parse response
-    const data = await response.json();
+    const responseData = await response.json();
 
     // Check for errors
     if (!response.ok) {
-      const errorMessage = data.msg || 'Unknown error';
-      const errorCode = data.code || 'UNKNOWN';
+      const errorMessage = responseData.msg || 'Unknown error';
+      const errorCode = responseData.code || 'UNKNOWN';
       throw new Error(`Binance API error (${errorCode}): ${errorMessage}`);
     }
 
     // Log success
-    autoTradeLogger.log(`Binance order created successfully: ${JSON.stringify(data)}`);
+    autoTradeLogger.log(`Binance order created successfully: ${JSON.stringify(responseData)}`);
 
-    return data;
+    return responseData;
   } catch (error) {
     autoTradeLogger.log(`Error creating Binance order: ${error.message}`);
     console.error('Error creating Binance order:', error);

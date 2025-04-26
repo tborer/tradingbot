@@ -45,8 +45,9 @@ model Settings {
   finnhubApiKey     String?
   krakenApiKey      String?
   krakenApiSign     String?
-  binanceTradeApi   String?
-  binanceApiToken   String?
+  binanceTradeApi   String? @default("https://api.binance.us/api/v3/order")
+  binanceApiKey     String?
+  binanceApiSecret  String?
   alphaVantageApiKey String?
   coinDeskApiKey    String?
   openAIApiKey      String?

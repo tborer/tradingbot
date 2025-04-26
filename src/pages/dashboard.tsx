@@ -758,7 +758,8 @@ export default function Dashboard() {
           krakenApiKey: settings.krakenApiKey,
           krakenApiSign: settings.krakenApiSign,
           binanceTradeApi: settings.binanceTradeApi,
-          binanceApiToken: settings.binanceApiToken,
+          binanceApiKey: settings.binanceApiKey,
+          binanceApiSecret: settings.binanceApiSecret,
         }),
       });
       
@@ -1888,26 +1889,38 @@ export default function Dashboard() {
                         <h3 className="text-lg font-medium mb-2">Binance API Integration</h3>
                         <div className="space-y-4">
                           <div>
-                            <Label htmlFor="binanceTradeApi">Binance Trade API</Label>
+                            <Label htmlFor="binanceTradeApi">Binance Trade API URL</Label>
                             <Input
                               id="binanceTradeApi"
-                              type="password"
-                              placeholder="Enter your Binance Trade API"
-                              value={settings.binanceTradeApi || ""}
+                              type="text"
+                              placeholder="https://api.binance.us/api/v3/order"
+                              value={settings.binanceTradeApi || "https://api.binance.us/api/v3/order"}
                               onChange={(e) => 
                                 setSettings({ ...settings, binanceTradeApi: e.target.value })
                               }
                             />
                           </div>
                           <div>
-                            <Label htmlFor="binanceApiToken">Binance API Token</Label>
+                            <Label htmlFor="binanceApiKey">Binance API Key</Label>
                             <Input
-                              id="binanceApiToken"
+                              id="binanceApiKey"
                               type="password"
-                              placeholder="Enter your Binance API Token"
-                              value={settings.binanceApiToken || ""}
+                              placeholder="Enter your Binance API Key"
+                              value={settings.binanceApiKey || ""}
                               onChange={(e) => 
-                                setSettings({ ...settings, binanceApiToken: e.target.value })
+                                setSettings({ ...settings, binanceApiKey: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="binanceApiSecret">Binance API Secret Key</Label>
+                            <Input
+                              id="binanceApiSecret"
+                              type="password"
+                              placeholder="Enter your Binance API Secret Key"
+                              value={settings.binanceApiSecret || ""}
+                              onChange={(e) => 
+                                setSettings({ ...settings, binanceApiSecret: e.target.value })
                               }
                             />
                           </div>

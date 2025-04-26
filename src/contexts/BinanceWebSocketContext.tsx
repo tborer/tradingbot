@@ -134,25 +134,20 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
       return;
     }
 
-    // If we're already connected, disconnect first to avoid duplicate connections
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      console.log('BinanceWebSocketContext: Already connected, disconnecting first');
-      addLog('info', 'Already connected, disconnecting first before reconnecting');
-      
-      // Just close the connection without sending unsubscribe message
-      wsRef.current.close(1000, 'Reconnecting');
+    // Close existing connection if any
+    if (wsRef.current) {
+      try {
+        wsRef.current.close(1000, 'Creating new connection');
+      } catch (err) {
+        console.error('Error closing existing WebSocket connection:', err);
+      }
       wsRef.current = null;
-      setIsConnected(false);
     }
     
     // Increment connection attempt counter
     connectionAttemptRef.current += 1;
     
     try {
-      // Close existing connection if any
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
       
       const wsUrl = getWebSocketUrl();
       addLog('info', `Connecting to Binance WebSocket: ${wsUrl}`);
@@ -510,22 +505,20 @@ export const BinanceWebSocketProvider: React.FC<BinanceWebSocketProviderProps> =
           });
         }
         
-        // Attempt to reconnect if auto-connect is enabled
-        // For code 1000 (normal closure), we still want to reconnect if it happened too quickly
-        // This helps with the case where the server closes the connection because it didn't receive a subscription
-        const shouldReconnect = autoConnect && 
-          (event.code !== 1000 || // Reconnect for abnormal closures
-           (event.code === 1000 && !event.wasClean)); // Also reconnect for normal closures that weren't clean
+        // Simplified reconnection logic - just check autoConnect and limit retries
+        const maxRetries = 5; // Limit retries to prevent infinite reconnection attempts
         
-        if (shouldReconnect) {
+        if (autoConnect && connectionAttemptRef.current < maxRetries) {
           // Exponential backoff for reconnection attempts
           const delay = Math.min(30000, 1000 * Math.pow(1.5, Math.min(connectionAttemptRef.current, 10)));
           
-          addLog('info', `Will attempt to reconnect in ${delay / 1000} seconds`);
+          addLog('info', `Will attempt to reconnect in ${delay / 1000} seconds (attempt ${connectionAttemptRef.current + 1}/${maxRetries})`);
           
           reconnectTimeoutRef.current = setTimeout(() => {
             connect();
           }, delay);
+        } else if (connectionAttemptRef.current >= maxRetries) {
+          addLog('warning', `Maximum reconnection attempts (${maxRetries}) reached. Automatic reconnection stopped.`);
         }
       };
     } catch (err) {

@@ -16,6 +16,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    // Log the incoming request for debugging
+    console.log('Binance trade API request:', {
+      method: req.method,
+      url: req.url,
+      headers: req.headers,
+      body: req.body
+    });
+    
+    autoTradeLogger.log('Binance trade API request received', { 
+      body: JSON.stringify(req.body),
+      headers: JSON.stringify(req.headers)
+    });
+    
     // Get the user from Supabase auth
     const supabase = createClient({ req, res });
     const { data } = await supabase.auth.getUser();

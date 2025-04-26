@@ -131,6 +131,25 @@ export async function createBinanceOrder(
 
     // Log the request details (without sensitive information)
     autoTradeLogger.log(`Sending Binance order request: ${params.side} ${params.quantity} ${params.symbol} at ${params.price || 'market price'}`);
+    
+    // Log the full request URL and data for debugging
+    const requestUrl = `${baseUrl}${endpoint}`;
+    console.log('Binance API request:', {
+      url: requestUrl,
+      method: 'POST',
+      data: data,
+      endpoint: endpoint,
+      isTestMode: testMode,
+      isTestEndpoint: useTestEndpoint
+    });
+    
+    autoTradeLogger.log('Binance API request details', {
+      url: requestUrl,
+      data: JSON.stringify(data),
+      endpoint: endpoint,
+      isTestMode: testMode,
+      isTestEndpoint: useTestEndpoint
+    });
 
     // Create payload with signature
     const payload = {
@@ -150,13 +169,40 @@ export async function createBinanceOrder(
         .join('&')
     });
 
-    // Parse response
-    const responseData = await response.json();
+    // Get response as text first to handle potential JSON parse errors
+    const responseText = await response.text();
+    let responseData;
+    
+    try {
+      // Try to parse as JSON
+      responseData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Error parsing Binance API response:', parseError);
+      autoTradeLogger.log(`Error parsing Binance API response: ${parseError.message}`, {
+        responseText: responseText.substring(0, 500) // Log first 500 chars of response
+      });
+      throw new Error(`Failed to parse Binance API response: ${responseText.substring(0, 200)}${responseText.length > 200 ? '...' : ''}`);
+    }
 
     // Check for errors
     if (!response.ok) {
       const errorMessage = responseData.msg || 'Unknown error';
       const errorCode = responseData.code || 'UNKNOWN';
+      
+      // Log detailed error information
+      console.error('Binance API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorCode,
+        errorMessage,
+        responseData
+      });
+      
+      autoTradeLogger.log(`Binance API error (${errorCode}): ${errorMessage}`, {
+        status: response.status,
+        responseData: JSON.stringify(responseData)
+      });
+      
       throw new Error(`Binance API error (${errorCode}): ${errorMessage}`);
     }
 

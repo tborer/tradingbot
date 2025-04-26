@@ -38,6 +38,8 @@ export default function BinanceWebSocketSettings() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [testTradingResponses, setTestTradingResponses] = useState<Record<string, string>>({});
+  const [testTradingUrls, setTestTradingUrls] = useState<Record<string, string>>({});
+  const [testTradingData, setTestTradingData] = useState<Record<string, string>>({});
   const [isTestTrading, setIsTestTrading] = useState<Record<string, boolean>>({});
   
   // Filter cryptos that use Binance as their WebSocket provider
@@ -129,6 +131,10 @@ export default function BinanceWebSocketSettings() {
     // Mark this crypto as currently test trading
     setIsTestTrading(prev => ({ ...prev, [cryptoId]: true }));
     setTestTradingResponses(prev => ({ ...prev, [cryptoId]: "Executing test trade..." }));
+    
+    // Set the test URL (this is what will be used by our API)
+    const testUrl = "https://api.binance.us/api/v3/order/test";
+    setTestTradingUrls(prev => ({ ...prev, [cryptoId]: testUrl }));
 
     try {
       // Get API credentials from settings
@@ -150,7 +156,18 @@ export default function BinanceWebSocketSettings() {
       const timestamp = Date.now();
       const quantity = 0.001; // Small test quantity
       
-      const data = {
+      // This is the data that will be sent to our API
+      const requestData = {
+        cryptoId,
+        action: 'buy',
+        quantity,
+        orderType: 'MARKET',
+        testMode: true,
+        useTestEndpoint: true,
+      };
+      
+      // This is what our API will transform into a request to Binance
+      const binanceData = {
         symbol: formattedSymbol,
         side: 'BUY',
         type: 'MARKET',
@@ -158,10 +175,14 @@ export default function BinanceWebSocketSettings() {
         timestamp: timestamp.toString()
       };
       
-      // Generate signature
-      const queryString = Object.entries(data)
-        .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
-        .join('&');
+      // Store the test data for display
+      setTestTradingData(prev => ({ 
+        ...prev, 
+        [cryptoId]: JSON.stringify({
+          requestToOurApi: requestData,
+          transformedForBinance: binanceData
+        }, null, 2)
+      }));
       
       // Make the request to our API endpoint which will handle the signature and request
       const response = await fetch('/api/cryptos/binance-trade', {
@@ -169,17 +190,20 @@ export default function BinanceWebSocketSettings() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          cryptoId,
-          action: 'buy',
-          quantity,
-          orderType: 'MARKET',
-          testMode: true,
-          useTestEndpoint: true,
-        }),
+        body: JSON.stringify(requestData),
       });
       
-      const result = await response.json();
+      // Get the response as text first to handle potential JSON parse errors
+      const responseText = await response.text();
+      let result;
+      
+      try {
+        // Try to parse as JSON
+        result = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('Error parsing response:', parseError);
+        throw new Error(`Failed to parse response: ${responseText.substring(0, 200)}${responseText.length > 200 ? '...' : ''}`);
+      }
       
       if (!response.ok) {
         throw new Error(result.error || result.details || 'Failed to execute test trade');
@@ -195,8 +219,20 @@ export default function BinanceWebSocketSettings() {
         title: "Test trade executed",
         description: `Successfully executed test trade for ${symbol}`,
       });
+      
+      // Log success for debugging
+      console.log('Test trade successful:', result);
+      addLog('info', `Test trade successful for ${symbol}`, result);
+      
     } catch (error) {
       console.error('Error executing test trade:', error);
+      
+      // Log the error for debugging
+      addLog('error', `Test trade failed for ${symbol}`, { 
+        error: error.message || 'Unknown error',
+        stack: error.stack
+      });
+      
       setTestTradingResponses(prev => ({ 
         ...prev, 
         [cryptoId]: `Error: ${error.message || 'An unexpected error occurred'}`
@@ -537,14 +573,34 @@ export default function BinanceWebSocketSettings() {
                               </div>
                             </td>
                           </tr>
-                          {testTradingResponses[crypto.id] && (
+                          {(testTradingResponses[crypto.id] || testTradingUrls[crypto.id] || testTradingData[crypto.id]) && (
                             <tr className="border-b bg-muted/20">
                               <td colSpan={4} className="py-2 px-4">
-                                <div className="space-y-1">
-                                  <h4 className="text-sm font-medium">Test Trading Response</h4>
-                                  <pre className="p-2 bg-muted rounded-md overflow-auto text-xs max-h-40">
-                                    {testTradingResponses[crypto.id]}
-                                  </pre>
+                                <div className="space-y-3">
+                                  {testTradingUrls[crypto.id] && (
+                                    <div>
+                                      <h4 className="text-sm font-medium">Test URL</h4>
+                                      <pre className="p-2 bg-muted rounded-md overflow-auto text-xs max-h-20">
+                                        {testTradingUrls[crypto.id]}
+                                      </pre>
+                                    </div>
+                                  )}
+                                  
+                                  {testTradingData[crypto.id] && (
+                                    <div>
+                                      <h4 className="text-sm font-medium">Test Data</h4>
+                                      <pre className="p-2 bg-muted rounded-md overflow-auto text-xs max-h-40">
+                                        {testTradingData[crypto.id]}
+                                      </pre>
+                                    </div>
+                                  )}
+                                  
+                                  <div>
+                                    <h4 className="text-sm font-medium">Test Trading Response</h4>
+                                    <pre className="p-2 bg-muted rounded-md overflow-auto text-xs max-h-40">
+                                      {testTradingResponses[crypto.id]}
+                                    </pre>
+                                  </div>
                                 </div>
                               </td>
                             </tr>

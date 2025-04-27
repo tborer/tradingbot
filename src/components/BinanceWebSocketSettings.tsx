@@ -128,6 +128,25 @@ export default function BinanceWebSocketSettings() {
       return;
     }
 
+    // Validate inputs
+    if (!cryptoId || typeof cryptoId !== 'string') {
+      toast({
+        variant: "destructive",
+        title: "Invalid crypto ID",
+        description: "A valid crypto ID is required to execute a test trade.",
+      });
+      return;
+    }
+
+    if (!symbol || typeof symbol !== 'string') {
+      toast({
+        variant: "destructive",
+        title: "Invalid symbol",
+        description: "A valid crypto symbol is required to execute a test trade.",
+      });
+      return;
+    }
+
     // Mark this crypto as currently test trading
     setIsTestTrading(prev => ({ ...prev, [cryptoId]: true }));
     setTestTradingResponses(prev => ({ ...prev, [cryptoId]: "Executing test trade..." }));
@@ -195,15 +214,40 @@ export default function BinanceWebSocketSettings() {
       const timestamp = Date.now();
       const quantity = 0.001; // Small test quantity
       
+      // Validate quantity
+      if (isNaN(quantity) || quantity <= 0) {
+        throw new Error(`Invalid quantity: ${quantity}. Must be a positive number.`);
+      }
+      
       // This is the data that will be sent to our API
       const requestData = {
-        cryptoId,
+        cryptoId: cryptoId,
         action: 'buy',
-        quantity,
+        quantity: quantity,
         orderType: 'MARKET',
         testMode: true,
         useTestEndpoint: true,
       };
+      
+      // Validate all required fields are present and of correct type
+      if (!requestData.cryptoId || typeof requestData.cryptoId !== 'string') {
+        throw new Error('Invalid cryptoId in request data');
+      }
+      
+      if (!requestData.action || typeof requestData.action !== 'string' || 
+          !['buy', 'sell'].includes(requestData.action.toLowerCase())) {
+        throw new Error('Invalid action in request data. Must be "buy" or "sell"');
+      }
+      
+      if (requestData.quantity === undefined || requestData.quantity === null || 
+          isNaN(requestData.quantity) || requestData.quantity <= 0) {
+        throw new Error('Invalid quantity in request data. Must be a positive number');
+      }
+      
+      if (!requestData.orderType || typeof requestData.orderType !== 'string' || 
+          !['MARKET', 'LIMIT'].includes(requestData.orderType.toUpperCase())) {
+        throw new Error('Invalid orderType in request data. Must be "MARKET" or "LIMIT"');
+      }
       
       // This is what our API will transform into a request to Binance
       // Format according to Binance API requirements

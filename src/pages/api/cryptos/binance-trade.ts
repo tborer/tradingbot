@@ -87,7 +87,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       timestamp: new Date().toISOString()
     });
     
+    // Extract and validate request body with detailed error handling
+    // Generate a request ID for tracking this specific request
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+    
+    // First, validate that req.body exists and is an object
+    if (!req.body || typeof req.body !== 'object') {
+      const error = new Error('Request body is missing or invalid');
+      autoTradeLogger.log(`[${requestId}] Binance trade API validation error`, {
+        error: error.message,
+        bodyType: typeof req.body,
+        body: req.body,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
+      });
+      return res.status(400).json({ 
+        error: 'Invalid data format', 
+        details: 'Request body must be a valid JSON object',
+        requestId,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
     // Extract request body - support both formats (from direct calls and from trade.ts)
+    // Use destructuring with default values to handle missing properties
     const { 
       cryptoId, 
       action, 
@@ -100,8 +123,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       microProcessing = false
     } = req.body;
     
-    // Log extracted parameters
-    autoTradeLogger.log('Binance trade API parameters extracted', {
+    // Log extracted parameters with detailed type information
+    autoTradeLogger.log(`[${requestId}] Binance trade API parameters extracted`, {
       cryptoId,
       action,
       quantity,
@@ -116,45 +139,92 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       hasQuantity: !!quantity,
       hasShares: !!shares,
       hasPrice: !!price,
+      cryptoIdType: typeof cryptoId,
+      actionType: typeof action,
+      quantityType: typeof quantity,
+      sharesType: typeof shares,
+      priceType: typeof price,
+      orderTypeType: typeof orderType,
+      testModeType: typeof testMode,
+      useTestEndpointType: typeof useTestEndpoint,
+      requestId,
       timestamp: new Date().toISOString()
     });
     
     // Use shares if quantity is not provided (for compatibility with trade.ts)
-    const tradeQuantity = quantity || shares;
+    const tradeQuantity = quantity !== undefined && quantity !== null ? quantity : shares;
+    
+    // Collect validation errors for comprehensive error reporting
+    const validationErrors = [];
     
     // Validate required parameters
     if (!cryptoId) {
-      const error = new Error('Missing cryptoId parameter');
-      autoTradeLogger.log('Binance trade API validation error', {
-        error: error.message,
-        stack: error.stack,
+      validationErrors.push('Missing cryptoId parameter');
+      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: Missing cryptoId`, {
         timestamp: new Date().toISOString()
       });
-      return res.status(400).json({ error: 'Missing cryptoId parameter' });
+    } else if (typeof cryptoId !== 'string') {
+      validationErrors.push('cryptoId must be a string');
+      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: cryptoId type`, {
+        cryptoIdType: typeof cryptoId,
+        cryptoId,
+        timestamp: new Date().toISOString()
+      });
     }
     
-    if (!action || !['buy', 'sell'].includes(action.toLowerCase())) {
-      const error = new Error(`Invalid action parameter: ${action}`);
-      autoTradeLogger.log('Binance trade API validation error', {
-        error: error.message,
+    if (!action) {
+      validationErrors.push('Missing action parameter');
+      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: Missing action`, {
+        timestamp: new Date().toISOString()
+      });
+    } else if (typeof action !== 'string') {
+      validationErrors.push('action must be a string');
+      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: action type`, {
+        actionType: typeof action,
         action,
-        stack: error.stack,
         timestamp: new Date().toISOString()
       });
-      return res.status(400).json({ error: 'Invalid action parameter. Must be "buy" or "sell"' });
+    } else if (!['buy', 'sell'].includes(action.toLowerCase())) {
+      validationErrors.push('Invalid action parameter. Must be "buy" or "sell"');
+      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: Invalid action value`, {
+        action,
+        timestamp: new Date().toISOString()
+      });
     }
     
-    if (!tradeQuantity || isNaN(parseFloat(String(tradeQuantity))) || parseFloat(String(tradeQuantity)) <= 0) {
-      const error = new Error(`Invalid quantity/shares parameter: ${tradeQuantity}`);
-      autoTradeLogger.log('Binance trade API validation error', {
-        error: error.message,
+    if (tradeQuantity === undefined || tradeQuantity === null) {
+      validationErrors.push('Missing quantity/shares parameter');
+      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: Missing quantity/shares`, {
         quantity,
         shares,
         tradeQuantity,
-        stack: error.stack,
         timestamp: new Date().toISOString()
       });
-      return res.status(400).json({ error: 'Invalid quantity/shares parameter. Must be a positive number' });
+    } else if (isNaN(parseFloat(String(tradeQuantity))) || parseFloat(String(tradeQuantity)) <= 0) {
+      validationErrors.push('Invalid quantity/shares parameter. Must be a positive number');
+      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: Invalid quantity/shares value`, {
+        quantity,
+        shares,
+        tradeQuantity,
+        parsedValue: parseFloat(String(tradeQuantity)),
+        isNaN: isNaN(parseFloat(String(tradeQuantity))),
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Return all validation errors at once if any exist
+    if (validationErrors.length > 0) {
+      autoTradeLogger.log(`[${requestId}] Binance trade API validation failed with multiple errors`, {
+        errors: validationErrors,
+        timestamp: new Date().toISOString()
+      });
+      return res.status(400).json({ 
+        error: 'Validation failed', 
+        details: validationErrors.join('; '),
+        requestId,
+        timestamp: new Date().toISOString(),
+        errorType: 'VALIDATION_ERROR'
+      });
     }
     
     // For limit orders, price is required

@@ -311,15 +311,32 @@ export async function processMicroTrade(
     let shares: number;
     
     if (action === 'buy') {
+      // Validate currentPrice before calculating shares
+      if (!currentPrice || isNaN(currentPrice) || currentPrice <= 0) {
+        throw new Error(`Invalid current price for ${crypto.symbol}: ${currentPrice}`);
+      }
+      
       shares = calculateBuyShares(cryptoId, currentPrice);
+      
+      // Validate calculated shares
+      if (!shares || isNaN(shares) || shares <= 0) {
+        throw new Error(`Invalid calculated shares for ${crypto.symbol}: ${shares}`);
+      }
     } else {
       // For sell, use the last buy shares
       shares = settings.lastBuyShares || 0;
       
-      if (shares <= 0) {
-        throw new Error('No shares available to sell');
+      if (!shares || isNaN(shares) || shares <= 0) {
+        throw new Error(`No valid shares available to sell for ${crypto.symbol}: ${shares}`);
       }
     }
+    
+    // Log the calculated shares for debugging
+    console.log(`Calculated ${action} shares for ${crypto.symbol}:`, {
+      shares,
+      currentPrice,
+      action
+    });
     
     // Check if manual trading is enabled in settings
     try {
@@ -344,27 +361,72 @@ export async function processMicroTrade(
     
     // Execute the trade via API with standardized request configuration
     console.log(`Executing ${action} trade for ${crypto.symbol} using Binance platform (testMode: ${settings.testMode ? 'enabled' : 'disabled'})`);
-    const response = await fetch('/api/cryptos/trade', {
-      ...getStandardRequestConfig(),
-      method: 'POST',
-      body: JSON.stringify({
-        cryptoId,
-        action,
-        shares,
-        price: currentPrice,
-        orderType: 'market',
-        microProcessing: true,
-        tradingPlatform: 'binance', // Explicitly set to use Binance
-        testMode: settings.testMode // Pass the testMode setting to the API
-      })
-    });
     
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to execute trade');
+    // Log the request payload for debugging
+    const requestPayload = {
+      cryptoId,
+      action,
+      shares,
+      price: currentPrice,
+      orderType: 'market',
+      microProcessing: true,
+      tradingPlatform: 'binance', // Explicitly set to use Binance
+      testMode: settings.testMode // Pass the testMode setting to the API
+    };
+    
+    console.log('Trade request payload:', requestPayload);
+    
+    // Make the API request with enhanced error handling
+    let response;
+    try {
+      response = await fetch('/api/cryptos/trade', {
+        ...getStandardRequestConfig(),
+        method: 'POST',
+        body: JSON.stringify(requestPayload)
+      });
+      
+      console.log(`Trade API response status: ${response.status} ${response.statusText}`);
+      
+      if (!response.ok) {
+        let errorData;
+        try {
+          // Try to parse error response as JSON
+          errorData = await response.json();
+          console.error('Trade API error response:', errorData);
+        } catch (parseError) {
+          // If JSON parsing fails, try to get text
+          const errorText = await response.text();
+          console.error('Trade API error (non-JSON response):', errorText.substring(0, 200));
+          errorData = { error: 'Invalid error response format', details: errorText.substring(0, 100) };
+        }
+        
+        throw new Error(errorData.error || `API error: ${response.status} ${response.statusText}`);
+      }
+    } catch (fetchError) {
+      console.error(`Network error during trade API call for ${crypto.symbol}:`, fetchError);
+      throw new Error(`Network error during trade: ${fetchError.message}`);
     }
     
-    const transaction = await response.json();
+    // Parse the successful response
+    let transaction;
+    try {
+      transaction = await response.json();
+      
+      // Validate transaction data
+      if (!transaction) {
+        throw new Error('Received null transaction data from API');
+      }
+      
+      console.log(`Successfully received transaction data for ${crypto.symbol}:`, {
+        transactionId: transaction.transaction?.id,
+        action: transaction.transaction?.action,
+        shares: transaction.transaction?.shares,
+        hasTransaction: !!transaction.transaction
+      });
+    } catch (parseError) {
+      console.error(`Error parsing transaction response for ${crypto.symbol}:`, parseError);
+      throw new Error(`Failed to parse transaction response: ${parseError.message}`);
+    }
     
     // Update the micro processing state based on the action
     if (action === 'buy') {
@@ -633,15 +695,26 @@ export async function processAllMicroProcessingCryptos(): Promise<{
         if (tradeDecision.shouldTrade && tradeDecision.action) {
           console.log(`Trade decision for ${crypto.symbol}: ${tradeDecision.action} - ${tradeDecision.reason}`);
           
-          // Process the trade
-          const tradeResult = await processMicroTrade(crypto.id, tradeDecision.action);
-          
-          if (tradeResult.success) {
-            result.processed++;
-            result.messages.push(tradeResult.message);
-          } else {
+          try {
+            // Process the trade with additional error handling
+            const tradeResult = await processMicroTrade(crypto.id, tradeDecision.action);
+            
+            // Add null check for tradeResult
+            if (!tradeResult) {
+              throw new Error('Received null result from processMicroTrade');
+            }
+            
+            if (tradeResult.success) {
+              result.processed++;
+              result.messages.push(tradeResult.message);
+            } else {
+              result.errors++;
+              result.messages.push(tradeResult.message);
+            }
+          } catch (tradeError: any) {
+            console.error(`Error during trade execution for ${crypto.symbol}:`, tradeError);
             result.errors++;
-            result.messages.push(tradeResult.message);
+            result.messages.push(`Trade execution error for ${crypto.symbol}: ${tradeError.message || 'Unknown error'}`);
           }
         } else {
           console.log(`No trade needed for ${crypto.symbol}: ${tradeDecision.reason}`);

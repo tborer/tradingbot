@@ -68,8 +68,11 @@ export async function createBinanceOrder(
   useTestEndpoint: boolean = false
 ): Promise<any> {
   try {
+    // Generate a request ID for tracking
+    const requestId = `binance_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    
     // Log input parameters for debugging
-    autoTradeLogger.log('createBinanceOrder called with params', {
+    autoTradeLogger.log(`[${requestId}] createBinanceOrder called with params`, {
       userId,
       params: JSON.stringify(params),
       testMode,
@@ -77,24 +80,61 @@ export async function createBinanceOrder(
       timestamp: new Date().toISOString()
     });
 
-    // Validate input parameters
+    // Comprehensive input validation
     if (!userId) {
       const error = new Error('Missing userId parameter');
-      autoTradeLogger.log('Validation error in createBinanceOrder: Missing userId', { stack: error.stack });
+      autoTradeLogger.log(`[${requestId}] Validation error in createBinanceOrder: Missing userId`, { 
+        stack: error.stack,
+        timestamp: new Date().toISOString()
+      });
       throw error;
     }
 
     if (!params) {
       const error = new Error('Missing params object');
-      autoTradeLogger.log('Validation error in createBinanceOrder: Missing params', { stack: error.stack });
+      autoTradeLogger.log(`[${requestId}] Validation error in createBinanceOrder: Missing params`, { 
+        stack: error.stack,
+        timestamp: new Date().toISOString()
+      });
       throw error;
     }
 
-    if (!params.symbol) {
-      const error = new Error('Missing symbol in params');
-      autoTradeLogger.log('Validation error in createBinanceOrder: Missing symbol', { 
-        params: JSON.stringify(params),
-        stack: error.stack 
+    // Validate all required parameters
+    const requiredParams = ['symbol', 'side', 'type'];
+    for (const param of requiredParams) {
+      if (!params[param]) {
+        const error = new Error(`Missing required parameter: ${param}`);
+        autoTradeLogger.log(`[${requestId}] Validation error in createBinanceOrder: Missing ${param}`, { 
+          params: JSON.stringify(params),
+          stack: error.stack,
+          timestamp: new Date().toISOString()
+        });
+        throw error;
+      }
+    }
+    
+    // Validate quantity
+    if (!params.quantity || isNaN(params.quantity) || params.quantity <= 0) {
+      const error = new Error(`Invalid quantity parameter: ${params.quantity}`);
+      autoTradeLogger.log(`[${requestId}] Validation error in createBinanceOrder: Invalid quantity`, { 
+        quantity: params.quantity,
+        quantityType: typeof params.quantity,
+        isNaN: isNaN(params.quantity),
+        stack: error.stack,
+        timestamp: new Date().toISOString()
+      });
+      throw error;
+    }
+    
+    // Validate price for LIMIT orders
+    if (params.type === 'LIMIT' && (!params.price || isNaN(params.price) || params.price <= 0)) {
+      const error = new Error(`Invalid price parameter for LIMIT order: ${params.price}`);
+      autoTradeLogger.log(`[${requestId}] Validation error in createBinanceOrder: Invalid price for LIMIT order`, { 
+        price: params.price,
+        priceType: typeof params.price,
+        isNaN: isNaN(params.price),
+        stack: error.stack,
+        timestamp: new Date().toISOString()
       });
       throw error;
     }

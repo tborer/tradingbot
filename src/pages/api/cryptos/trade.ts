@@ -182,40 +182,161 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         headers['Authorization'] = authHeader;
       }
       
-      const executeOrderResponse = await fetch(apiUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          cryptoId: crypto.id,
-          action,
-          shares: sharesToTrade,
-          price: currentPrice,
-          orderType: effectiveOrderType,
-          isAutoOrder: req.body.isAutoOrder || false,
-          microProcessing: microProcessing || false,
-          totalValue: isBuyingByTotalValue ? Number(totalValue) : undefined,
-          purchaseMethod: isBuyingByTotalValue ? 'totalValue' : 'shares',
-          testMode: testMode === true // Explicitly pass testMode parameter
-        })
-      }).catch(error => {
-        console.error('Network error calling execute-order API:', error);
-        throw new Error(`Network error: ${error.message}`);
+      // Log the request payload for debugging
+      console.log('Trade API request payload to trading platform:', {
+        cryptoId: crypto.id,
+        action,
+        shares: sharesToTrade,
+        price: currentPrice,
+        orderType: effectiveOrderType,
+        isAutoOrder: req.body.isAutoOrder || false,
+        microProcessing: microProcessing || false,
+        totalValue: isBuyingByTotalValue ? Number(totalValue) : undefined,
+        purchaseMethod: isBuyingByTotalValue ? 'totalValue' : 'shares',
+        testMode: testMode === true,
+        tradingPlatform
       });
-
-      if (!executeOrderResponse) {
-        throw new Error('No response received from execute-order API');
+      
+      // Prepare the request payload
+      const requestPayload = {
+        cryptoId: crypto.id,
+        action,
+        shares: sharesToTrade,
+        price: currentPrice,
+        orderType: effectiveOrderType,
+        isAutoOrder: req.body.isAutoOrder || false,
+        microProcessing: microProcessing || false,
+        totalValue: isBuyingByTotalValue ? Number(totalValue) : undefined,
+        purchaseMethod: isBuyingByTotalValue ? 'totalValue' : 'shares',
+        testMode: testMode === true // Explicitly pass testMode parameter
+      };
+      
+      // Make the API request with enhanced error handling
+      let executeOrderResponse;
+      try {
+        executeOrderResponse = await fetch(apiUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(requestPayload)
+        });
+        
+        console.log(`Trading API response status: ${executeOrderResponse.status} ${executeOrderResponse.statusText}`);
+        
+        if (!executeOrderResponse) {
+          throw new Error('No response received from trading API');
+        }
+      } catch (fetchError) {
+        console.error('Network error calling trading API:', fetchError);
+        
+        // Log the failed transaction with error details
+        await prisma.cryptoTransaction.create({
+          data: {
+            cryptoId: crypto.id,
+            action: 'error',
+            shares: sharesToTrade,
+            price: currentPrice,
+            totalAmount: currentPrice * sharesToTrade,
+            userId: user.id,
+            logInfo: JSON.stringify({
+              timestamp: new Date().toISOString(),
+              method: 'trade_api_network_error',
+              requestedAction: action,
+              error: fetchError.message,
+              message: `Network error calling ${tradingPlatform} API: ${fetchError.message}`
+            }, null, 2)
+          },
+        });
+        
+        throw new Error(`Network error: ${fetchError.message}`);
       }
-
-      const executeOrderResult = await executeOrderResponse.json().catch(error => {
-        console.error('Error parsing JSON response from execute-order API:', error);
-        throw new Error('Invalid response format from execute-order API');
-      });
-
+      
+      // Parse the response with enhanced error handling
+      let executeOrderResult;
+      let responseText = '';
+      
+      try {
+        // First get the response as text for logging
+        responseText = await executeOrderResponse.text();
+        console.log(`Raw response from trading API:`, responseText.substring(0, 500));
+        
+        // Then parse it as JSON
+        if (responseText) {
+          executeOrderResult = JSON.parse(responseText);
+        } else {
+          console.error(`Empty response received from trading API`);
+          throw new Error('Received empty response from trading API');
+        }
+        
+        // Validate response data
+        if (!executeOrderResult) {
+          console.error(`Null result data received from trading API`);
+          throw new Error('Received null data from trading API');
+        }
+        
+        console.log(`Successfully received result from trading API:`, {
+          resultKeys: Object.keys(executeOrderResult),
+          hasError: !!executeOrderResult.error,
+          hasTransaction: !!executeOrderResult.transaction
+        });
+      } catch (parseError) {
+        console.error(`Error parsing response from trading API:`, parseError);
+        console.error('Raw response that failed parsing:', responseText.substring(0, 1000));
+        
+        // Log the failed transaction with error details
+        await prisma.cryptoTransaction.create({
+          data: {
+            cryptoId: crypto.id,
+            action: 'error',
+            shares: sharesToTrade,
+            price: currentPrice,
+            totalAmount: currentPrice * sharesToTrade,
+            userId: user.id,
+            logInfo: JSON.stringify({
+              timestamp: new Date().toISOString(),
+              method: 'trade_api_parse_error',
+              requestedAction: action,
+              error: parseError.message,
+              rawResponse: responseText.substring(0, 500),
+              message: `Error parsing response from ${tradingPlatform} API: ${parseError.message}`
+            }, null, 2)
+          },
+        });
+        
+        throw new Error(`Failed to parse response from trading API: ${parseError.message}`);
+      }
+      
+      // Check if the response indicates an error
       if (!executeOrderResponse.ok) {
-        // The execute-order endpoint already logs the failed transaction
+        console.error(`Error response from trading API:`, executeOrderResult);
+        
+        // Log the failed transaction with error details from the response
+        await prisma.cryptoTransaction.create({
+          data: {
+            cryptoId: crypto.id,
+            action: 'error',
+            shares: sharesToTrade,
+            price: currentPrice,
+            totalAmount: currentPrice * sharesToTrade,
+            userId: user.id,
+            logInfo: JSON.stringify({
+              timestamp: new Date().toISOString(),
+              method: 'trade_api_error_response',
+              requestedAction: action,
+              status: executeOrderResponse.status,
+              statusText: executeOrderResponse.statusText,
+              error: executeOrderResult.error || 'Unknown error',
+              details: executeOrderResult.details || {},
+              message: `Error from ${tradingPlatform} API: ${executeOrderResult.error || 'Unknown error'}`
+            }, null, 2)
+          },
+        });
+        
+        // Return a structured error response
         return res.status(400).json({ 
-          error: executeOrderResult.error || 'Failed to execute order via Kraken API',
-          details: executeOrderResult
+          error: executeOrderResult.error || `Failed to execute order via ${tradingPlatform} API`,
+          details: executeOrderResult.details || executeOrderResult,
+          status: executeOrderResponse.status,
+          message: `The ${tradingPlatform} trading platform returned an error: ${executeOrderResult.error || 'Unknown error'}`
         });
       }
 

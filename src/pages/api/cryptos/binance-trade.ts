@@ -680,6 +680,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       requestBodyKeys: req.body ? Object.keys(req.body) : []
     });
     
+    // Enhanced error handling with specific error types
+    let errorResponse = {
+      error: 'An unexpected error occurred',
+      details: error.message || 'Unknown error',
+      timestamp: errorTimestamp,
+      errorType: error.name || 'UnknownError'
+    };
+    
     // Check for specific error types
     if (error.message && error.message.includes('Cannot convert undefined or null to object')) {
       autoTradeLogger.log('Null/undefined object conversion error detected', {
@@ -693,19 +701,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         bodyIsUndefined: req.body === undefined
       });
       
-      return res.status(500).json({ 
-        error: 'An unexpected error occurred with null/undefined data', 
-        details: `${error.message}. This may be caused by missing or invalid data in the request.`,
-        errorType: 'NULL_OBJECT_CONVERSION',
-        timestamp: errorTimestamp
-      });
+      // Create a more specific error response
+      errorResponse = {
+        error: 'Invalid data format',
+        details: 'The request contains null or undefined values that cannot be processed',
+        timestamp: errorTimestamp,
+        errorType: 'DATA_FORMAT_ERROR',
+        requestInfo: {
+          bodyType: typeof req.body,
+          hasBody: !!req.body,
+          bodyKeys: req.body ? Object.keys(req.body) : []
+        }
+      };
+    } else if (error.message && error.message.includes('Binance API credentials not configured')) {
+      // Handle missing API credentials
+      errorResponse = {
+        error: 'Trading configuration error',
+        details: 'Binance API credentials are not properly configured',
+        timestamp: errorTimestamp,
+        errorType: 'CREDENTIALS_ERROR'
+      };
+    } else if (error.message && error.message.includes('Network error')) {
+      // Handle network errors
+      errorResponse = {
+        error: 'Trading service unavailable',
+        details: 'Could not connect to the trading service. Please try again later.',
+        timestamp: errorTimestamp,
+        errorType: 'NETWORK_ERROR'
+      };
     }
     
-    // Return a generic error response
-    return res.status(500).json({ 
-      error: 'An unexpected error occurred', 
-      details: error.message,
-      timestamp: errorTimestamp
-    });
+    // Return a structured error response
+    return res.status(500).json(errorResponse);
   }
 }

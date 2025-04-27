@@ -376,6 +376,23 @@ export async function processMicroTrade(
     
     console.log('Trade request payload:', requestPayload);
     
+    // Log detailed request parameters for debugging
+    console.log('Trade API request details:', {
+      cryptoId,
+      action,
+      shares,
+      price: currentPrice,
+      orderType: 'market',
+      microProcessing: true,
+      tradingPlatform: 'binance',
+      testMode: settings.testMode,
+      sharesType: typeof shares,
+      sharesIsNaN: isNaN(shares),
+      priceType: typeof currentPrice,
+      priceIsNaN: isNaN(currentPrice),
+      requestPayloadString: JSON.stringify(requestPayload)
+    });
+    
     // Make the API request with enhanced error handling
     let response;
     try {
@@ -387,20 +404,54 @@ export async function processMicroTrade(
       
       console.log(`Trade API response status: ${response.status} ${response.statusText}`);
       
+      // Store the response status for error handling
+      const responseStatus = response.status;
+      const responseStatusText = response.statusText;
+      
       if (!response.ok) {
         let errorData;
+        let errorText = '';
+        
         try {
           // Try to parse error response as JSON
-          errorData = await response.json();
-          console.error('Trade API error response:', errorData);
-        } catch (parseError) {
-          // If JSON parsing fails, try to get text
-          const errorText = await response.text();
-          console.error('Trade API error (non-JSON response):', errorText.substring(0, 200));
-          errorData = { error: 'Invalid error response format', details: errorText.substring(0, 100) };
+          errorText = await response.text();
+          console.log('Raw error response:', errorText.substring(0, 500));
+          
+          try {
+            // Attempt to parse as JSON
+            errorData = JSON.parse(errorText);
+            console.error('Trade API error response (parsed):', errorData);
+          } catch (jsonError) {
+            // If JSON parsing fails, use the text directly
+            console.error('Trade API error (non-JSON response):', errorText.substring(0, 200));
+            errorData = { 
+              error: 'Invalid error response format', 
+              details: errorText.substring(0, 100),
+              rawResponse: errorText.substring(0, 500)
+            };
+          }
+        } catch (responseError) {
+          console.error('Error reading response body:', responseError);
+          errorData = { 
+            error: 'Failed to read error response', 
+            details: responseError.message 
+          };
         }
         
-        throw new Error(errorData.error || `API error: ${response.status} ${response.statusText}`);
+        // Create a detailed error object
+        const apiError = new Error(
+          errorData.error || 
+          errorData.message || 
+          `API error: ${responseStatus} ${responseStatusText}`
+        );
+        
+        // Add additional properties to the error object
+        (apiError as any).status = responseStatus;
+        (apiError as any).statusText = responseStatusText;
+        (apiError as any).details = errorData.details || errorText;
+        (apiError as any).rawResponse = errorText;
+        
+        throw apiError;
       }
     } catch (fetchError) {
       console.error(`Network error during trade API call for ${crypto.symbol}:`, fetchError);
@@ -409,11 +460,24 @@ export async function processMicroTrade(
     
     // Parse the successful response
     let transaction;
+    let responseText = '';
+    
     try {
-      transaction = await response.json();
+      // First get the response as text for logging
+      responseText = await response.text();
+      console.log(`Raw response for ${crypto.symbol}:`, responseText.substring(0, 500));
+      
+      // Then parse it as JSON
+      if (responseText) {
+        transaction = JSON.parse(responseText);
+      } else {
+        console.error(`Empty response received for ${crypto.symbol}`);
+        throw new Error('Received empty response from API');
+      }
       
       // Validate transaction data
       if (!transaction) {
+        console.error(`Null transaction data received for ${crypto.symbol}`);
         throw new Error('Received null transaction data from API');
       }
       
@@ -421,11 +485,13 @@ export async function processMicroTrade(
         transactionId: transaction.transaction?.id,
         action: transaction.transaction?.action,
         shares: transaction.transaction?.shares,
-        hasTransaction: !!transaction.transaction
+        hasTransaction: !!transaction.transaction,
+        responseKeys: Object.keys(transaction)
       });
     } catch (parseError) {
       console.error(`Error parsing transaction response for ${crypto.symbol}:`, parseError);
-      throw new Error(`Failed to parse transaction response: ${parseError.message}`);
+      console.error('Raw response that failed parsing:', responseText.substring(0, 1000));
+      throw new Error(`Failed to parse transaction response: ${parseError.message}. Raw response: ${responseText.substring(0, 200)}`);
     }
     
     // Update the micro processing state based on the action

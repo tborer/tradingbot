@@ -283,6 +283,15 @@ curl -X "POST" "${testUrl}?${queryString}&signature=<signature>" \\
         // Try to parse as JSON
         result = responseText ? JSON.parse(responseText) : null;
         
+        // Add null check for parsed result
+        if (!result) {
+          addLog('error', `Received null response from test trade`, {
+            responseText: responseText.substring(0, 500),
+            timestamp: new Date().toISOString()
+          });
+          throw new Error('Received null response from test trade');
+        }
+        
         // Log the parsed result
         addLog('info', `Test trade response parsed successfully`, {
           resultType: typeof result,
@@ -322,6 +331,14 @@ curl -X "POST" "${testUrl}?${queryString}&signature=<signature>" \\
         ...prev, 
         [cryptoId]: JSON.stringify(result, null, 2)
       }));
+      
+      // Add null check for result.tradeResult
+      if (!result.tradeResult) {
+        addLog('warning', `Test trade successful but tradeResult is null for ${symbol}`, {
+          result: JSON.stringify(result),
+          timestamp: new Date().toISOString()
+        });
+      }
       
       // Log detailed success information
       addLog('info', `Test trade successful for ${symbol}`, {

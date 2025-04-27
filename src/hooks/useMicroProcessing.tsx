@@ -426,6 +426,13 @@ export function useMicroProcessing() {
       
       console.log('[PROCESS-TRADES] Calling processAllMicroProcessingCryptos');
       const result = await processAllMicroProcessingCryptos();
+      
+      // Add null check for result
+      if (!result) {
+        console.error('[PROCESS-TRADES] processAllMicroProcessingCryptos returned null result');
+        throw new Error('Micro processing returned null result');
+      }
+      
       console.log('[PROCESS-TRADES] processAllMicroProcessingCryptos result:', result);
       
       if (result.processed > 0) {

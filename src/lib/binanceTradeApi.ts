@@ -310,6 +310,17 @@ export async function createBinanceOrder(
     try {
       // Try to parse as JSON
       responseData = responseText ? JSON.parse(responseText) : null;
+      
+      // Add null check for responseData
+      if (!responseData) {
+        console.error('Null response data after parsing Binance API response');
+        autoTradeLogger.log('Null response data from Binance API', {
+          responseText: responseText ? responseText.substring(0, 200) : 'No response text',
+          timestamp: new Date().toISOString()
+        });
+        throw new Error('Received null response from Binance API');
+      }
+      
       autoTradeLogger.log('Binance API response parsed successfully', {
         hasResponseData: !!responseData,
         responseDataType: responseData ? typeof responseData : 'null',

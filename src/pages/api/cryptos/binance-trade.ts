@@ -349,6 +349,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
     
+    // Add null check for tradeResult after the try-catch block
+    if (!tradeResult) {
+      const error = new Error('Trade execution returned null result');
+      autoTradeLogger.log('Binance trade null result error', {
+        error: error.message,
+        stack: error.stack,
+        userId: user.id,
+        symbol: crypto.symbol,
+        action: action.toLowerCase(),
+        orderType: orderType.toUpperCase(),
+        quantity: parsedQuantity,
+        price: parsedPrice,
+        testMode,
+        useTestEndpoint,
+        timestamp: new Date().toISOString()
+      });
+      
+      return res.status(500).json({ 
+        error: 'Failed to execute Binance trade', 
+        details: 'Trade execution returned null result' 
+      });
+    }
+    
     // Create a transaction record
     try {
       autoTradeLogger.log('Processing trade result for transaction record', {

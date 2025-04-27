@@ -609,10 +609,26 @@ export async function processAllMicroProcessingCryptos(): Promise<{
           continue;
         }
         
+        // Additional null checks for critical properties
+        if (!crypto.symbol) {
+          console.warn('Crypto missing symbol:', crypto.id);
+          result.errors++;
+          result.messages.push(`Crypto ${crypto.id} missing symbol`);
+          continue;
+        }
+        
         console.log(`Processing crypto: ${crypto.symbol} (${crypto.id})`);
         
         // Check if we should trade
         const tradeDecision = shouldMicroTrade(crypto.id);
+        
+        // Add null check for tradeDecision
+        if (!tradeDecision) {
+          console.error(`shouldMicroTrade returned null for ${crypto.symbol} (${crypto.id})`);
+          result.errors++;
+          result.messages.push(`Error evaluating trade decision for ${crypto.symbol}: null result`);
+          continue;
+        }
         
         if (tradeDecision.shouldTrade && tradeDecision.action) {
           console.log(`Trade decision for ${crypto.symbol}: ${tradeDecision.action} - ${tradeDecision.reason}`);

@@ -137,21 +137,59 @@ export default function BinanceWebSocketSettings() {
     setTestTradingUrls(prev => ({ ...prev, [cryptoId]: testUrl }));
 
     try {
+      // Log the start of the test trade process
+      addLog('info', `Starting test trade for ${symbol} (${cryptoId})`, {
+        timestamp: new Date().toISOString(),
+        cryptoId,
+        symbol
+      });
+      
       // Get API credentials from settings
+      addLog('info', `Fetching API credentials for test trade`, {
+        timestamp: new Date().toISOString()
+      });
+      
       const settingsResponse = await fetch('/api/settings');
       const settingsData = await settingsResponse.json();
       
       if (!settingsResponse.ok) {
-        throw new Error(settingsData.error || 'Failed to fetch API credentials');
+        const error = settingsData.error || 'Failed to fetch API credentials';
+        addLog('error', `Failed to fetch API credentials: ${error}`, {
+          status: settingsResponse.status,
+          timestamp: new Date().toISOString()
+        });
+        throw new Error(error);
       }
       
-      if (!settingsData.binanceApiKey || !settingsData.binanceApiSecret) {
+      // Check if API credentials are configured
+      const hasApiKey = !!settingsData.binanceApiKey;
+      const hasApiSecret = !!settingsData.binanceApiSecret;
+      
+      addLog('info', `API credentials check for test trade`, {
+        hasApiKey,
+        hasApiSecret,
+        apiKeyLength: hasApiKey ? settingsData.binanceApiKey.length : 0,
+        secretKeyLength: hasApiSecret ? settingsData.binanceApiSecret.length : 0,
+        timestamp: new Date().toISOString()
+      });
+      
+      if (!hasApiKey || !hasApiSecret) {
+        addLog('error', `Binance API credentials not configured`, {
+          timestamp: new Date().toISOString()
+        });
         throw new Error('Binance API credentials not configured');
       }
 
       // Format the symbol for Binance API (ensure it has USDT suffix)
       const cleanSymbol = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
       const formattedSymbol = cleanSymbol.endsWith('USDT') ? cleanSymbol : `${cleanSymbol}USDT`;
+      
+      addLog('info', `Formatted symbol for Binance API`, {
+        originalSymbol: symbol,
+        cleanSymbol,
+        formattedSymbol,
+        timestamp: new Date().toISOString()
+      });
       
       // Prepare request data
       const timestamp = Date.now();
@@ -182,21 +220,38 @@ export default function BinanceWebSocketSettings() {
         .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
         .join('&');
       
+      // Log the prepared request data
+      addLog('info', `Prepared test trade request data`, {
+        requestData,
+        binanceData,
+        queryString,
+        timestamp: new Date().toISOString()
+      });
+      
       // Store the test data for display in a more readable format
-      setTestTradingData(prev => ({ 
-        ...prev, 
-        [cryptoId]: JSON.stringify({
-          requestToOurApi: requestData,
-          transformedForBinance: binanceData,
-          apiKey: `${settingsData.binanceApiKey.substring(0, 5)}...${settingsData.binanceApiKey.substring(settingsData.binanceApiKey.length - 5)}`,
-          queryString: queryString,
-          fullRequestExample: `
+      const displayData = {
+        requestToOurApi: requestData,
+        transformedForBinance: binanceData,
+        apiKey: `${settingsData.binanceApiKey.substring(0, 5)}...${settingsData.binanceApiKey.substring(settingsData.binanceApiKey.length - 5)}`,
+        queryString: queryString,
+        fullRequestExample: `
 curl -X "POST" "${testUrl}?${queryString}&signature=<signature>" \\
     -H "X-MBX-APIKEY: ${settingsData.binanceApiKey.substring(0, 5)}..."`
-        }, null, 2)
+      };
+      
+      setTestTradingData(prev => ({ 
+        ...prev, 
+        [cryptoId]: JSON.stringify(displayData, null, 2)
       }));
       
       // Make the request to our API endpoint which will handle the signature and request
+      addLog('info', `Sending test trade request to API`, {
+        endpoint: '/api/cryptos/binance-trade',
+        method: 'POST',
+        requestData,
+        timestamp: new Date().toISOString()
+      });
+      
       const response = await fetch('/api/cryptos/binance-trade', {
         method: 'POST',
         headers: {
@@ -205,19 +260,60 @@ curl -X "POST" "${testUrl}?${queryString}&signature=<signature>" \\
         body: JSON.stringify(requestData),
       });
       
+      // Log the raw response
+      addLog('info', `Received test trade response`, {
+        status: response.status,
+        ok: response.ok,
+        timestamp: new Date().toISOString()
+      });
+      
       // Get the response as text first to handle potential JSON parse errors
       const responseText = await response.text();
+      
+      // Log the raw response text
+      addLog('info', `Test trade response text received`, {
+        responseTextLength: responseText.length,
+        responseTextSample: responseText.substring(0, 200) + (responseText.length > 200 ? '...' : ''),
+        timestamp: new Date().toISOString()
+      });
+      
       let result;
       
       try {
         // Try to parse as JSON
-        result = JSON.parse(responseText);
+        result = responseText ? JSON.parse(responseText) : null;
+        
+        // Log the parsed result
+        addLog('info', `Test trade response parsed successfully`, {
+          resultType: typeof result,
+          resultIsNull: result === null,
+          resultIsUndefined: result === undefined,
+          resultKeys: result ? Object.keys(result) : [],
+          timestamp: new Date().toISOString()
+        });
       } catch (parseError) {
+        // Log the parse error
+        addLog('error', `Error parsing test trade response`, {
+          error: parseError.message,
+          stack: parseError.stack,
+          responseText: responseText.substring(0, 500),
+          timestamp: new Date().toISOString()
+        });
+        
         console.error('Error parsing response:', parseError);
         throw new Error(`Failed to parse response: ${responseText.substring(0, 200)}${responseText.length > 200 ? '...' : ''}`);
       }
       
       if (!response.ok) {
+        // Log the error response
+        addLog('error', `Test trade failed with error response`, {
+          status: response.status,
+          statusText: response.statusText,
+          error: result?.error || 'Unknown error',
+          details: result?.details || 'No details provided',
+          timestamp: new Date().toISOString()
+        });
+        
         throw new Error(result.error || result.details || 'Failed to execute test trade');
       }
       
@@ -227,6 +323,16 @@ curl -X "POST" "${testUrl}?${queryString}&signature=<signature>" \\
         [cryptoId]: JSON.stringify(result, null, 2)
       }));
       
+      // Log detailed success information
+      addLog('info', `Test trade successful for ${symbol}`, {
+        tradeResult: result,
+        tradeResultType: typeof result,
+        tradeResultKeys: Object.keys(result),
+        hasTradeResult: !!result.tradeResult,
+        tradeResultTradeResultKeys: result.tradeResult ? Object.keys(result.tradeResult) : [],
+        timestamp: new Date().toISOString()
+      });
+      
       toast({
         title: "Test trade executed",
         description: `Successfully executed test trade for ${symbol}`,
@@ -234,7 +340,6 @@ curl -X "POST" "${testUrl}?${queryString}&signature=<signature>" \\
       
       // Log success for debugging
       console.log('Test trade successful:', result);
-      addLog('info', `Test trade successful for ${symbol}`, result);
       
     } catch (error) {
       console.error('Error executing test trade:', error);

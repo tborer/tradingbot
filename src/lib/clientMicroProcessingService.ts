@@ -483,6 +483,45 @@ export async function processMicroTrade(
       requestPayloadString: JSON.stringify(requestPayload)
     });
     
+    // DETAILED LOGGING: Log the Request Data before calling the trade API
+    autoTradeLogger.log(`[${tradeRequestId}] TRADE API REQUEST DATA`, {
+      cryptoId: requestPayload.cryptoId,
+      cryptoIdType: typeof requestPayload.cryptoId,
+      
+      action: requestPayload.action,
+      actionType: typeof requestPayload.action,
+      
+      shares: requestPayload.shares,
+      sharesType: typeof requestPayload.shares,
+      sharesIsNaN: isNaN(requestPayload.shares),
+      sharesValue: Number(requestPayload.shares),
+      
+      quantity: requestPayload.quantity,
+      quantityType: typeof requestPayload.quantity,
+      quantityIsNaN: isNaN(requestPayload.quantity),
+      quantityValue: Number(requestPayload.quantity),
+      
+      price: requestPayload.price,
+      priceType: typeof requestPayload.price,
+      priceIsNaN: isNaN(requestPayload.price),
+      priceValue: Number(requestPayload.price),
+      
+      orderType: requestPayload.orderType,
+      orderTypeType: typeof requestPayload.orderType,
+      
+      microProcessing: requestPayload.microProcessing,
+      microProcessingType: typeof requestPayload.microProcessing,
+      
+      tradingPlatform: requestPayload.tradingPlatform,
+      tradingPlatformType: typeof requestPayload.tradingPlatform,
+      
+      testMode: requestPayload.testMode,
+      testModeType: typeof requestPayload.testMode,
+      
+      fullPayload: JSON.stringify(requestPayload),
+      timestamp: new Date().toISOString()
+    });
+    
     // Make the API request with enhanced error handling
     let response;
     try {
@@ -497,6 +536,15 @@ export async function processMicroTrade(
         },
         body: JSON.stringify(requestPayload)
       };
+      
+      // Log the complete request configuration
+      autoTradeLogger.log(`[${tradeRequestId}] COMPLETE REQUEST CONFIGURATION`, {
+        method: requestConfig.method,
+        headers: JSON.stringify(requestConfig.headers),
+        bodyLength: requestConfig.body ? requestConfig.body.length : 0,
+        bodyPreview: requestConfig.body ? requestConfig.body.substring(0, 200) : 'No body',
+        timestamp: new Date().toISOString()
+      });
       
       console.log(`[${tradeRequestId}] Sending trade API request to /api/cryptos/trade`);
       

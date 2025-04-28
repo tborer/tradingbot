@@ -71,10 +71,11 @@ export async function createBinanceOrder(
   const requestId = `binance_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   
   try {
-    // Log input parameters for debugging
-    autoTradeLogger.log(`[${requestId}] createBinanceOrder called with params`, {
+    // DETAILED LOGGING: Function Parameters - Log all parameters received by the function
+    autoTradeLogger.log(`[${requestId}] createBinanceOrder FUNCTION PARAMETERS`, {
       userId,
       params: JSON.stringify(params),
+      paramsObject: params, // Log the actual object for better inspection
       testMode,
       useTestEndpoint,
       timestamp: new Date().toISOString()
@@ -258,6 +259,17 @@ export async function createBinanceOrder(
       throw new Error(`Invalid quantity: ${params.quantity}. Must be a positive number.`);
     }
     
+    // DETAILED LOGGING: quantity Details - Log the quantity variable's type and whether it's NaN
+    autoTradeLogger.log(`[${requestId}] QUANTITY DETAILS before conversion`, {
+      quantity: params.quantity,
+      quantityType: typeof params.quantity,
+      quantityIsNaN: isNaN(params.quantity),
+      quantityToString: String(params.quantity),
+      quantityParseFloat: parseFloat(String(params.quantity)),
+      quantityParseFloatIsNaN: isNaN(parseFloat(String(params.quantity))),
+      timestamp: new Date().toISOString()
+    });
+    
     data.quantity = params.quantity.toString();
     
     // Log the data object after building
@@ -311,6 +323,36 @@ export async function createBinanceOrder(
       timestamp: new Date().toISOString()
     });
     
+    // DETAILED LOGGING: data Object - Log the entire data object just before it's used to construct the queryString
+    autoTradeLogger.log(`[${requestId}] DATA OBJECT BEFORE QUERY STRING GENERATION`, {
+      data: JSON.stringify(data),
+      dataObject: data,
+      dataKeys: Object.keys(data),
+      dataValues: Object.values(data),
+      dataEntries: Object.entries(data),
+      symbol: data.symbol,
+      side: data.side,
+      type: data.type,
+      quantity: data.quantity,
+      timestamp: data.timestamp,
+      recvWindow: data.recvWindow,
+      price: data.price,
+      timeInForce: data.timeInForce,
+      newClientOrderId: data.newClientOrderId,
+      newOrderRespType: data.newOrderRespType,
+      hasSymbol: !!data.symbol,
+      hasSide: !!data.side,
+      hasType: !!data.type,
+      hasQuantity: !!data.quantity,
+      hasTimestamp: !!data.timestamp,
+      hasRecvWindow: !!data.recvWindow,
+      hasPrice: !!data.price,
+      hasTimeInForce: !!data.timeInForce,
+      hasNewClientOrderId: !!data.newClientOrderId,
+      hasNewOrderRespType: !!data.newOrderRespType,
+      timestamp: new Date().toISOString()
+    });
+    
     // Log the complete data object before generating query string
     console.log(`[${requestId}] Complete data object for Binance API:`, {
       data,
@@ -329,10 +371,14 @@ export async function createBinanceOrder(
       })
       .join('&');
     
-    // Log the query string
-    autoTradeLogger.log('Binance query string generated', {
+    // DETAILED LOGGING: queryString - Log the generated queryString
+    autoTradeLogger.log(`[${requestId}] QUERY STRING GENERATED`, {
       queryString,
-      queryStringLength: queryString.length
+      queryStringLength: queryString.length,
+      queryStringParts: queryString.split('&'),
+      queryStringEncoded: encodeURIComponent(queryString),
+      queryStringEncodedLength: encodeURIComponent(queryString).length,
+      timestamp: new Date().toISOString()
     });
     
     // Log the query string for debugging
@@ -386,6 +432,25 @@ export async function createBinanceOrder(
 
     // Create the full URL with query string and signature
     const fullUrl = `${baseUrl}${endpoint}?${queryString}&signature=${signature}`;
+
+    // DETAILED LOGGING: requestUrl - Log the final requestUrl that will be used to send the request
+    autoTradeLogger.log(`[${requestId}] FINAL REQUEST URL`, {
+      baseUrl,
+      endpoint,
+      fullUrl: fullUrl.replace(signature, signature.substring(0, 5) + '...' + signature.substring(signature.length - 5)),
+      fullUrlLength: fullUrl.length,
+      queryStringLength: queryString.length,
+      signatureLength: signature.length,
+      hasQueryString: fullUrl.includes('?'),
+      hasSignature: fullUrl.includes('signature='),
+      urlParts: {
+        protocol: fullUrl.split('://')[0],
+        host: fullUrl.split('://')[1]?.split('/')[0],
+        path: '/' + (fullUrl.split('://')[1]?.split('/').slice(1).join('/').split('?')[0] || ''),
+        query: fullUrl.includes('?') ? fullUrl.split('?')[1] : ''
+      },
+      timestamp: new Date().toISOString()
+    });
 
     // Log the full URL (with signature partially masked)
     autoTradeLogger.log('Binance full request URL', {

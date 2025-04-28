@@ -113,38 +113,51 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Use destructuring with default values to handle missing properties
     const { 
       cryptoId, 
-      action, 
+      action, // Support legacy 'action' parameter
+      side, // Support new 'side' parameter that matches Binance API
       quantity, 
       shares, 
       price, 
-      orderType = 'MARKET',
+      orderType = 'MARKET', // Support legacy 'orderType' parameter
+      type = orderType, // Support new 'type' parameter that matches Binance API
       testMode = false,
       useTestEndpoint = false,
       microProcessing = false
     } = req.body;
     
+    // Use 'side' if provided, otherwise fall back to 'action'
+    const tradeAction = side || action;
+    
     // Log extracted parameters with detailed type information
     autoTradeLogger.log(`[${requestId}] Binance trade API parameters extracted`, {
       cryptoId,
       action,
+      side,
+      tradeAction, // The resolved action/side value
       quantity,
       shares,
       price,
       orderType,
+      type,
       testMode,
       useTestEndpoint,
       microProcessing,
       hasCryptoId: !!cryptoId,
       hasAction: !!action,
+      hasSide: !!side,
+      hasTradeAction: !!tradeAction,
       hasQuantity: !!quantity,
       hasShares: !!shares,
       hasPrice: !!price,
       cryptoIdType: typeof cryptoId,
       actionType: typeof action,
+      sideType: typeof side,
+      tradeActionType: typeof tradeAction,
       quantityType: typeof quantity,
       sharesType: typeof shares,
       priceType: typeof price,
       orderTypeType: typeof orderType,
+      typeType: typeof type,
       testModeType: typeof testMode,
       useTestEndpointType: typeof useTestEndpoint,
       requestId,
@@ -260,22 +273,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
     
-    if (!action) {
-      validationErrors.push('Missing action parameter');
-      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: Missing action`, {
+    if (!tradeAction) {
+      validationErrors.push('Missing action/side parameter');
+      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: Missing action/side`, {
+        action,
+        side,
         timestamp: new Date().toISOString()
       });
-    } else if (typeof action !== 'string') {
-      validationErrors.push('action must be a string');
-      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: action type`, {
-        actionType: typeof action,
-        action,
+    } else if (typeof tradeAction !== 'string') {
+      validationErrors.push('action/side must be a string');
+      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: action/side type`, {
+        tradeActionType: typeof tradeAction,
+        tradeAction,
         timestamp: new Date().toISOString()
       });
-    } else if (!['buy', 'sell'].includes(action.toLowerCase())) {
-      validationErrors.push('Invalid action parameter. Must be "buy" or "sell"');
-      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: Invalid action value`, {
-        action,
+    } else if (!['buy', 'sell', 'BUY', 'SELL'].includes(tradeAction.toUpperCase ? tradeAction.toUpperCase() : tradeAction)) {
+      validationErrors.push('Invalid action/side parameter. Must be "buy", "sell", "BUY", or "SELL"');
+      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: Invalid action/side value`, {
+        tradeAction,
         timestamp: new Date().toISOString()
       });
     }
@@ -378,10 +393,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       timestamp: new Date().toISOString()
     });
     
-    // Execute the trade based on action and order type
+    // Execute the trade based on action/side and order type
     let tradeResult;
     const parsedQuantity = parseFloat(String(tradeQuantity));
     const parsedPrice = price ? parseFloat(String(price)) : undefined;
+    
+    // Normalize the action/side to lowercase for consistent processing
+    const normalizedAction = tradeAction.toLowerCase();
     
     // Log detailed information about the quantity right before executing the trade
     console.log(`[${requestId}] Quantity details before executing trade:`, {
@@ -408,8 +426,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       autoTradeLogger.log('Executing Binance trade', {
         userId: user.id,
         symbol: crypto.symbol,
-        action: action.toLowerCase(),
-        orderType: orderType.toUpperCase(),
+        action: normalizedAction,
+        orderType: type.toUpperCase(),
         quantity: parsedQuantity,
         price: parsedPrice,
         testMode: effectiveTestMode,
@@ -422,10 +440,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         clientRequest: {
           cryptoId,
           action,
+          side,
+          tradeAction,
           quantity: tradeQuantity,
           shares,
           price,
           orderType,
+          type,
           testMode,
           useTestEndpoint,
           microProcessing
@@ -433,14 +454,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         binanceApiFormat: {
           // ONLY include the exact fields required by Binance API
           symbol: crypto.symbol,
-          side: action.toLowerCase() === 'buy' ? 'BUY' : 'SELL',
-          type: orderType.toUpperCase(),
+          side: normalizedAction === 'buy' ? 'BUY' : 'SELL',
+          type: type.toUpperCase(),
           quantity: parsedQuantity,
           timestamp: Date.now(),
           // Only include price for LIMIT orders
-          ...(orderType.toUpperCase() === 'LIMIT' && parsedPrice ? { price: parsedPrice } : {}),
+          ...(type.toUpperCase() === 'LIMIT' && parsedPrice ? { price: parsedPrice } : {}),
           // Only include timeInForce for LIMIT orders
-          ...(orderType.toUpperCase() === 'LIMIT' ? { timeInForce: 'GTC' } : {}),
+          ...(type.toUpperCase() === 'LIMIT' ? { timeInForce: 'GTC' } : {}),
           // Standard parameter for request window
           recvWindow: 5000
         },
@@ -449,8 +470,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         timestamp: new Date().toISOString()
       });
       
-      if (action.toLowerCase() === 'buy') {
-        if (orderType.toUpperCase() === 'MARKET') {
+      if (normalizedAction === 'buy') {
+        if (type.toUpperCase() === 'MARKET') {
           autoTradeLogger.log('Executing Binance market buy', {
             userId: user.id,
             symbol: crypto.symbol,
@@ -461,7 +482,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           });
           
           tradeResult = await executeBinanceMarketBuy(user.id, crypto.symbol, parsedQuantity, effectiveTestMode, useTestEndpoint);
-        } else if (orderType.toUpperCase() === 'LIMIT' && parsedPrice) {
+        } else if (type.toUpperCase() === 'LIMIT' && parsedPrice) {
           autoTradeLogger.log('Executing Binance limit buy', {
             userId: user.id,
             symbol: crypto.symbol,
@@ -474,10 +495,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           
           tradeResult = await executeBinanceLimitBuy(user.id, crypto.symbol, parsedQuantity, parsedPrice, effectiveTestMode, useTestEndpoint);
         } else {
-          const error = new Error(`Invalid order type or missing price for limit order: ${orderType}`);
+          const error = new Error(`Invalid order type or missing price for limit order: ${type}`);
           autoTradeLogger.log('Binance trade API validation error', {
             error: error.message,
-            orderType,
+            orderType: type,
             price: parsedPrice,
             stack: error.stack,
             timestamp: new Date().toISOString()
@@ -485,7 +506,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           return res.status(400).json({ error: 'Invalid order type or missing price for limit order' });
         }
       } else { // sell
-        if (orderType.toUpperCase() === 'MARKET') {
+        if (type.toUpperCase() === 'MARKET') {
           autoTradeLogger.log('Executing Binance market sell', {
             userId: user.id,
             symbol: crypto.symbol,
@@ -496,7 +517,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           });
           
           tradeResult = await executeBinanceMarketSell(user.id, crypto.symbol, parsedQuantity, effectiveTestMode, useTestEndpoint);
-        } else if (orderType.toUpperCase() === 'LIMIT' && parsedPrice) {
+        } else if (type.toUpperCase() === 'LIMIT' && parsedPrice) {
           autoTradeLogger.log('Executing Binance limit sell', {
             userId: user.id,
             symbol: crypto.symbol,
@@ -509,10 +530,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           
           tradeResult = await executeBinanceLimitSell(user.id, crypto.symbol, parsedQuantity, parsedPrice, effectiveTestMode, useTestEndpoint);
         } else {
-          const error = new Error(`Invalid order type or missing price for limit order: ${orderType}`);
+          const error = new Error(`Invalid order type or missing price for limit order: ${type}`);
           autoTradeLogger.log('Binance trade API validation error', {
             error: error.message,
-            orderType,
+            orderType: type,
             price: parsedPrice,
             stack: error.stack,
             timestamp: new Date().toISOString()
@@ -722,14 +743,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Prepare transaction data
       const transactionData = {
         cryptoId: crypto.id,
-        action: testMode || useTestEndpoint ? `test_${action.toLowerCase()}` : action.toLowerCase(),
+        action: testMode || useTestEndpoint ? `test_${normalizedAction}` : normalizedAction,
         shares: parsedQuantity,
         price: executedPrice,
         totalAmount,
         userId: user.id,
         apiRequest: JSON.stringify({
-          action,
-          orderType,
+          side: normalizedAction.toUpperCase(),
+          type: type.toUpperCase(),
           quantity: parsedQuantity,
           price: parsedPrice,
           symbol: crypto.symbol,
@@ -766,7 +787,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       // If not in test mode, update crypto shares and user balance
       if (!testMode) {
-        if (action.toLowerCase() === 'buy') {
+        if (normalizedAction === 'buy') {
           autoTradeLogger.log('Updating crypto shares and balance for buy', {
             cryptoId: crypto.id,
             userId: user.id,

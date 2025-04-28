@@ -365,6 +365,37 @@ export async function processMicroTrade(
     // Execute the trade via API with standardized request configuration
     console.log(`[${tradeRequestId}] Executing ${action} trade for ${crypto.symbol} using Binance platform (testMode: ${settings.testMode ? 'enabled' : 'disabled'})`);
     
+    // Add detailed logging for trade parameters to help diagnose issues
+    console.log(`[${tradeRequestId}] Trade parameters before validation:`, {
+      cryptoId: cryptoId,
+      cryptoIdType: typeof cryptoId,
+      cryptoIdIsNull: cryptoId === null,
+      cryptoIdIsUndefined: cryptoId === undefined,
+      
+      action: action,
+      actionType: typeof action,
+      actionIsNull: action === null,
+      actionIsUndefined: action === undefined,
+      
+      shares: shares,
+      sharesType: typeof shares,
+      sharesIsNull: shares === null,
+      sharesIsUndefined: shares === undefined,
+      sharesIsNaN: isNaN(shares),
+      sharesValue: Number(shares),
+      
+      currentPrice: currentPrice,
+      currentPriceType: typeof currentPrice,
+      currentPriceIsNull: currentPrice === null,
+      currentPriceIsUndefined: currentPrice === undefined,
+      currentPriceIsNaN: isNaN(currentPrice),
+      currentPriceValue: Number(currentPrice),
+      
+      symbol: crypto.symbol,
+      testMode: settings.testMode,
+      timestamp: new Date().toISOString()
+    });
+    
     // Validate all required parameters before creating the request payload
     if (!cryptoId || typeof cryptoId !== 'string') {
       throw new Error(`Invalid cryptoId: ${cryptoId}. Must be a non-empty string.`);

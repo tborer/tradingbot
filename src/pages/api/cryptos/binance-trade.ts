@@ -841,7 +841,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
     }
     
-    // Return a structured error response
-    return res.status(500).json(errorResponse);
+    // Return a structured error response with appropriate status code
+    // Use 400 for client errors like invalid data format, keep 500 for server errors
+    if (errorResponse.errorType === 'DATA_FORMAT_ERROR' || 
+        errorResponse.errorType === 'VALIDATION_ERROR' || 
+        errorResponse.errorType === 'BINANCE_API_ERROR' || 
+        errorResponse.errorType === 'CREDENTIALS_ERROR') {
+      return res.status(400).json(errorResponse);
+    } else {
+      return res.status(500).json(errorResponse);
+    }
   }
 }

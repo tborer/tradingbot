@@ -245,8 +245,9 @@ export async function createBinanceOrder(
     }
     data.type = params.type;
     
-    // Always add timestamp
+    // Always add timestamp and recvWindow
     data.timestamp = timestamp.toString();
+    data.recvWindow = '5000'; // Add a 5-second receive window to prevent timestamp issues
     
     // Add quantity with validation
     if (params.quantity === undefined || params.quantity === null) {
@@ -319,9 +320,13 @@ export async function createBinanceOrder(
       timestamp: new Date().toISOString()
     });
     
-    // Generate query string for signature
+    // Generate query string for signature - ensure all values are properly converted to strings
     const queryString = Object.entries(data)
-      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .map(([key, value]) => {
+        // Ensure value is never undefined or null before encoding
+        const safeValue = value === undefined || value === null ? '' : String(value);
+        return `${key}=${encodeURIComponent(safeValue)}`;
+      })
       .join('&');
     
     // Log the query string

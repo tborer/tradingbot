@@ -486,44 +486,74 @@ export async function processMicroTrade(
     });
     
     // DETAILED LOGGING: Log the Request Data before calling the trade API
-    autoTradeLogger.log(`[${tradeRequestId}] TRADE API REQUEST DATA`, {
+    // Use ERROR severity to ensure it shows up in the Error Logs tab
+    autoTradeLogger.error(`[${tradeRequestId}] TRADE API REQUEST DATA - EXACT PAYLOAD BEING SENT`, {
       cryptoId: requestPayload.cryptoId,
       cryptoIdType: typeof requestPayload.cryptoId,
+      cryptoIdIsNull: requestPayload.cryptoId === null,
+      cryptoIdIsUndefined: requestPayload.cryptoId === undefined,
+      cryptoIdValue: String(requestPayload.cryptoId),
       
       action: requestPayload.action,
       actionType: typeof requestPayload.action,
+      actionIsNull: requestPayload.action === null,
+      actionIsUndefined: requestPayload.action === undefined,
+      actionValue: String(requestPayload.action),
       
       shares: requestPayload.shares,
       sharesType: typeof requestPayload.shares,
       sharesIsNaN: isNaN(requestPayload.shares),
+      sharesIsNull: requestPayload.shares === null,
+      sharesIsUndefined: requestPayload.shares === undefined,
       sharesValue: Number(requestPayload.shares),
       
       quantity: requestPayload.quantity,
       quantityType: typeof requestPayload.quantity,
       quantityIsNaN: isNaN(requestPayload.quantity),
+      quantityIsNull: requestPayload.quantity === null,
+      quantityIsUndefined: requestPayload.quantity === undefined,
       quantityValue: Number(requestPayload.quantity),
       
       price: requestPayload.price,
       priceType: typeof requestPayload.price,
       priceIsNaN: isNaN(requestPayload.price),
+      priceIsNull: requestPayload.price === null,
+      priceIsUndefined: requestPayload.price === undefined,
       priceValue: Number(requestPayload.price),
       
       orderType: requestPayload.orderType,
       orderTypeType: typeof requestPayload.orderType,
+      orderTypeIsNull: requestPayload.orderType === null,
+      orderTypeIsUndefined: requestPayload.orderType === undefined,
+      orderTypeValue: String(requestPayload.orderType),
       
       microProcessing: requestPayload.microProcessing,
       microProcessingType: typeof requestPayload.microProcessing,
+      microProcessingIsNull: requestPayload.microProcessing === null,
+      microProcessingIsUndefined: requestPayload.microProcessing === undefined,
+      microProcessingValue: String(requestPayload.microProcessing),
       
       tradingPlatform: requestPayload.tradingPlatform,
       tradingPlatformType: typeof requestPayload.tradingPlatform,
+      tradingPlatformIsNull: requestPayload.tradingPlatform === null,
+      tradingPlatformIsUndefined: requestPayload.tradingPlatform === undefined,
+      tradingPlatformValue: String(requestPayload.tradingPlatform),
       
       testMode: requestPayload.testMode,
       testModeType: typeof requestPayload.testMode,
+      testModeIsNull: requestPayload.testMode === null,
+      testModeIsUndefined: requestPayload.testMode === undefined,
+      testModeValue: String(requestPayload.testMode),
       
       useTestEndpoint: requestPayload.useTestEndpoint,
       useTestEndpointType: typeof requestPayload.useTestEndpoint,
+      useTestEndpointIsNull: requestPayload.useTestEndpoint === null,
+      useTestEndpointIsUndefined: requestPayload.useTestEndpoint === undefined,
+      useTestEndpointValue: String(requestPayload.useTestEndpoint),
       
+      // Include the complete payload as both string and object for easier debugging
       fullPayload: JSON.stringify(requestPayload),
+      rawPayload: requestPayload,
       timestamp: new Date().toISOString()
     });
     
@@ -542,12 +572,15 @@ export async function processMicroTrade(
         body: JSON.stringify(requestPayload)
       };
       
-      // Log the complete request configuration
-      autoTradeLogger.log(`[${tradeRequestId}] COMPLETE REQUEST CONFIGURATION`, {
+      // Log the complete request configuration with ERROR severity to ensure it shows in Error Logs tab
+      autoTradeLogger.error(`[${tradeRequestId}] COMPLETE REQUEST CONFIGURATION`, {
         method: requestConfig.method,
         headers: JSON.stringify(requestConfig.headers),
         bodyLength: requestConfig.body ? requestConfig.body.length : 0,
-        bodyPreview: requestConfig.body ? requestConfig.body.substring(0, 200) : 'No body',
+        bodyContent: requestConfig.body, // Log the complete body content
+        bodyContentType: typeof requestConfig.body,
+        bodyContentIsNull: requestConfig.body === null,
+        bodyContentIsUndefined: requestConfig.body === undefined,
         timestamp: new Date().toISOString()
       });
       
@@ -570,10 +603,29 @@ export async function processMicroTrade(
           errorText = await response.text();
           console.log(`[${tradeRequestId}] Raw error response:`, errorText.substring(0, 500));
           
+          // Log the complete error response to Error Logs tab
+          autoTradeLogger.error(`[${tradeRequestId}] COMPLETE ERROR RESPONSE FROM BINANCE TRADE API`, {
+            status: responseStatus,
+            statusText: responseStatusText,
+            rawResponse: errorText,
+            responseLength: errorText.length,
+            timestamp: new Date().toISOString()
+          });
+          
           try {
             // Attempt to parse as JSON
             errorData = JSON.parse(errorText);
             console.error(`[${tradeRequestId}] Trade API error response (parsed):`, errorData);
+            
+            // Log the parsed error data to Error Logs tab
+            autoTradeLogger.error(`[${tradeRequestId}] PARSED ERROR RESPONSE`, {
+              errorData,
+              error: errorData.error,
+              details: errorData.details,
+              errorType: errorData.errorType,
+              requestInfo: errorData.requestInfo,
+              timestamp: new Date().toISOString()
+            });
           } catch (jsonError) {
             // If JSON parsing fails, use the text directly
             console.error(`[${tradeRequestId}] Trade API error (non-JSON response):`, errorText.substring(0, 200));
@@ -582,6 +634,13 @@ export async function processMicroTrade(
               details: errorText.substring(0, 100),
               rawResponse: errorText.substring(0, 500)
             };
+            
+            // Log the JSON parsing error to Error Logs tab
+            autoTradeLogger.error(`[${tradeRequestId}] JSON PARSING ERROR FOR ERROR RESPONSE`, {
+              jsonError: jsonError.message,
+              errorText: errorText,
+              timestamp: new Date().toISOString()
+            });
           }
         } catch (responseError) {
           console.error(`[${tradeRequestId}] Error reading response body:`, responseError);
@@ -589,6 +648,13 @@ export async function processMicroTrade(
             error: 'Failed to read error response', 
             details: responseError.message 
           };
+          
+          // Log the response reading error to Error Logs tab
+          autoTradeLogger.error(`[${tradeRequestId}] ERROR READING RESPONSE BODY`, {
+            responseError: responseError.message,
+            stack: responseError.stack,
+            timestamp: new Date().toISOString()
+          });
         }
         
         // Create a detailed error object
@@ -604,11 +670,33 @@ export async function processMicroTrade(
         (apiError as any).details = errorData.details || errorText;
         (apiError as any).rawResponse = errorText;
         (apiError as any).requestId = tradeRequestId;
+        (apiError as any).requestPayload = requestPayload; // Include the original request payload
+        
+        // Log the complete error object to Error Logs tab
+        autoTradeLogger.error(`[${tradeRequestId}] COMPLETE API ERROR OBJECT`, {
+          message: apiError.message,
+          status: (apiError as any).status,
+          statusText: (apiError as any).statusText,
+          details: (apiError as any).details,
+          requestId: (apiError as any).requestId,
+          requestPayload: (apiError as any).requestPayload,
+          timestamp: new Date().toISOString()
+        });
         
         throw apiError;
       }
     } catch (fetchError) {
       console.error(`[${tradeRequestId}] Network error during trade API call for ${crypto.symbol}:`, fetchError);
+      
+      // Log the network error to Error Logs tab
+      autoTradeLogger.error(`[${tradeRequestId}] NETWORK ERROR DURING TRADE API CALL`, {
+        symbol: crypto.symbol,
+        error: fetchError.message,
+        stack: fetchError.stack,
+        requestPayload: requestPayload,
+        timestamp: new Date().toISOString()
+      });
+      
       throw new Error(`Network error during trade: ${fetchError.message}`);
     }
     

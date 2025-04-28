@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/router';
 import { useToast } from '@/components/ui/use-toast';
+import { useErrorLog } from '@/contexts/ErrorLogContext';
+import { ErrorCategory, ErrorSeverity } from '@/lib/errorLogger';
 import { 
   initializeMicroProcessing, 
   updateMicroProcessingPrice, 
@@ -13,6 +15,7 @@ export function useMicroProcessing() {
   const { user, token, initializing } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
+  const { captureLog, captureError, isEnabled: errorLoggingEnabled } = useErrorLog();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [enabledCryptos, setEnabledCryptos] = useState<MicroProcessingCrypto[]>([]);
@@ -340,6 +343,15 @@ export function useMicroProcessing() {
       console.error('Error fetching micro processing cryptos:', err);
       setError(`Failed to load micro processing cryptocurrencies: ${err.message || 'Unknown error'}`);
       
+      // Log to ErrorLogContext if enabled
+      if (errorLoggingEnabled) {
+        captureError(err, ErrorCategory.API, {
+          action: 'fetchMicroProcessingCryptos',
+          userId: user?.id,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
       toast({
         variant: "destructive",
         title: "Error",
@@ -459,6 +471,15 @@ export function useMicroProcessing() {
       }
     } catch (err) {
       console.error('[PROCESS-TRADES] Error processing micro trades:', err);
+      
+      // Log to ErrorLogContext if enabled
+      if (errorLoggingEnabled) {
+        captureError(err, ErrorCategory.API, {
+          action: 'processMicroTrades',
+          userId: user?.id,
+          timestamp: new Date().toISOString()
+        });
+      }
       
       // Check for authentication errors
       if (err instanceof Error && (

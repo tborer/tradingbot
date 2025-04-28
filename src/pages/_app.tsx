@@ -11,6 +11,7 @@ import '../styles/globals.css';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { Toaster } from "@/components/ui/toaster"
 import GlobalErrorBoundary from '@/components/GlobalErrorBoundary';
+import AutoTradeLoggerInitializer from '@/components/AutoTradeLoggerInitializer';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 
@@ -45,10 +46,12 @@ export default function App({ Component, pageProps }: AppProps) {
                   <KrakenWebSocketProvider>
                     <BinanceWebSocketProvider>
                       <AnalysisProvider>
-                      <ProtectedRoute>
-                        <Component {...pageProps} />
-                      </ProtectedRoute>
-                      <Toaster />
+                        {/* Initialize AutoTradeLogger with ErrorLogContext */}
+                        <AutoTradeLoggerInitializer />
+                        <ProtectedRoute>
+                          <Component {...pageProps} />
+                        </ProtectedRoute>
+                        <Toaster />
                       </AnalysisProvider>
                     </BinanceWebSocketProvider>
                   </KrakenWebSocketProvider>

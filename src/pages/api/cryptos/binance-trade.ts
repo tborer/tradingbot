@@ -734,10 +734,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (error) {
     // Enhanced error logging for the main try-catch block
     const errorTimestamp = new Date().toISOString();
-    console.error('Error in binance-trade API:', error);
+    const requestId = `err_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    
+    console.error(`[${requestId}] Error in binance-trade API:`, error);
     
     // Log detailed error information
-    autoTradeLogger.log('Unhandled error in binance-trade API', {
+    autoTradeLogger.log(`[${requestId}] Unhandled error in binance-trade API`, {
       error: error.message,
       stack: error.stack,
       errorType: error.name,
@@ -755,12 +757,47 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       error: 'An unexpected error occurred',
       details: error.message || 'Unknown error',
       timestamp: errorTimestamp,
-      errorType: error.name || 'UnknownError'
+      errorType: error.name || 'UnknownError',
+      requestId
     };
     
+    // Check if this is a Binance API error
+    if (error.message && error.message.includes('Binance API error')) {
+      // Extract error code and message if available
+      const errorCodeMatch = error.message.match(/\(([^)]+)\)/);
+      const errorCode = errorCodeMatch ? errorCodeMatch[1] : 'UNKNOWN';
+      const errorMessage = error.message.replace(/Binance API error \([^)]+\): /, '');
+      
+      console.error(`[${requestId}] Binance API error detected:`, {
+        errorCode,
+        errorMessage,
+        originalError: error.message
+      });
+      
+      autoTradeLogger.log(`[${requestId}] Binance API error details`, {
+        errorCode,
+        errorMessage,
+        originalError: error.message,
+        stack: error.stack,
+        timestamp: errorTimestamp
+      });
+      
+      // Create a more specific error response for Binance API errors
+      errorResponse = {
+        error: 'Binance API error',
+        details: errorMessage,
+        errorCode,
+        timestamp: errorTimestamp,
+        errorType: 'BINANCE_API_ERROR',
+        requestId
+      };
+      
+      // Return a 400 status for Binance API errors instead of 500
+      return res.status(400).json(errorResponse);
+    }
     // Check for specific error types
-    if (error.message && error.message.includes('Cannot convert undefined or null to object')) {
-      autoTradeLogger.log('Null/undefined object conversion error detected', {
+    else if (error.message && error.message.includes('Cannot convert undefined or null to object')) {
+      autoTradeLogger.log(`[${requestId}] Null/undefined object conversion error detected`, {
         error: error.message,
         stack: error.stack,
         timestamp: errorTimestamp,
@@ -777,6 +814,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         details: 'The request contains null or undefined values that cannot be processed',
         timestamp: errorTimestamp,
         errorType: 'DATA_FORMAT_ERROR',
+        requestId,
         requestInfo: {
           bodyType: typeof req.body,
           hasBody: !!req.body,
@@ -789,7 +827,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         error: 'Trading configuration error',
         details: 'Binance API credentials are not properly configured',
         timestamp: errorTimestamp,
-        errorType: 'CREDENTIALS_ERROR'
+        errorType: 'CREDENTIALS_ERROR',
+        requestId
       };
     } else if (error.message && error.message.includes('Network error')) {
       // Handle network errors
@@ -797,7 +836,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         error: 'Trading service unavailable',
         details: 'Could not connect to the trading service. Please try again later.',
         timestamp: errorTimestamp,
-        errorType: 'NETWORK_ERROR'
+        errorType: 'NETWORK_ERROR',
+        requestId
       };
     }
     

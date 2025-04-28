@@ -67,16 +67,26 @@ export async function createBinanceOrder(
   testMode: boolean = false,
   useTestEndpoint: boolean = false
 ): Promise<any> {
+  // Generate a request ID for tracking
+  const requestId = `binance_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  
   try {
-    // Generate a request ID for tracking
-    const requestId = `binance_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    
     // Log input parameters for debugging
     autoTradeLogger.log(`[${requestId}] createBinanceOrder called with params`, {
       userId,
       params: JSON.stringify(params),
       testMode,
       useTestEndpoint,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Log values to console for debugging
+    console.log(`[${requestId}] createBinanceOrder debug values:`, {
+      userId,
+      symbol: params.symbol,
+      side: params.side,
+      type: params.type,
+      quantity: params.quantity,
       timestamp: new Date().toISOString()
     });
 
@@ -260,17 +270,19 @@ export async function createBinanceOrder(
     
     // Log the full request URL and data for debugging
     const requestUrl = `${baseUrl}${endpoint}`;
-    console.log('Binance API request:', {
+    console.log(`[${requestId}] Binance API request:`, {
       url: requestUrl,
       method: 'POST',
       data: data,
       endpoint: endpoint,
       isTestMode: testMode,
       isTestEndpoint: useTestEndpoint,
-      queryString: queryString
+      queryString: queryString,
+      apiKeyLength: credentials.apiKey ? credentials.apiKey.length : 0,
+      secretKeyLength: credentials.secretKey ? credentials.secretKey.length : 0
     });
     
-    autoTradeLogger.log('Binance API request details', {
+    autoTradeLogger.log(`[${requestId}] Binance API request details`, {
       url: requestUrl,
       data: JSON.stringify(data),
       endpoint: endpoint,
@@ -411,13 +423,18 @@ export async function createBinanceOrder(
 
     return responseData;
   } catch (error) {
-    // Comprehensive error logging
-    autoTradeLogger.log(`Error creating Binance order: ${error.message}`, {
+    // Comprehensive error logging with request details
+    autoTradeLogger.log(`[${requestId}] Error creating Binance order: ${error.message}`, {
       error: error.message,
       stack: error.stack,
+      requestUrl: baseUrl ? `${baseUrl}${endpoint}` : 'URL not available',
+      data: data ? JSON.stringify(data) : 'Data not available',
+      endpoint: endpoint || 'Endpoint not available',
+      testMode,
+      useTestEndpoint,
       timestamp: new Date().toISOString()
     });
-    console.error('Error creating Binance order:', error);
+    console.error(`[${requestId}] Error creating Binance order:`, error);
     throw error;
   }
 }

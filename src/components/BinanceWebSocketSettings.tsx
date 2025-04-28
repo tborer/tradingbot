@@ -119,7 +119,13 @@ export default function BinanceWebSocketSettings() {
 
   // Function to execute a test trade using the Binance test endpoint
   const executeTestTrade = async (cryptoId: string, symbol: string) => {
+    // Generate a unique request ID for tracking this test trade
+    const testTradeId = `test_trade_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    
+    console.log(`[${testTradeId}] Starting test trade execution for ${symbol} (${cryptoId})`);
+    
     if (!user) {
+      console.log(`[${testTradeId}] Authentication required - no user found`);
       toast({
         variant: "destructive",
         title: "Authentication required",
@@ -130,6 +136,7 @@ export default function BinanceWebSocketSettings() {
 
     // Validate inputs
     if (!cryptoId || typeof cryptoId !== 'string') {
+      console.log(`[${testTradeId}] Invalid crypto ID: ${cryptoId}, type: ${typeof cryptoId}`);
       toast({
         variant: "destructive",
         title: "Invalid crypto ID",
@@ -139,6 +146,7 @@ export default function BinanceWebSocketSettings() {
     }
 
     if (!symbol || typeof symbol !== 'string') {
+      console.log(`[${testTradeId}] Invalid symbol: ${symbol}, type: ${typeof symbol}`);
       toast({
         variant: "destructive",
         title: "Invalid symbol",
@@ -168,11 +176,15 @@ export default function BinanceWebSocketSettings() {
         timestamp: new Date().toISOString()
       });
       
+      console.log(`[${testTradeId}] Fetching API credentials from /api/settings`);
       const settingsResponse = await fetch('/api/settings');
       const settingsData = await settingsResponse.json();
       
+      console.log(`[${testTradeId}] Settings API response status: ${settingsResponse.status}`);
+      
       if (!settingsResponse.ok) {
         const error = settingsData.error || 'Failed to fetch API credentials';
+        console.error(`[${testTradeId}] Failed to fetch API credentials:`, error);
         addLog('error', `Failed to fetch API credentials: ${error}`, {
           status: settingsResponse.status,
           timestamp: new Date().toISOString()
@@ -183,6 +195,13 @@ export default function BinanceWebSocketSettings() {
       // Check if API credentials are configured
       const hasApiKey = !!settingsData.binanceApiKey;
       const hasApiSecret = !!settingsData.binanceApiSecret;
+      
+      console.log(`[${testTradeId}] API credentials check:`, {
+        hasApiKey,
+        apiKeyLength: hasApiKey ? settingsData.binanceApiKey.length : 0,
+        hasApiSecret,
+        secretKeyLength: hasApiSecret ? settingsData.binanceApiSecret.length : 0
+      });
       
       addLog('info', `API credentials check for test trade`, {
         hasApiKey,
@@ -202,6 +221,12 @@ export default function BinanceWebSocketSettings() {
       // Format the symbol for Binance API (ensure it has USDT suffix)
       const cleanSymbol = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
       const formattedSymbol = cleanSymbol.endsWith('USDT') ? cleanSymbol : `${cleanSymbol}USDT`;
+      
+      console.log(`[${testTradeId}] Formatted symbol for Binance API:`, {
+        originalSymbol: symbol,
+        cleanSymbol,
+        formattedSymbol
+      });
       
       addLog('info', `Formatted symbol for Binance API`, {
         originalSymbol: symbol,
@@ -228,6 +253,15 @@ export default function BinanceWebSocketSettings() {
         testMode: true,
         useTestEndpoint: true,
       };
+      
+      console.log(`[${testTradeId}] Request data for API:`, {
+        cryptoId: requestData.cryptoId,
+        action: requestData.action,
+        quantity: requestData.quantity,
+        orderType: requestData.orderType,
+        testMode: requestData.testMode,
+        useTestEndpoint: requestData.useTestEndpoint
+      });
       
       // Validate all required fields are present and of correct type
       if (!requestData.cryptoId || typeof requestData.cryptoId !== 'string') {
@@ -296,13 +330,24 @@ curl -X "POST" "${testUrl}?${queryString}&signature=<signature>" \\
         timestamp: new Date().toISOString()
       });
       
-      const response = await fetch('/api/cryptos/binance-trade', {
+      // Log the URL and request data
+      const apiUrl = '/api/cryptos/binance-trade';
+      console.log(`[${testTradeId}] Sending request to ${apiUrl}:`, {
+        method: 'POST',
+        url: apiUrl,
+        requestData: JSON.stringify(requestData)
+      });
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Test-Trade-ID': testTradeId
         },
         body: JSON.stringify(requestData),
       });
+      
+      console.log(`[${testTradeId}] API response status: ${response.status} ${response.statusText}`);
       
       // Log the raw response
       addLog('info', `Received test trade response`, {
@@ -315,6 +360,8 @@ curl -X "POST" "${testUrl}?${queryString}&signature=<signature>" \\
       const responseText = await response.text();
       
       // Log the raw response text
+      console.log(`[${testTradeId}] Raw response text:`, responseText.substring(0, 500));
+      
       addLog('info', `Test trade response text received`, {
         responseTextLength: responseText.length,
         responseTextSample: responseText.substring(0, 200) + (responseText.length > 200 ? '...' : ''),

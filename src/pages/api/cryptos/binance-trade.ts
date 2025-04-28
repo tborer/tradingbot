@@ -152,7 +152,63 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
     
     // Use shares if quantity is not provided (for compatibility with trade.ts)
-    const tradeQuantity = quantity !== undefined && quantity !== null ? quantity : shares;
+    let tradeQuantity;
+    
+    // Log the raw values for debugging
+    autoTradeLogger.log(`[${requestId}] Raw quantity and shares values:`, {
+      quantity: quantity,
+      quantityType: typeof quantity,
+      quantityIsNull: quantity === null,
+      quantityIsUndefined: quantity === undefined,
+      quantityIsNaN: typeof quantity === 'number' ? isNaN(quantity) : 'not a number',
+      
+      shares: shares,
+      sharesType: typeof shares,
+      sharesIsNull: shares === null,
+      sharesIsUndefined: shares === undefined,
+      sharesIsNaN: typeof shares === 'number' ? isNaN(shares) : 'not a number',
+      
+      timestamp: new Date().toISOString()
+    });
+    
+    // Determine which value to use with explicit validation
+    if (quantity !== undefined && quantity !== null) {
+      // Try to convert quantity to a number
+      const numQuantity = Number(quantity);
+      if (!isNaN(numQuantity) && numQuantity > 0) {
+        tradeQuantity = numQuantity;
+        autoTradeLogger.log(`[${requestId}] Using quantity value: ${tradeQuantity}`, {
+          originalValue: quantity,
+          convertedValue: tradeQuantity,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        autoTradeLogger.log(`[${requestId}] Invalid quantity value: ${quantity}`, {
+          numQuantity,
+          isNaN: isNaN(numQuantity),
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+    
+    // If quantity is invalid, try to use shares
+    if (tradeQuantity === undefined && shares !== undefined && shares !== null) {
+      const numShares = Number(shares);
+      if (!isNaN(numShares) && numShares > 0) {
+        tradeQuantity = numShares;
+        autoTradeLogger.log(`[${requestId}] Using shares value: ${tradeQuantity}`, {
+          originalValue: shares,
+          convertedValue: tradeQuantity,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        autoTradeLogger.log(`[${requestId}] Invalid shares value: ${shares}`, {
+          numShares,
+          isNaN: isNaN(numShares),
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
     
     // Collect validation errors for comprehensive error reporting
     const validationErrors = [];
@@ -193,21 +249,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     
     if (tradeQuantity === undefined || tradeQuantity === null) {
-      validationErrors.push('Missing quantity/shares parameter');
-      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: Missing quantity/shares`, {
+      validationErrors.push('Missing or invalid quantity/shares parameter');
+      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: Missing or invalid quantity/shares`, {
         quantity,
         shares,
         tradeQuantity,
+        quantityType: typeof quantity,
+        sharesType: typeof shares,
         timestamp: new Date().toISOString()
       });
-    } else if (isNaN(parseFloat(String(tradeQuantity))) || parseFloat(String(tradeQuantity)) <= 0) {
+    } else if (isNaN(tradeQuantity) || tradeQuantity <= 0) {
       validationErrors.push('Invalid quantity/shares parameter. Must be a positive number');
       autoTradeLogger.log(`[${requestId}] Binance trade API validation error: Invalid quantity/shares value`, {
         quantity,
         shares,
         tradeQuantity,
-        parsedValue: parseFloat(String(tradeQuantity)),
-        isNaN: isNaN(parseFloat(String(tradeQuantity))),
+        tradeQuantityType: typeof tradeQuantity,
+        isNaN: isNaN(tradeQuantity),
         timestamp: new Date().toISOString()
       });
     }

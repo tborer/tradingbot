@@ -199,18 +199,72 @@ export async function createBinanceOrder(
     // Prepare request parameters
     const timestamp = Date.now();
 
-    // Build data object
-    let data: Record<string, string> = {
+    // Build data object with detailed validation
+    let data: Record<string, string> = {};
+    
+    // Log all parameters before building data object
+    console.log(`[${requestId}] Building data object with parameters:`, {
       symbol: params.symbol,
+      symbolType: typeof params.symbol,
+      symbolIsNull: params.symbol === null,
+      symbolIsUndefined: params.symbol === undefined,
+      
       side: params.side,
+      sideType: typeof params.side,
+      sideIsNull: params.side === null,
+      sideIsUndefined: params.side === undefined,
+      
       type: params.type,
-      timestamp: timestamp.toString()
-    };
-
-    // Add quantity
-    if (params.quantity) {
-      data.quantity = params.quantity.toString();
+      typeType: typeof params.type,
+      typeIsNull: params.type === null,
+      typeIsUndefined: params.type === undefined,
+      
+      quantity: params.quantity,
+      quantityType: typeof params.quantity,
+      quantityIsNull: params.quantity === null,
+      quantityIsUndefined: params.quantity === undefined,
+      quantityIsNaN: isNaN(params.quantity),
+      
+      timestamp: timestamp,
+      timestampType: typeof timestamp
+    });
+    
+    // Add required fields with validation
+    if (!params.symbol) {
+      throw new Error('Symbol is required and cannot be null or undefined');
     }
+    data.symbol = params.symbol;
+    
+    if (!params.side) {
+      throw new Error('Side is required and cannot be null or undefined');
+    }
+    data.side = params.side;
+    
+    if (!params.type) {
+      throw new Error('Type is required and cannot be null or undefined');
+    }
+    data.type = params.type;
+    
+    // Always add timestamp
+    data.timestamp = timestamp.toString();
+    
+    // Add quantity with validation
+    if (params.quantity === undefined || params.quantity === null) {
+      throw new Error('Quantity is required and cannot be null or undefined');
+    }
+    
+    if (isNaN(params.quantity) || params.quantity <= 0) {
+      throw new Error(`Invalid quantity: ${params.quantity}. Must be a positive number.`);
+    }
+    
+    data.quantity = params.quantity.toString();
+    
+    // Log the data object after building
+    console.log(`[${requestId}] Built data object:`, {
+      dataKeys: Object.keys(data),
+      dataValues: Object.values(data),
+      dataEntries: Object.entries(data)
+    });
 
     // Add optional parameters if provided
     if (params.price) {

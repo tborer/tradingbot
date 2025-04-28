@@ -414,19 +414,56 @@ export async function processMicroTrade(
     }
     
     // Create a validated request payload with explicit type conversions
+    // First, ensure all values are valid
+    if (!cryptoId || typeof cryptoId !== 'string') {
+      throw new Error(`Invalid cryptoId: ${cryptoId}. Must be a non-empty string.`);
+    }
+    
+    if (!action || typeof action !== 'string' || !['buy', 'sell'].includes(action.toLowerCase())) {
+      throw new Error(`Invalid action: ${action}. Must be 'buy' or 'sell'.`);
+    }
+    
+    // Ensure shares is a valid number
+    const validatedShares = Number(shares);
+    if (isNaN(validatedShares) || validatedShares <= 0) {
+      throw new Error(`Invalid shares: ${shares} (${typeof shares}). Must be a positive number.`);
+    }
+    
+    // Ensure currentPrice is a valid number
+    const validatedPrice = Number(currentPrice);
+    if (isNaN(validatedPrice) || validatedPrice <= 0) {
+      throw new Error(`Invalid currentPrice: ${currentPrice} (${typeof currentPrice}). Must be a positive number.`);
+    }
+    
+    // Now create the payload with validated values
     const requestPayload = {
       cryptoId: String(cryptoId),
       action: String(action).toLowerCase(),
-      shares: Number(shares),
-      quantity: Number(shares), // Include both for compatibility
-      price: Number(currentPrice),
+      shares: validatedShares,
+      quantity: validatedShares, // Include both for compatibility
+      price: validatedPrice,
       orderType: 'MARKET', // Ensure consistent casing
       microProcessing: true,
       tradingPlatform: 'binance', // Explicitly set to use Binance
       testMode: Boolean(settings.testMode) // Ensure boolean type
     };
     
-    console.log(`[${tradeRequestId}] Trade request payload:`, requestPayload);
+    // Log the final validated payload with detailed type information
+    console.log(`[${tradeRequestId}] Trade request payload:`, {
+      ...requestPayload,
+      cryptoIdType: typeof requestPayload.cryptoId,
+      actionType: typeof requestPayload.action,
+      sharesType: typeof requestPayload.shares,
+      sharesValue: requestPayload.shares,
+      quantityType: typeof requestPayload.quantity,
+      quantityValue: requestPayload.quantity,
+      priceType: typeof requestPayload.price,
+      priceValue: requestPayload.price,
+      orderTypeType: typeof requestPayload.orderType,
+      microProcessingType: typeof requestPayload.microProcessing,
+      tradingPlatformType: typeof requestPayload.tradingPlatform,
+      testModeType: typeof requestPayload.testMode
+    });
     
     // Log detailed request parameters for debugging
     console.log(`[${tradeRequestId}] Trade API request details:`, {

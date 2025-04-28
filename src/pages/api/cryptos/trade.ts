@@ -197,11 +197,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         tradingPlatform
       });
       
-      // Prepare the request payload
+      // Prepare the request payload with explicit quantity parameter
       const requestPayload = {
         cryptoId: crypto.id,
         action,
         shares: sharesToTrade,
+        quantity: sharesToTrade, // Explicitly include quantity parameter for Binance API
         price: currentPrice,
         orderType: effectiveOrderType,
         isAutoOrder: req.body.isAutoOrder || false,
@@ -210,6 +211,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         purchaseMethod: isBuyingByTotalValue ? 'totalValue' : 'shares',
         testMode: testMode === true // Explicitly pass testMode parameter
       };
+      
+      // Log the payload with type information
+      console.log('Trade API request payload with type information:', {
+        cryptoId: { value: requestPayload.cryptoId, type: typeof requestPayload.cryptoId },
+        action: { value: requestPayload.action, type: typeof requestPayload.action },
+        shares: { value: requestPayload.shares, type: typeof requestPayload.shares },
+        quantity: { value: requestPayload.quantity, type: typeof requestPayload.quantity },
+        price: { value: requestPayload.price, type: typeof requestPayload.price },
+        orderType: { value: requestPayload.orderType, type: typeof requestPayload.orderType },
+        testMode: { value: requestPayload.testMode, type: typeof requestPayload.testMode }
+      });
       
       // Make the API request with enhanced error handling
       let executeOrderResponse;

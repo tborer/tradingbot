@@ -192,7 +192,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     
     // If quantity is invalid, try to use shares
-    if (tradeQuantity === undefined && shares !== undefined && shares !== null) {
+    if ((tradeQuantity === undefined || tradeQuantity === null) && shares !== undefined && shares !== null) {
       const numShares = Number(shares);
       if (!isNaN(numShares) && numShares > 0) {
         tradeQuantity = numShares;
@@ -207,6 +207,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           isNaN: isNaN(numShares),
           timestamp: new Date().toISOString()
         });
+      }
+    }
+    
+    // If both quantity and shares are invalid, check if we can parse them as strings
+    if (tradeQuantity === undefined || tradeQuantity === null) {
+      // Try one more time with explicit string conversion
+      if (quantity !== undefined && quantity !== null) {
+        const stringQuantity = String(quantity).trim();
+        const parsedQuantity = parseFloat(stringQuantity);
+        
+        if (!isNaN(parsedQuantity) && parsedQuantity > 0) {
+          tradeQuantity = parsedQuantity;
+          autoTradeLogger.log(`[${requestId}] Parsed quantity from string: ${tradeQuantity}`, {
+            originalValue: quantity,
+            stringValue: stringQuantity,
+            parsedValue: tradeQuantity,
+            timestamp: new Date().toISOString()
+          });
+        }
+      } else if (shares !== undefined && shares !== null) {
+        const stringShares = String(shares).trim();
+        const parsedShares = parseFloat(stringShares);
+        
+        if (!isNaN(parsedShares) && parsedShares > 0) {
+          tradeQuantity = parsedShares;
+          autoTradeLogger.log(`[${requestId}] Parsed shares from string: ${tradeQuantity}`, {
+            originalValue: shares,
+            stringValue: stringShares,
+            parsedValue: tradeQuantity,
+            timestamp: new Date().toISOString()
+          });
+        }
       }
     }
     

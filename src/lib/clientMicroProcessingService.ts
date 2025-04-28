@@ -1,5 +1,6 @@
 import { updatePriceCache, getCachedPrice } from '@/lib/priceCache';
 import { shouldSellCrypto } from '@/lib/kraken';
+import { autoTradeLogger } from '@/lib/autoTradeLogger';
 
 // Define types for micro processing
 export interface MicroProcessingSettings {
@@ -445,7 +446,8 @@ export async function processMicroTrade(
       orderType: 'MARKET', // Ensure consistent casing
       microProcessing: true,
       tradingPlatform: 'binance', // Explicitly set to use Binance
-      testMode: Boolean(settings.testMode) // Ensure boolean type
+      testMode: Boolean(settings.testMode), // Ensure boolean type
+      useTestEndpoint: Boolean(settings.testMode) // Use test endpoint if in test mode
     };
     
     // Log the final validated payload with detailed type information
@@ -518,6 +520,9 @@ export async function processMicroTrade(
       testMode: requestPayload.testMode,
       testModeType: typeof requestPayload.testMode,
       
+      useTestEndpoint: requestPayload.useTestEndpoint,
+      useTestEndpointType: typeof requestPayload.useTestEndpoint,
+      
       fullPayload: JSON.stringify(requestPayload),
       timestamp: new Date().toISOString()
     });
@@ -546,9 +551,9 @@ export async function processMicroTrade(
         timestamp: new Date().toISOString()
       });
       
-      console.log(`[${tradeRequestId}] Sending trade API request to /api/cryptos/trade`);
+      console.log(`[${tradeRequestId}] Sending trade API request to /api/cryptos/binance-trade`);
       
-      response = await fetch('/api/cryptos/trade', requestConfig);
+      response = await fetch('/api/cryptos/binance-trade', requestConfig);
       
       console.log(`[${tradeRequestId}] Trade API response status: ${response.status} ${response.statusText}`);
       

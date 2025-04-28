@@ -417,6 +417,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         timestamp: new Date().toISOString()
       });
       
+      // Log the exact format that will be sent to Binance API
+      autoTradeLogger.error(`[${requestId}] BINANCE API FORMAT MAPPING`, {
+        clientRequest: {
+          cryptoId,
+          action,
+          quantity: tradeQuantity,
+          shares,
+          price,
+          orderType,
+          testMode,
+          useTestEndpoint,
+          microProcessing
+        },
+        binanceApiFormat: {
+          symbol: crypto.symbol,
+          side: action.toLowerCase() === 'buy' ? 'BUY' : 'SELL',
+          type: orderType.toUpperCase(),
+          quantity: parsedQuantity,
+          price: parsedPrice,
+          timestamp: Date.now(),
+          recvWindow: 5000,
+          signature: "HMAC SHA256 signature of query string"
+        },
+        requiredHeader: "X-MBX-APIKEY header with API key",
+        timestamp: new Date().toISOString()
+      });
+      
       if (action.toLowerCase() === 'buy') {
         if (orderType.toUpperCase() === 'MARKET') {
           autoTradeLogger.log('Executing Binance market buy', {

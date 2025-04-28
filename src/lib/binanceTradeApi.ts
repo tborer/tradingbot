@@ -52,6 +52,12 @@ export async function getBinanceCredentials(userId: string): Promise<BinanceCred
  * Generate HMAC SHA256 signature for Binance API
  */
 function generateSignature(queryString: string, secretKey: string): string {
+  autoTradeLogger.log('Generating signature for Binance API', {
+    queryStringLength: queryString.length,
+    secretKeyLength: secretKey ? secretKey.length : 0,
+    timestamp: new Date().toISOString()
+  });
+  
   return crypto
     .createHmac('sha256', secretKey)
     .update(queryString)
@@ -60,6 +66,11 @@ function generateSignature(queryString: string, secretKey: string): string {
 
 /**
  * Create a new order on Binance
+ * 
+ * This function formats the request according to Binance API specifications:
+ * - Required parameters: symbol, side, type, quantity, timestamp
+ * - Signature is generated using HMAC SHA256 on the query string
+ * - API key is sent in the X-MBX-APIKEY header
  */
 export async function createBinanceOrder(
   userId: string,
@@ -78,6 +89,14 @@ export async function createBinanceOrder(
       paramsObject: params, // Log the actual object for better inspection
       testMode,
       useTestEndpoint,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Log the exact format required by Binance API
+    autoTradeLogger.log(`[${requestId}] BINANCE API REQUIRED FORMAT`, {
+      requiredParams: ['symbol', 'side', 'type', 'quantity', 'timestamp'],
+      signatureFormat: "HMAC SHA256 signature of 'symbol=X&side=Y&type=Z&quantity=Q&timestamp=T'",
+      headerRequired: "X-MBX-APIKEY header with API key",
       timestamp: new Date().toISOString()
     });
     
@@ -197,60 +216,22 @@ export async function createBinanceOrder(
       useTestEndpoint
     });
 
-    // Prepare request parameters
+    // Prepare request parameters - use current timestamp in milliseconds
     const timestamp = Date.now();
 
-    // Build data object with detailed validation
-    let data: Record<string, string> = {};
-    
-    // Log all parameters before building data object
-    console.log(`[${requestId}] Building data object with parameters:`, {
-      symbol: params.symbol,
-      symbolType: typeof params.symbol,
-      symbolIsNull: params.symbol === null,
-      symbolIsUndefined: params.symbol === undefined,
-      
-      side: params.side,
-      sideType: typeof params.side,
-      sideIsNull: params.side === null,
-      sideIsUndefined: params.side === undefined,
-      
-      type: params.type,
-      typeType: typeof params.type,
-      typeIsNull: params.type === null,
-      typeIsUndefined: params.type === undefined,
-      
-      quantity: params.quantity,
-      quantityType: typeof params.quantity,
-      quantityIsNull: params.quantity === null,
-      quantityIsUndefined: params.quantity === undefined,
-      quantityIsNaN: isNaN(params.quantity),
-      
-      timestamp: timestamp,
-      timestampType: typeof timestamp
-    });
-    
-    // Add required fields with validation
+    // Validate required parameters before building the request
     if (!params.symbol) {
       throw new Error('Symbol is required and cannot be null or undefined');
     }
-    data.symbol = params.symbol;
     
     if (!params.side) {
       throw new Error('Side is required and cannot be null or undefined');
     }
-    data.side = params.side;
     
     if (!params.type) {
       throw new Error('Type is required and cannot be null or undefined');
     }
-    data.type = params.type;
     
-    // Always add timestamp and recvWindow
-    data.timestamp = timestamp.toString();
-    data.recvWindow = '5000'; // Add a 5-second receive window to prevent timestamp issues
-    
-    // Add quantity with validation
     if (params.quantity === undefined || params.quantity === null) {
       throw new Error('Quantity is required and cannot be null or undefined');
     }
@@ -259,111 +240,64 @@ export async function createBinanceOrder(
       throw new Error(`Invalid quantity: ${params.quantity}. Must be a positive number.`);
     }
     
-    // DETAILED LOGGING: quantity Details - Log the quantity variable's type and whether it's NaN
-    autoTradeLogger.log(`[${requestId}] QUANTITY DETAILS before conversion`, {
+    // DETAILED LOGGING: Log all parameters before building the request
+    autoTradeLogger.log(`[${requestId}] Binance API parameters validation passed:`, {
+      symbol: params.symbol,
+      symbolType: typeof params.symbol,
+      
+      side: params.side,
+      sideType: typeof params.side,
+      
+      type: params.type,
+      typeType: typeof params.type,
+      
       quantity: params.quantity,
       quantityType: typeof params.quantity,
       quantityIsNaN: isNaN(params.quantity),
-      quantityToString: String(params.quantity),
-      quantityParseFloat: parseFloat(String(params.quantity)),
-      quantityParseFloatIsNaN: isNaN(parseFloat(String(params.quantity))),
+      
+      timestamp: timestamp,
+      timestampType: typeof timestamp,
+      
       timestamp: new Date().toISOString()
     });
     
-    data.quantity = params.quantity.toString();
+    // Build the core parameters object exactly as required by Binance API
+    const coreParams = {
+      symbol: params.symbol,
+      side: params.side,
+      type: params.type,
+      quantity: params.quantity.toString(),
+      timestamp: timestamp.toString()
+    };
     
-    // Log the data object after building
-    console.log(`[${requestId}] Built data object:`, {
-      dataKeys: Object.keys(data),
-      dataValues: Object.values(data),
-      dataEntries: Object.entries(data)
-    });
-
     // Add optional parameters if provided
     if (params.price) {
-      data.price = params.price.toString();
+      coreParams['price'] = params.price.toString();
     }
 
     if (params.timeInForce) {
-      data.timeInForce = params.timeInForce;
+      coreParams['timeInForce'] = params.timeInForce;
     }
 
     if (params.newClientOrderId) {
-      data.newClientOrderId = params.newClientOrderId;
+      coreParams['newClientOrderId'] = params.newClientOrderId;
     }
 
     if (params.newOrderRespType) {
-      data.newOrderRespType = params.newOrderRespType;
+      coreParams['newOrderRespType'] = params.newOrderRespType;
     }
-
-    // Log the constructed data object
-    autoTradeLogger.log('Binance request data constructed', {
-      data: JSON.stringify(data),
-      hasSymbol: !!data.symbol,
-      symbolValue: data.symbol,
-      hasSide: !!data.side,
-      sideValue: data.side,
-      hasType: !!data.type,
-      typeValue: data.type,
-      hasQuantity: !!data.quantity,
-      quantityValue: data.quantity,
-      hasTimestamp: !!data.timestamp,
-      timestampValue: data.timestamp
-    });
-
-    // Log detailed information about quantity right before using it
-    console.log(`[${requestId}] Quantity variable details before generating query string:`, {
-      quantity: params.quantity,
-      quantityType: typeof params.quantity,
-      quantityIsNaN: isNaN(params.quantity),
-      quantityToString: params.quantity?.toString(),
-      dataQuantity: data.quantity,
-      dataQuantityType: typeof data.quantity,
-      dataQuantityIsNaN: isNaN(Number(data.quantity)),
+    
+    // Add recvWindow parameter to prevent timestamp issues
+    coreParams['recvWindow'] = '5000';
+    
+    // Log the constructed parameters object
+    autoTradeLogger.log(`[${requestId}] Binance API core parameters constructed:`, {
+      coreParams: JSON.stringify(coreParams),
       timestamp: new Date().toISOString()
     });
     
-    // DETAILED LOGGING: data Object - Log the entire data object just before it's used to construct the queryString
-    autoTradeLogger.log(`[${requestId}] DATA OBJECT BEFORE QUERY STRING GENERATION`, {
-      data: JSON.stringify(data),
-      dataObject: data,
-      dataKeys: Object.keys(data),
-      dataValues: Object.values(data),
-      dataEntries: Object.entries(data),
-      symbol: data.symbol,
-      side: data.side,
-      type: data.type,
-      quantity: data.quantity,
-      timestamp: data.timestamp,
-      recvWindow: data.recvWindow,
-      price: data.price,
-      timeInForce: data.timeInForce,
-      newClientOrderId: data.newClientOrderId,
-      newOrderRespType: data.newOrderRespType,
-      hasSymbol: !!data.symbol,
-      hasSide: !!data.side,
-      hasType: !!data.type,
-      hasQuantity: !!data.quantity,
-      hasTimestamp: !!data.timestamp,
-      hasRecvWindow: !!data.recvWindow,
-      hasPrice: !!data.price,
-      hasTimeInForce: !!data.timeInForce,
-      hasNewClientOrderId: !!data.newClientOrderId,
-      hasNewOrderRespType: !!data.newOrderRespType,
-      timestamp: new Date().toISOString()
-    });
-    
-    // Log the complete data object before generating query string
-    console.log(`[${requestId}] Complete data object for Binance API:`, {
-      data,
-      dataKeys: Object.keys(data),
-      dataValues: Object.values(data),
-      dataEntries: Object.entries(data),
-      timestamp: new Date().toISOString()
-    });
-    
-    // Generate query string for signature - ensure all values are properly converted to strings
-    const queryString = Object.entries(data)
+    // Generate the query string in the exact format required by Binance API
+    const queryString = Object.entries(coreParams)
       .map(([key, value]) => {
         // Ensure value is never undefined or null before encoding
         const safeValue = value === undefined || value === null ? '' : String(value);
@@ -371,70 +305,41 @@ export async function createBinanceOrder(
       })
       .join('&');
     
-    // DETAILED LOGGING: queryString - Log the generated queryString
-    autoTradeLogger.log(`[${requestId}] QUERY STRING GENERATED`, {
-      queryString,
-      queryStringLength: queryString.length,
-      queryStringParts: queryString.split('&'),
-      queryStringEncoded: encodeURIComponent(queryString),
-      queryStringEncodedLength: encodeURIComponent(queryString).length,
-      timestamp: new Date().toISOString()
-    });
-    
-    // Log the query string for debugging
-    console.log(`[${requestId}] Generated query string for Binance API:`, {
+    // Log the exact query string that will be used for the signature
+    autoTradeLogger.log(`[${requestId}] EXACT BINANCE API QUERY STRING:`, {
       queryString,
       queryStringLength: queryString.length,
       queryStringParts: queryString.split('&'),
       timestamp: new Date().toISOString()
     });
     
-    // Generate signature using HMAC SHA256
+    // Generate signature using HMAC SHA256 with the exact query string
     const signature = generateSignature(queryString, credentials.secretKey);
-
-    // Log signature generation (without exposing the actual signature)
-    autoTradeLogger.log('Binance signature generated', {
+    
+    // Log the signature generation (without exposing the actual signature)
+    autoTradeLogger.log(`[${requestId}] Binance signature generated:`, {
       signatureLength: signature.length,
       signatureFirstChars: signature.substring(0, 5) + '...',
-      signatureLastChars: '...' + signature.substring(signature.length - 5)
+      signatureLastChars: '...' + signature.substring(signature.length - 5),
+      timestamp: new Date().toISOString()
     });
 
     // Log the request details (without sensitive information)
-    autoTradeLogger.log(`Sending Binance order request: ${params.side} ${params.quantity} ${params.symbol} at ${params.price || 'market price'}`);
-    
-    // Log the full request URL and data for debugging
-    const requestUrl = `${baseUrl}${endpoint}`;
-    console.log(`[${requestId}] Binance API request:`, {
-      url: requestUrl,
-      method: 'POST',
-      data: data,
-      endpoint: endpoint,
-      isTestMode: testMode,
-      isTestEndpoint: useTestEndpoint,
-      queryString: queryString,
-      apiKeyLength: credentials.apiKey ? credentials.apiKey.length : 0,
-      secretKeyLength: credentials.secretKey ? credentials.secretKey.length : 0
+    autoTradeLogger.log(`[${requestId}] Sending Binance order request:`, {
+      action: params.side,
+      quantity: params.quantity,
+      symbol: params.symbol,
+      price: params.price || 'market price',
+      orderType: params.type,
+      timestamp: new Date().toISOString()
     });
     
-    autoTradeLogger.log(`[${requestId}] Binance API request details`, {
-      url: requestUrl,
-      data: JSON.stringify(data),
-      endpoint: endpoint,
-      isTestMode: testMode,
-      isTestEndpoint: useTestEndpoint,
-      queryString: queryString
-    });
-
-    // For Binance API, we can either:
-    // 1. Send parameters as query string with signature appended
-    // 2. Send parameters in request body with signature appended
-    // We'll use the query string approach as it's more commonly used
-
     // Create the full URL with query string and signature
-    const fullUrl = `${baseUrl}${endpoint}?${queryString}&signature=${signature}`;
-
-    // DETAILED LOGGING: requestUrl - Log the final requestUrl that will be used to send the request
-    autoTradeLogger.log(`[${requestId}] FINAL REQUEST URL`, {
+    const requestUrl = `${baseUrl}${endpoint}`;
+    const fullUrl = `${requestUrl}?${queryString}&signature=${signature}`;
+    
+    // Log the final request URL (with signature partially masked for security)
+    autoTradeLogger.log(`[${requestId}] FINAL BINANCE API REQUEST:`, {
       baseUrl,
       endpoint,
       fullUrl: fullUrl.replace(signature, signature.substring(0, 5) + '...' + signature.substring(signature.length - 5)),
@@ -443,23 +348,11 @@ export async function createBinanceOrder(
       signatureLength: signature.length,
       hasQueryString: fullUrl.includes('?'),
       hasSignature: fullUrl.includes('signature='),
-      urlParts: {
-        protocol: fullUrl.split('://')[0],
-        host: fullUrl.split('://')[1]?.split('/')[0],
-        path: '/' + (fullUrl.split('://')[1]?.split('/').slice(1).join('/').split('?')[0] || ''),
-        query: fullUrl.includes('?') ? fullUrl.split('?')[1] : ''
-      },
       timestamp: new Date().toISOString()
     });
-
-    // Log the full URL (with signature partially masked)
-    autoTradeLogger.log('Binance full request URL', {
-      fullUrlLength: fullUrl.length,
-      maskedUrl: fullUrl.replace(signature, signature.substring(0, 5) + '...' + signature.substring(signature.length - 5))
-    });
-
-    // Make the request
-    autoTradeLogger.log('Initiating Binance API request', {
+    
+    // Make the request with the exact format required by Binance API
+    autoTradeLogger.log(`[${requestId}] Initiating Binance API request:`, {
       method: 'POST',
       url: requestUrl,
       timestamp: new Date().toISOString()
@@ -467,6 +360,7 @@ export async function createBinanceOrder(
 
     let response;
     try {
+      // Make the request with the API key in the header as required by Binance
       response = await fetch(fullUrl, {
         method: 'POST',
         headers: {
@@ -475,12 +369,46 @@ export async function createBinanceOrder(
         }
       });
       
+      // Log the response status
+      autoTradeLogger.log(`[${requestId}] Binance API response received:`, {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        timestamp: new Date().toISOString()
+      });
+      
       // Log the raw response status
       autoTradeLogger.log('Binance API response received', {
         status: response.status,
         statusText: response.statusText,
         ok: response.ok,
         headers: JSON.stringify(Object.fromEntries([...response.headers.entries()])),
+        timestamp: new Date().toISOString()
+      });
+      
+      // Log the exact request that was sent (with sensitive data masked)
+      autoTradeLogger.error(`[${requestId}] BINANCE API EXACT REQUEST SENT`, {
+        url: requestUrl,
+        method: 'POST',
+        headers: {
+          'X-MBX-APIKEY': credentials.apiKey ? `${credentials.apiKey.substring(0, 5)}...` : 'not provided',
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        queryParams: {
+          symbol: coreParams.symbol,
+          side: coreParams.side,
+          type: coreParams.type,
+          quantity: coreParams.quantity,
+          timestamp: coreParams.timestamp,
+          recvWindow: coreParams.recvWindow,
+          price: coreParams.price || 'not provided',
+          timeInForce: coreParams.timeInForce || 'not provided',
+          newClientOrderId: coreParams.newClientOrderId || 'not provided',
+          newOrderRespType: coreParams.newOrderRespType || 'not provided',
+          signature: signature ? `${signature.substring(0, 5)}...` : 'not provided'
+        },
+        queryString: queryString,
+        fullQueryString: `${queryString}&signature=${signature ? `${signature.substring(0, 5)}...` : 'not provided'}`,
         timestamp: new Date().toISOString()
       });
     } catch (fetchError) {

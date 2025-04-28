@@ -351,6 +351,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const parsedQuantity = parseFloat(String(tradeQuantity));
     const parsedPrice = price ? parseFloat(String(price)) : undefined;
     
+    // Log detailed information about the quantity right before executing the trade
+    console.log(`[${requestId}] Quantity details before executing trade:`, {
+      tradeQuantity,
+      tradeQuantityType: typeof tradeQuantity,
+      tradeQuantityIsNaN: isNaN(tradeQuantity),
+      parsedQuantity,
+      parsedQuantityType: typeof parsedQuantity,
+      parsedQuantityIsNaN: isNaN(parsedQuantity),
+      parsedQuantityToString: parsedQuantity.toString(),
+      originalQuantity: quantity,
+      originalQuantityType: typeof quantity,
+      originalQuantityIsNaN: typeof quantity === 'number' ? isNaN(quantity) : 'not a number',
+      originalShares: shares,
+      originalSharesType: typeof shares,
+      originalSharesIsNaN: typeof shares === 'number' ? isNaN(shares) : 'not a number',
+      timestamp: new Date().toISOString()
+    });
+    
     try {
       // If useTestEndpoint is true, we'll force testMode to true as well
       const effectiveTestMode = useTestEndpoint ? true : testMode;

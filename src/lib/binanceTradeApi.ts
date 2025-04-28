@@ -298,6 +298,27 @@ export async function createBinanceOrder(
       timestampValue: data.timestamp
     });
 
+    // Log detailed information about quantity right before using it
+    console.log(`[${requestId}] Quantity variable details before generating query string:`, {
+      quantity: params.quantity,
+      quantityType: typeof params.quantity,
+      quantityIsNaN: isNaN(params.quantity),
+      quantityToString: params.quantity?.toString(),
+      dataQuantity: data.quantity,
+      dataQuantityType: typeof data.quantity,
+      dataQuantityIsNaN: isNaN(Number(data.quantity)),
+      timestamp: new Date().toISOString()
+    });
+    
+    // Log the complete data object before generating query string
+    console.log(`[${requestId}] Complete data object for Binance API:`, {
+      data,
+      dataKeys: Object.keys(data),
+      dataValues: Object.values(data),
+      dataEntries: Object.entries(data),
+      timestamp: new Date().toISOString()
+    });
+    
     // Generate query string for signature
     const queryString = Object.entries(data)
       .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
@@ -307,6 +328,14 @@ export async function createBinanceOrder(
     autoTradeLogger.log('Binance query string generated', {
       queryString,
       queryStringLength: queryString.length
+    });
+    
+    // Log the query string for debugging
+    console.log(`[${requestId}] Generated query string for Binance API:`, {
+      queryString,
+      queryStringLength: queryString.length,
+      queryStringParts: queryString.split('&'),
+      timestamp: new Date().toISOString()
     });
     
     // Generate signature using HMAC SHA256

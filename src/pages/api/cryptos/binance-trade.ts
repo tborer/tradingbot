@@ -417,7 +417,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         timestamp: new Date().toISOString()
       });
       
-      // Log the exact format that will be sent to Binance API
+      // Log the exact format that will be sent to Binance API - STRICTLY PER BINANCE API SPEC
       autoTradeLogger.error(`[${requestId}] BINANCE API FORMAT MAPPING`, {
         clientRequest: {
           cryptoId,
@@ -431,16 +431,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           microProcessing
         },
         binanceApiFormat: {
+          // ONLY include the exact fields required by Binance API
           symbol: crypto.symbol,
           side: action.toLowerCase() === 'buy' ? 'BUY' : 'SELL',
           type: orderType.toUpperCase(),
           quantity: parsedQuantity,
-          price: parsedPrice,
           timestamp: Date.now(),
-          recvWindow: 5000,
-          signature: "HMAC SHA256 signature of query string"
+          // Only include price for LIMIT orders
+          ...(orderType.toUpperCase() === 'LIMIT' && parsedPrice ? { price: parsedPrice } : {}),
+          // Only include timeInForce for LIMIT orders
+          ...(orderType.toUpperCase() === 'LIMIT' ? { timeInForce: 'GTC' } : {}),
+          // Standard parameter for request window
+          recvWindow: 5000
         },
         requiredHeader: "X-MBX-APIKEY header with API key",
+        signatureGeneration: "HMAC SHA256 signature of query string with all parameters",
         timestamp: new Date().toISOString()
       });
       

@@ -261,7 +261,8 @@ export async function createBinanceOrder(
       timestamp: new Date().toISOString()
     });
     
-    // Build the core parameters object exactly as required by Binance API
+    // Build the core parameters object with ONLY the fields required by Binance API
+    // Required fields: symbol, side, type, quantity, timestamp
     const coreParams = {
       symbol: params.symbol,
       side: params.side,
@@ -270,29 +271,30 @@ export async function createBinanceOrder(
       timestamp: timestamp.toString()
     };
     
-    // Add optional parameters if provided
-    if (params.price) {
-      coreParams['price'] = params.price.toString();
-    }
-
-    if (params.timeInForce) {
-      coreParams['timeInForce'] = params.timeInForce;
-    }
-
-    if (params.newClientOrderId) {
-      coreParams['newClientOrderId'] = params.newClientOrderId;
-    }
-
-    if (params.newOrderRespType) {
-      coreParams['newOrderRespType'] = params.newOrderRespType;
+    // Add ONLY essential optional parameters based on order type
+    // For LIMIT orders, price and timeInForce are required
+    if (params.type === 'LIMIT') {
+      if (params.price) {
+        coreParams['price'] = params.price.toString();
+      }
+      
+      if (params.timeInForce) {
+        coreParams['timeInForce'] = params.timeInForce;
+      } else {
+        // Default to GTC (Good Till Canceled) if not specified
+        coreParams['timeInForce'] = 'GTC';
+      }
     }
     
-    // Add recvWindow parameter to prevent timestamp issues
+    // Add recvWindow parameter to prevent timestamp issues (this is a standard parameter)
     coreParams['recvWindow'] = '5000';
     
-    // Log the constructed parameters object
-    autoTradeLogger.log(`[${requestId}] Binance API core parameters constructed:`, {
+    // Log the constructed parameters object with emphasis on Binance API compliance
+    autoTradeLogger.log(`[${requestId}] Binance API parameters constructed (STRICTLY PER API SPEC):`, {
       coreParams: JSON.stringify(coreParams),
+      requiredFields: ['symbol', 'side', 'type', 'quantity', 'timestamp'],
+      optionalFields: params.type === 'LIMIT' ? ['price', 'timeInForce'] : [],
+      standardFields: ['recvWindow'],
       timestamp: new Date().toISOString()
     });
     
@@ -548,14 +550,14 @@ export async function executeBinanceMarketBuy(
 ): Promise<any> {
   const formattedSymbol = formatBinanceSymbol(symbol);
   
+  // Only include the required parameters for Binance API
   return createBinanceOrder(
     userId,
     {
       symbol: formattedSymbol,
       side: 'BUY',
       type: 'MARKET',
-      quantity,
-      newOrderRespType: 'FULL' // Get full response with fill information
+      quantity
     },
     testMode,
     useTestEndpoint
@@ -574,14 +576,14 @@ export async function executeBinanceMarketSell(
 ): Promise<any> {
   const formattedSymbol = formatBinanceSymbol(symbol);
   
+  // Only include the required parameters for Binance API
   return createBinanceOrder(
     userId,
     {
       symbol: formattedSymbol,
       side: 'SELL',
       type: 'MARKET',
-      quantity,
-      newOrderRespType: 'FULL' // Get full response with fill information
+      quantity
     },
     testMode,
     useTestEndpoint
@@ -601,6 +603,8 @@ export async function executeBinanceLimitBuy(
 ): Promise<any> {
   const formattedSymbol = formatBinanceSymbol(symbol);
   
+  // Only include the required parameters for Binance API
+  // For LIMIT orders: symbol, side, type, quantity, price, timeInForce
   return createBinanceOrder(
     userId,
     {
@@ -609,8 +613,7 @@ export async function executeBinanceLimitBuy(
       type: 'LIMIT',
       quantity,
       price,
-      timeInForce: 'GTC', // Good Till Canceled
-      newOrderRespType: 'FULL' // Get full response with fill information
+      timeInForce: 'GTC' // Good Till Canceled - required for LIMIT orders
     },
     testMode,
     useTestEndpoint
@@ -630,6 +633,8 @@ export async function executeBinanceLimitSell(
 ): Promise<any> {
   const formattedSymbol = formatBinanceSymbol(symbol);
   
+  // Only include the required parameters for Binance API
+  // For LIMIT orders: symbol, side, type, quantity, price, timeInForce
   return createBinanceOrder(
     userId,
     {
@@ -638,8 +643,7 @@ export async function executeBinanceLimitSell(
       type: 'LIMIT',
       quantity,
       price,
-      timeInForce: 'GTC', // Good Till Canceled
-      newOrderRespType: 'FULL' // Get full response with fill information
+      timeInForce: 'GTC' // Good Till Canceled - required for LIMIT orders
     },
     testMode,
     useTestEndpoint

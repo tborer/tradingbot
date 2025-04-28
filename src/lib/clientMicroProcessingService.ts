@@ -436,18 +436,15 @@ export async function processMicroTrade(
       throw new Error(`Invalid currentPrice: ${currentPrice} (${typeof currentPrice}). Must be a positive number.`);
     }
     
-    // Now create the payload with validated values
+    // Create a simplified payload with ONLY the fields required by the Binance API
+    // The API endpoint will map these to the exact Binance API parameters
     const requestPayload = {
       cryptoId: String(cryptoId),
-      action: String(action).toLowerCase(),
-      shares: validatedShares,
-      quantity: validatedShares, // Include both for compatibility
-      price: validatedPrice,
-      orderType: 'MARKET', // Ensure consistent casing
-      microProcessing: true,
-      tradingPlatform: 'binance', // Explicitly set to use Binance
-      testMode: Boolean(settings.testMode), // Ensure boolean type
-      useTestEndpoint: Boolean(settings.testMode) // Use test endpoint if in test mode
+      action: String(action).toLowerCase(), // Will be mapped to 'side' (BUY/SELL)
+      quantity: validatedShares, // Will be mapped to 'quantity'
+      orderType: 'MARKET', // Will be mapped to 'type'
+      testMode: Boolean(settings.testMode),
+      useTestEndpoint: Boolean(settings.testMode)
     };
     
     // Log the final validated payload with detailed type information

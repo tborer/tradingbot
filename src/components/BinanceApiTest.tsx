@@ -101,7 +101,7 @@ export default function BinanceApiTest() {
         fullUrl: `${apiUrl}?${queryString}&signature=[signature]`,
         curlExample: `curl -X "POST" "${apiUrl}?${queryString}&signature=[signature]" \\
     -H "X-MBX-APIKEY: [Your API Key]"`,
-        signatureGeneration: `HMAC SHA256 signature of: "${queryString}"`
+        signatureGeneration: `HMAC SHA256 signature of: "${queryString}" using your Binance API secret key`
       };
       
       setRequestDetails(JSON.stringify(requestInfo, null, 2));
@@ -236,9 +236,20 @@ export default function BinanceApiTest() {
               <li><span className="font-mono">type</span>: MARKET (hardcoded)</li>
               <li><span className="font-mono">quantity</span>: The amount to trade</li>
               <li><span className="font-mono">timestamp</span>: Current timestamp in milliseconds</li>
+              <li><span className="font-mono">recvWindow</span>: 5000 (standard parameter)</li>
             </ul>
+            <h4 className="font-medium mt-3">Signature Generation</h4>
             <p>
-              <strong>Note:</strong> The signature will be generated server-side using your Binance API secret key.
+              The signature is generated server-side using the following process:
+            </p>
+            <ol className="list-decimal pl-5 space-y-1">
+              <li>Create a query string with all parameters (e.g., <span className="font-mono">symbol=BTCUSDT&side=BUY&type=MARKET&quantity=0.001&timestamp=1619846400000&recvWindow=5000</span>)</li>
+              <li>Generate an HMAC SHA256 hash of this query string using your Binance API secret key as the key</li>
+              <li>Convert the hash to a hex string</li>
+              <li>Append the signature to the query string as <span className="font-mono">&signature=HASH</span></li>
+            </ol>
+            <p className="mt-2">
+              <strong>Note:</strong> Both the parameters AND your API secret key are essential for generating a valid signature. The API key is sent in the request header.
             </p>
           </div>
           

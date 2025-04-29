@@ -470,11 +470,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         timestamp: new Date().toISOString()
       });
       
+      // Log the exact parameters that will be sent to the Binance API
+      const formattedSymbol = crypto.symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      const binanceSymbol = formattedSymbol.endsWith('USDT') ? formattedSymbol : `${formattedSymbol}USDT`;
+      
+      // Construct the exact parameters that will be sent to Binance API
+      const binanceParams = {
+        symbol: binanceSymbol,
+        side: normalizedAction === 'buy' ? 'BUY' : 'SELL',
+        type: type.toUpperCase(),
+        quantity: parsedQuantity,
+        ...(type.toUpperCase() === 'LIMIT' && parsedPrice ? { price: parsedPrice } : {}),
+        ...(type.toUpperCase() === 'LIMIT' ? { timeInForce: 'GTC' } : {})
+      };
+      
+      // Log the exact parameters that will be sent to Binance API
+      autoTradeLogger.log(`[${requestId}] BINANCE API PARAMETERS (FINAL)`, {
+        binanceParams,
+        userId: user.id,
+        testMode: effectiveTestMode,
+        useTestEndpoint,
+        timestamp: new Date().toISOString()
+      });
+      
       if (normalizedAction === 'buy') {
         if (type.toUpperCase() === 'MARKET') {
           autoTradeLogger.log('Executing Binance market buy', {
             userId: user.id,
             symbol: crypto.symbol,
+            binanceSymbol,
             quantity: parsedQuantity,
             testMode: effectiveTestMode,
             useTestEndpoint,
@@ -486,6 +510,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           autoTradeLogger.log('Executing Binance limit buy', {
             userId: user.id,
             symbol: crypto.symbol,
+            binanceSymbol,
             quantity: parsedQuantity,
             price: parsedPrice,
             testMode: effectiveTestMode,
@@ -521,6 +546,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           autoTradeLogger.log('Executing Binance limit sell', {
             userId: user.id,
             symbol: crypto.symbol,
+            binanceSymbol,
             quantity: parsedQuantity,
             price: parsedPrice,
             testMode: effectiveTestMode,

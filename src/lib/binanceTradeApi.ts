@@ -92,6 +92,10 @@ function generateSignature(queryString: string, secretKey: string): string {
  * 1. Creating a query string with all parameters (e.g., "symbol=BTCUSDT&side=BUY&type=MARKET&quantity=0.01&timestamp=1678886400000")
  * 2. Generating an HMAC SHA256 hash of this string using the secret key
  * 3. Appending the signature to the query string
+ * 
+ * Both production and test trading use the same process, with only the URL endpoint differing:
+ * - Production: https://api.binance.us/api/v3/order
+ * - Test: https://api.binance.us/api/v3/order/test
  */
 export async function createBinanceOrder(
   userId: string,
@@ -283,8 +287,9 @@ export async function createBinanceOrder(
     });
     
     // Build the core parameters object with ONLY the fields required by Binance API
+    // STRICTLY FOLLOW BINANCE API REQUIREMENTS:
     // Required fields: symbol, side, type, quantity, timestamp
-    const coreParams = {
+    const coreParams: Record<string, string> = {
       symbol: params.symbol,
       side: params.side,
       type: params.type,

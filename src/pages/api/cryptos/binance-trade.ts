@@ -496,6 +496,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       // IMPORTANT: Use createBinanceOrder directly with the binanceParams object
       // This ensures only the required parameters are sent to the Binance API
+      // The same clean parameter handling is used for both production and test trading
       autoTradeLogger.log('Executing Binance trade with createBinanceOrder', {
         userId: user.id,
         binanceParams,
@@ -505,6 +506,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
       
       // Call createBinanceOrder directly with the properly formatted parameters
+      // This approach is used for both production and test trading to ensure consistency
       tradeResult = await createBinanceOrder(
         user.id,
         binanceParams,

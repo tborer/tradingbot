@@ -123,7 +123,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       type = orderType, // Support new 'type' parameter that matches Binance API
       testMode = false,
       useTestEndpoint = false,
-      microProcessing = false
+      microProcessing = false,
+      isApiTest = false, // Flag for direct API testing
+      symbol: directSymbol = null // Symbol parameter for direct API testing
     } = req.body;
     
     // Use 'side' if provided, otherwise fall back to 'action'
@@ -260,18 +262,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const validationErrors = [];
     
     // Validate required parameters
-    if (!cryptoId) {
-      validationErrors.push('Missing cryptoId parameter');
-      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: Missing cryptoId`, {
+    if (isApiTest && directSymbol) {
+      // For direct API testing, we don't need to validate cryptoId
+      autoTradeLogger.log(`[${requestId}] Direct API test mode - skipping cryptoId validation`, {
+        directSymbol,
         timestamp: new Date().toISOString()
       });
-    } else if (typeof cryptoId !== 'string') {
-      validationErrors.push('cryptoId must be a string');
-      autoTradeLogger.log(`[${requestId}] Binance trade API validation error: cryptoId type`, {
-        cryptoIdType: typeof cryptoId,
-        cryptoId,
-        timestamp: new Date().toISOString()
-      });
+    } else {
+      // Regular flow - validate cryptoId
+      if (!cryptoId) {
+        validationErrors.push('Missing cryptoId parameter');
+        autoTradeLogger.log(`[${requestId}] Binance trade API validation error: Missing cryptoId`, {
+          timestamp: new Date().toISOString()
+        });
+      } else if (typeof cryptoId !== 'string') {
+        validationErrors.push('cryptoId must be a string');
+        autoTradeLogger.log(`[${requestId}] Binance trade API validation error: cryptoId type`, {
+          cryptoIdType: typeof cryptoId,
+          cryptoId,
+          timestamp: new Date().toISOString()
+        });
+      }
     }
     
     if (!tradeAction) {
@@ -348,30 +359,56 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
     
-    // Check if the crypto belongs to the user
-    autoTradeLogger.log('Fetching crypto for Binance trade', {
-      cryptoId,
-      userId: user.id,
-      timestamp: new Date().toISOString()
-    });
+    // Handle direct API test case
+    let crypto;
+    let symbol;
     
-    const crypto = await prisma.crypto.findFirst({
-      where: {
-        id: cryptoId,
-        userId: user.id
-      }
-    });
-    
-    if (!crypto) {
-      const error = new Error(`Crypto not found: ${cryptoId}`);
-      autoTradeLogger.log('Binance trade API crypto not found', {
-        error: error.message,
-        cryptoId,
+    if (isApiTest && directSymbol) {
+      // For direct API testing, we don't need to fetch a crypto from the database
+      autoTradeLogger.log('Direct API test mode detected', {
+        directSymbol,
         userId: user.id,
-        stack: error.stack,
         timestamp: new Date().toISOString()
       });
-      return res.status(404).json({ error: 'Crypto not found' });
+      
+      // Create a mock crypto object with the provided symbol
+      crypto = {
+        id: 'API_TEST',
+        symbol: directSymbol,
+        userId: user.id,
+        lastPrice: 0,
+        shares: 0
+      };
+      
+      symbol = directSymbol;
+    } else {
+      // Regular flow - check if the crypto belongs to the user
+      autoTradeLogger.log('Fetching crypto for Binance trade', {
+        cryptoId,
+        userId: user.id,
+        timestamp: new Date().toISOString()
+      });
+      
+      crypto = await prisma.crypto.findFirst({
+        where: {
+          id: cryptoId,
+          userId: user.id
+        }
+      });
+      
+      if (!crypto) {
+        const error = new Error(`Crypto not found: ${cryptoId}`);
+        autoTradeLogger.log('Binance trade API crypto not found', {
+          error: error.message,
+          cryptoId,
+          userId: user.id,
+          stack: error.stack,
+          timestamp: new Date().toISOString()
+        });
+        return res.status(404).json({ error: 'Crypto not found' });
+      }
+      
+      symbol = crypto.symbol;
     }
     
     autoTradeLogger.log('Crypto found for Binance trade', {

@@ -23,6 +23,7 @@ import TransactionHistory from "@/components/TransactionHistory";
 import CryptoTransactionHistory from "@/components/CryptoTransactionHistory";
 import KrakenWebSocketSettings from "@/components/KrakenWebSocketSettings";
 import BinanceWebSocketSettings from "@/components/BinanceWebSocketSettings";
+import BinanceApiTest from "@/components/BinanceApiTest";
 import FinnHubWebSocketSettings from "@/components/FinnHubWebSocketSettings";
 import AlphaVantageSettings from "@/components/AlphaVantageSettings";
 import CoinDeskSettings from "@/components/CoinDeskSettings";
@@ -1931,6 +1932,9 @@ export default function Dashboard() {
                       </div>
 
                       <BinanceWebSocketSettings />
+                      
+                      {/* Binance API Test */}
+                      <BinanceApiTest />
                       
                       <KrakenWebSocketSettings
                         websocketUrl={settings.krakenWebsocketUrl || "wss://ws.kraken.com/v2"}

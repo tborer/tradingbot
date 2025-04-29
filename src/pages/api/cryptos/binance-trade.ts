@@ -3,6 +3,7 @@ import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
 import { autoTradeLogger } from '@/lib/autoTradeLogger';
 import { 
+  createBinanceOrder,
   executeBinanceMarketBuy, 
   executeBinanceMarketSell,
   executeBinanceLimitBuy,
@@ -493,80 +494,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         timestamp: new Date().toISOString()
       });
       
-      if (normalizedAction === 'buy') {
-        if (type.toUpperCase() === 'MARKET') {
-          autoTradeLogger.log('Executing Binance market buy', {
-            userId: user.id,
-            symbol: crypto.symbol,
-            binanceSymbol,
-            quantity: parsedQuantity,
-            testMode: effectiveTestMode,
-            useTestEndpoint,
-            timestamp: new Date().toISOString()
-          });
-          
-          tradeResult = await executeBinanceMarketBuy(user.id, crypto.symbol, parsedQuantity, effectiveTestMode, useTestEndpoint);
-        } else if (type.toUpperCase() === 'LIMIT' && parsedPrice) {
-          autoTradeLogger.log('Executing Binance limit buy', {
-            userId: user.id,
-            symbol: crypto.symbol,
-            binanceSymbol,
-            quantity: parsedQuantity,
-            price: parsedPrice,
-            testMode: effectiveTestMode,
-            useTestEndpoint,
-            timestamp: new Date().toISOString()
-          });
-          
-          tradeResult = await executeBinanceLimitBuy(user.id, crypto.symbol, parsedQuantity, parsedPrice, effectiveTestMode, useTestEndpoint);
-        } else {
-          const error = new Error(`Invalid order type or missing price for limit order: ${type}`);
-          autoTradeLogger.log('Binance trade API validation error', {
-            error: error.message,
-            orderType: type,
-            price: parsedPrice,
-            stack: error.stack,
-            timestamp: new Date().toISOString()
-          });
-          return res.status(400).json({ error: 'Invalid order type or missing price for limit order' });
-        }
-      } else { // sell
-        if (type.toUpperCase() === 'MARKET') {
-          autoTradeLogger.log('Executing Binance market sell', {
-            userId: user.id,
-            symbol: crypto.symbol,
-            quantity: parsedQuantity,
-            testMode: effectiveTestMode,
-            useTestEndpoint,
-            timestamp: new Date().toISOString()
-          });
-          
-          tradeResult = await executeBinanceMarketSell(user.id, crypto.symbol, parsedQuantity, effectiveTestMode, useTestEndpoint);
-        } else if (type.toUpperCase() === 'LIMIT' && parsedPrice) {
-          autoTradeLogger.log('Executing Binance limit sell', {
-            userId: user.id,
-            symbol: crypto.symbol,
-            binanceSymbol,
-            quantity: parsedQuantity,
-            price: parsedPrice,
-            testMode: effectiveTestMode,
-            useTestEndpoint,
-            timestamp: new Date().toISOString()
-          });
-          
-          tradeResult = await executeBinanceLimitSell(user.id, crypto.symbol, parsedQuantity, parsedPrice, effectiveTestMode, useTestEndpoint);
-        } else {
-          const error = new Error(`Invalid order type or missing price for limit order: ${type}`);
-          autoTradeLogger.log('Binance trade API validation error', {
-            error: error.message,
-            orderType: type,
-            price: parsedPrice,
-            stack: error.stack,
-            timestamp: new Date().toISOString()
-          });
-          return res.status(400).json({ error: 'Invalid order type or missing price for limit order' });
-        }
-      }
+      // IMPORTANT: Use createBinanceOrder directly with the binanceParams object
+      // This ensures only the required parameters are sent to the Binance API
+      autoTradeLogger.log('Executing Binance trade with createBinanceOrder', {
+        userId: user.id,
+        binanceParams,
+        testMode: effectiveTestMode,
+        useTestEndpoint,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Call createBinanceOrder directly with the properly formatted parameters
+      tradeResult = await createBinanceOrder(
+        user.id,
+        binanceParams,
+        effectiveTestMode,
+        useTestEndpoint
+      );
       
       // Log successful trade execution
       autoTradeLogger.log('Binance trade executed successfully', {

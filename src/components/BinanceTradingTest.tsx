@@ -17,12 +17,13 @@ export default function BinanceTradingTest({ cryptoId, symbol }: BinanceTradingT
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [orderType, setOrderType] = useState<'MARKET' | 'LIMIT'>('MARKET');
-  const [action, setAction] = useState<'buy' | 'sell'>('buy');
+  const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
   const [quantity, setQuantity] = useState<string>('');
   const [price, setPrice] = useState<string>('');
   const [testMode, setTestMode] = useState<boolean>(true);
   const [useTestEndpoint, setUseTestEndpoint] = useState<boolean>(false);
   const [result, setResult] = useState<any>(null);
+  const [requestDetails, setRequestDetails] = useState<string>('');
   
   // Listen for the custom event to use the test endpoint
   useEffect(() => {
@@ -68,21 +69,31 @@ export default function BinanceTradingTest({ cryptoId, symbol }: BinanceTradingT
     
     setIsLoading(true);
     
+    // Prepare the request parameters
+    const requestParams = {
+      cryptoId,
+      side, // Use 'side' instead of 'action' to match Binance API terminology
+      type: orderType, // Use 'type' instead of 'orderType' to match Binance API terminology
+      quantity: parseFloat(quantity),
+      testMode,
+      useTestEndpoint,
+    };
+    
+    // Add price only for LIMIT orders
+    if (orderType === 'LIMIT' && price) {
+      requestParams['price'] = parseFloat(price);
+    }
+    
+    // Store the request details for display
+    setRequestDetails(JSON.stringify(requestParams, null, 2));
+    
     try {
       const response = await fetch('/api/cryptos/binance-trade', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          cryptoId,
-          action,
-          quantity: parseFloat(quantity),
-          price: price ? parseFloat(price) : undefined,
-          orderType,
-          testMode,
-          useTestEndpoint,
-        }),
+        body: JSON.stringify(requestParams),
       });
       
       const data = await response.json();
@@ -95,7 +106,7 @@ export default function BinanceTradingTest({ cryptoId, symbol }: BinanceTradingT
       
       toast({
         title: "Trade executed",
-        description: `Successfully ${action === 'buy' ? 'bought' : 'sold'} ${quantity} ${symbol} ${testMode ? '(Test Mode)' : ''} ${useTestEndpoint ? '(Test Endpoint)' : ''}`,
+        description: `Successfully ${side === 'BUY' ? 'bought' : 'sold'} ${quantity} ${symbol} ${testMode ? '(Test Mode)' : ''} ${useTestEndpoint ? '(Test Endpoint)' : ''}`,
       });
     } catch (error) {
       console.error('Error executing trade:', error);
@@ -120,17 +131,17 @@ export default function BinanceTradingTest({ cryptoId, symbol }: BinanceTradingT
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="action">Action</Label>
+            <Label htmlFor="side">Side</Label>
             <Select
-              value={action}
-              onValueChange={(value: 'buy' | 'sell') => setAction(value)}
+              value={side}
+              onValueChange={(value: 'BUY' | 'SELL') => setSide(value)}
             >
-              <SelectTrigger id="action">
-                <SelectValue placeholder="Select action" />
+              <SelectTrigger id="side">
+                <SelectValue placeholder="Select side" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="buy">Buy</SelectItem>
-                <SelectItem value="sell">Sell</SelectItem>
+                <SelectItem value="BUY">Buy</SelectItem>
+                <SelectItem value="SELL">Sell</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -200,31 +211,58 @@ export default function BinanceTradingTest({ cryptoId, symbol }: BinanceTradingT
           </div>
           
           <Button type="submit" disabled={isLoading} className="w-full">
-            {isLoading ? 'Executing...' : `Execute ${action.toUpperCase()} Order`}
+            {isLoading ? 'Executing...' : `Execute ${side} Order`}
           </Button>
         </form>
         
-        {result && (
+        {(requestDetails || result) && (
           <div className="mt-6">
-            <h3 className="text-lg font-medium">Result</h3>
+            <h3 className="text-lg font-medium">API Information</h3>
             <Tabs defaultValue="summary" className="mt-2">
               <TabsList>
                 <TabsTrigger value="summary">Summary</TabsTrigger>
-                <TabsTrigger value="details">Details</TabsTrigger>
+                <TabsTrigger value="request">Request</TabsTrigger>
+                <TabsTrigger value="details">Response Details</TabsTrigger>
               </TabsList>
               <TabsContent value="summary" className="space-y-2">
                 <div className="rounded-md bg-muted p-4">
-                  <p><strong>Status:</strong> {result.success ? 'Success' : 'Failed'}</p>
-                  <p><strong>Transaction ID:</strong> {result.transaction?.id || 'N/A'}</p>
-                  <p><strong>Action:</strong> {result.transaction?.action || 'N/A'}</p>
-                  <p><strong>Shares:</strong> {result.transaction?.shares || 'N/A'}</p>
-                  <p><strong>Price:</strong> ${result.transaction?.price?.toFixed(2) || 'N/A'}</p>
-                  <p><strong>Total Amount:</strong> ${result.transaction?.totalAmount?.toFixed(2) || 'N/A'}</p>
+                  {result ? (
+                    <>
+                      <p><strong>Status:</strong> {result.success ? 'Success' : 'Failed'}</p>
+                      <p><strong>Transaction ID:</strong> {result.transaction?.id || 'N/A'}</p>
+                      <p><strong>Action:</strong> {result.transaction?.action || 'N/A'}</p>
+                      <p><strong>Shares:</strong> {result.transaction?.shares || 'N/A'}</p>
+                      <p><strong>Price:</strong> ${result.transaction?.price?.toFixed(2) || 'N/A'}</p>
+                      <p><strong>Total Amount:</strong> ${result.transaction?.totalAmount?.toFixed(2) || 'N/A'}</p>
+                    </>
+                  ) : (
+                    <p>No response data yet. Submit a request to see results.</p>
+                  )}
+                </div>
+              </TabsContent>
+              <TabsContent value="request" className="space-y-2">
+                <div className="rounded-md bg-muted p-4">
+                  <h3 className="text-sm font-medium mb-2">Request Parameters</h3>
+                  <pre className="overflow-auto max-h-60 text-xs">
+                    {requestDetails || 'No request sent yet'}
+                  </pre>
+                  <div className="mt-4 text-xs text-muted-foreground">
+                    <p className="font-medium">Note about Binance API format:</p>
+                    <p className="mt-1">
+                      The request above is sent to our server, which then formats it according to Binance API requirements:
+                    </p>
+                    <ul className="list-disc pl-5 mt-2 space-y-1">
+                      <li>Parameters are sent as URL query parameters (not in request body)</li>
+                      <li>A timestamp is added automatically</li>
+                      <li>A signature is generated using HMAC SHA256 with your API secret key</li>
+                      <li>Your API key is sent in the X-MBX-APIKEY header</li>
+                    </ul>
+                  </div>
                 </div>
               </TabsContent>
               <TabsContent value="details">
                 <pre className="rounded-md bg-muted p-4 overflow-auto max-h-60 text-xs">
-                  {JSON.stringify(result, null, 2)}
+                  {result ? JSON.stringify(result, null, 2) : 'No response data yet'}
                 </pre>
               </TabsContent>
             </Tabs>

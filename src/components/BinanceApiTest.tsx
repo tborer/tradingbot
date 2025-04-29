@@ -17,7 +17,9 @@ export default function BinanceApiTest() {
   const [apiUrl, setApiUrl] = useState('https://api.binance.us/api/v3/order/test');
   const [symbol, setSymbol] = useState('');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
+  const [orderType, setOrderType] = useState<'MARKET' | 'LIMIT'>('MARKET');
   const [quantity, setQuantity] = useState('');
+  const [price, setPrice] = useState('');
   
   // Results
   const [requestDetails, setRequestDetails] = useState<string>('');
@@ -54,6 +56,15 @@ export default function BinanceApiTest() {
       return;
     }
     
+    if (orderType === 'LIMIT' && (!price || isNaN(parseFloat(price)) || parseFloat(price) <= 0)) {
+      toast({
+        variant: "destructive",
+        title: "Invalid price",
+        description: "Please enter a valid price greater than 0 for limit orders.",
+      });
+      return;
+    }
+    
     setIsLoading(true);
     
     try {
@@ -64,28 +75,26 @@ export default function BinanceApiTest() {
       // Generate timestamp
       const timestamp = Date.now();
       const parsedQuantity = parseFloat(quantity);
+      const parsedPrice = price ? parseFloat(price) : undefined;
       
       // Prepare the request data
-      const requestData = {
+      const requestParams: any = {
         symbol: formattedSymbol,
         side: side,
-        type: 'MARKET',
+        type: orderType,
         quantity: parsedQuantity,
-        timestamp: timestamp,
-        testMode: true,
-        useTestEndpoint: true
+        timestamp: timestamp.toString(),
+        recvWindow: '5000'
       };
+      
+      // Add price and timeInForce for LIMIT orders
+      if (orderType === 'LIMIT' && parsedPrice) {
+        requestParams.price = parsedPrice.toString();
+        requestParams.timeInForce = 'GTC'; // Good Till Canceled
+      }
       
       // Create the query string that would be used for signature
-      const queryParams = {
-        symbol: formattedSymbol,
-        side: side,
-        type: 'MARKET',
-        quantity: parsedQuantity.toString(),
-        timestamp: timestamp.toString()
-      };
-      
-      const queryString = Object.entries(queryParams)
+      const queryString = Object.entries(requestParams)
         .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
         .join('&');
       
@@ -97,6 +106,7 @@ export default function BinanceApiTest() {
           'X-MBX-APIKEY': '[Your API Key]',
           'Content-Type': 'application/x-www-form-urlencoded'
         },
+        queryParams: requestParams,
         queryString: queryString,
         fullUrl: `${apiUrl}?${queryString}&signature=[signature]`,
         curlExample: `curl -X "POST" "${apiUrl}?${queryString}&signature=[signature]" \\
@@ -106,24 +116,32 @@ export default function BinanceApiTest() {
       
       setRequestDetails(JSON.stringify(requestInfo, null, 2));
       
+      // Prepare the API request parameters
+      const apiRequestParams: any = {
+        side,
+        type: orderType,
+        quantity: parsedQuantity,
+        testMode: true,
+        useTestEndpoint: true,
+        // We need to pass a cryptoId for the API to work, but we'll use a special flag
+        // to indicate this is a direct API test
+        cryptoId: 'API_TEST',
+        symbol: formattedSymbol,
+        isApiTest: true
+      };
+      
+      // Add price for LIMIT orders
+      if (orderType === 'LIMIT' && parsedPrice) {
+        apiRequestParams.price = parsedPrice;
+      }
+      
       // Make the actual API request through our backend
       const response = await fetch('/api/cryptos/binance-trade', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          action: side,
-          quantity: parsedQuantity,
-          orderType: 'MARKET',
-          testMode: true,
-          useTestEndpoint: true,
-          // We need to pass a cryptoId for the API to work, but we'll use a special flag
-          // to indicate this is a direct API test
-          cryptoId: 'API_TEST',
-          symbol: formattedSymbol,
-          isApiTest: true
-        }),
+        body: JSON.stringify(apiRequestParams),
       });
       
       const data = await response.json();
@@ -210,6 +228,25 @@ export default function BinanceApiTest() {
           </div>
           
           <div className="space-y-2">
+            <Label htmlFor="orderType">Order Type</Label>
+            <Select
+              value={orderType}
+              onValueChange={(value: 'MARKET' | 'LIMIT') => setOrderType(value)}
+            >
+              <SelectTrigger id="orderType">
+                <SelectValue placeholder="Select order type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="MARKET">MARKET</SelectItem>
+                <SelectItem value="LIMIT">LIMIT</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Order type (MARKET or LIMIT)
+            </p>
+          </div>
+          
+          <div className="space-y-2">
             <Label htmlFor="quantity">Quantity</Label>
             <Input
               id="quantity"
@@ -225,6 +262,24 @@ export default function BinanceApiTest() {
             </p>
           </div>
           
+          {orderType === 'LIMIT' && (
+            <div className="space-y-2">
+              <Label htmlFor="price">Price</Label>
+              <Input
+                id="price"
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="Enter price"
+              />
+              <p className="text-xs text-muted-foreground">
+                Limit price (required for LIMIT orders)
+              </p>
+            </div>
+          )}
+          
           <div className="p-3 bg-muted/50 rounded-md text-xs space-y-2">
             <h4 className="font-medium">Test Parameters</h4>
             <p>
@@ -233,8 +288,14 @@ export default function BinanceApiTest() {
             <ul className="list-disc pl-5 space-y-1">
               <li><span className="font-mono">symbol</span>: The trading pair symbol</li>
               <li><span className="font-mono">side</span>: BUY or SELL</li>
-              <li><span className="font-mono">type</span>: MARKET (hardcoded)</li>
+              <li><span className="font-mono">type</span>: {orderType} (MARKET or LIMIT)</li>
               <li><span className="font-mono">quantity</span>: The amount to trade</li>
+              {orderType === 'LIMIT' && (
+                <>
+                  <li><span className="font-mono">price</span>: The limit price</li>
+                  <li><span className="font-mono">timeInForce</span>: GTC (Good Till Canceled)</li>
+                </>
+              )}
               <li><span className="font-mono">timestamp</span>: Current timestamp in milliseconds</li>
               <li><span className="font-mono">recvWindow</span>: 5000 (standard parameter)</li>
             </ul>

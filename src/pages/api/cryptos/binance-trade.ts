@@ -3,11 +3,8 @@ import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
 import { autoTradeLogger } from '@/lib/autoTradeLogger';
 import { 
-  createBinanceOrder,
-  executeBinanceMarketBuy, 
-  executeBinanceMarketSell,
-  executeBinanceLimitBuy,
-  executeBinanceLimitSell
+  executeBinanceOrder,
+  formatBinanceSymbol
 } from '@/lib/binanceTradeApi';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

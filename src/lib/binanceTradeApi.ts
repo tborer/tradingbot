@@ -578,8 +578,64 @@ export function formatBinanceSymbol(symbol: string): string {
 }
 
 /**
- * Execute a market buy order on Binance
+ * Execute a Binance order with unified parameters
+ * 
+ * This function provides a simplified interface for executing any type of Binance order
+ * (market/limit, buy/sell) using the same parameter structure for both test and production.
+ * 
+ * @param userId - The user ID for retrieving API credentials
+ * @param symbol - The trading symbol (e.g., "BTC", "ETH", "BTCUSDT")
+ * @param side - The order side: "BUY" or "SELL"
+ * @param type - The order type: "MARKET" or "LIMIT"
+ * @param quantity - The order quantity
+ * @param price - The price (required for LIMIT orders)
+ * @param testMode - Whether to use test mode (no actual trades)
+ * @param useTestEndpoint - Whether to use the test endpoint (/api/v3/order/test)
+ * @returns Promise with the API response
  */
+export async function executeBinanceOrder(
+  userId: string,
+  symbol: string,
+  side: 'BUY' | 'SELL',
+  type: 'MARKET' | 'LIMIT',
+  quantity: number,
+  price?: number,
+  testMode: boolean = false,
+  useTestEndpoint: boolean = false
+): Promise<any> {
+  const formattedSymbol = formatBinanceSymbol(symbol);
+  
+  // Build the order parameters based on order type
+  const orderParams: BinanceOrderParams = {
+    symbol: formattedSymbol,
+    side,
+    type,
+    quantity
+  };
+  
+  // Add price and timeInForce for LIMIT orders
+  if (type === 'LIMIT') {
+    if (!price) {
+      throw new Error('Price is required for LIMIT orders');
+    }
+    orderParams.price = price;
+    orderParams.timeInForce = 'GTC'; // Good Till Canceled - required for LIMIT orders
+  }
+  
+  // Execute the order using createBinanceOrder
+  return createBinanceOrder(
+    userId,
+    orderParams,
+    testMode,
+    useTestEndpoint
+  );
+}
+
+/**
+ * Legacy functions for backward compatibility
+ * These functions use the unified executeBinanceOrder function internally
+ */
+
 export async function executeBinanceMarketBuy(
   userId: string,
   symbol: string,
@@ -587,25 +643,18 @@ export async function executeBinanceMarketBuy(
   testMode: boolean = false,
   useTestEndpoint: boolean = false
 ): Promise<any> {
-  const formattedSymbol = formatBinanceSymbol(symbol);
-  
-  // Only include the required parameters for Binance API
-  return createBinanceOrder(
+  return executeBinanceOrder(
     userId,
-    {
-      symbol: formattedSymbol,
-      side: 'BUY',
-      type: 'MARKET',
-      quantity
-    },
+    symbol,
+    'BUY',
+    'MARKET',
+    quantity,
+    undefined,
     testMode,
     useTestEndpoint
   );
 }
 
-/**
- * Execute a market sell order on Binance
- */
 export async function executeBinanceMarketSell(
   userId: string,
   symbol: string,
@@ -613,25 +662,18 @@ export async function executeBinanceMarketSell(
   testMode: boolean = false,
   useTestEndpoint: boolean = false
 ): Promise<any> {
-  const formattedSymbol = formatBinanceSymbol(symbol);
-  
-  // Only include the required parameters for Binance API
-  return createBinanceOrder(
+  return executeBinanceOrder(
     userId,
-    {
-      symbol: formattedSymbol,
-      side: 'SELL',
-      type: 'MARKET',
-      quantity
-    },
+    symbol,
+    'SELL',
+    'MARKET',
+    quantity,
+    undefined,
     testMode,
     useTestEndpoint
   );
 }
 
-/**
- * Execute a limit buy order on Binance
- */
 export async function executeBinanceLimitBuy(
   userId: string,
   symbol: string,
@@ -640,28 +682,18 @@ export async function executeBinanceLimitBuy(
   testMode: boolean = false,
   useTestEndpoint: boolean = false
 ): Promise<any> {
-  const formattedSymbol = formatBinanceSymbol(symbol);
-  
-  // Only include the required parameters for Binance API
-  // For LIMIT orders: symbol, side, type, quantity, price, timeInForce
-  return createBinanceOrder(
+  return executeBinanceOrder(
     userId,
-    {
-      symbol: formattedSymbol,
-      side: 'BUY',
-      type: 'LIMIT',
-      quantity,
-      price,
-      timeInForce: 'GTC' // Good Till Canceled - required for LIMIT orders
-    },
+    symbol,
+    'BUY',
+    'LIMIT',
+    quantity,
+    price,
     testMode,
     useTestEndpoint
   );
 }
 
-/**
- * Execute a limit sell order on Binance
- */
 export async function executeBinanceLimitSell(
   userId: string,
   symbol: string,
@@ -670,20 +702,13 @@ export async function executeBinanceLimitSell(
   testMode: boolean = false,
   useTestEndpoint: boolean = false
 ): Promise<any> {
-  const formattedSymbol = formatBinanceSymbol(symbol);
-  
-  // Only include the required parameters for Binance API
-  // For LIMIT orders: symbol, side, type, quantity, price, timeInForce
-  return createBinanceOrder(
+  return executeBinanceOrder(
     userId,
-    {
-      symbol: formattedSymbol,
-      side: 'SELL',
-      type: 'LIMIT',
-      quantity,
-      price,
-      timeInForce: 'GTC' // Good Till Canceled - required for LIMIT orders
-    },
+    symbol,
+    'SELL',
+    'LIMIT',
+    quantity,
+    price,
     testMode,
     useTestEndpoint
   );

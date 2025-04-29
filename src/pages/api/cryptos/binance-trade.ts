@@ -85,29 +85,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       timestamp: new Date().toISOString()
     });
     
-    // Extract and validate request body with detailed error handling
     // Generate a request ID for tracking this specific request
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
     
-    // First, validate that req.body exists and is an object
-    if (!req.body || typeof req.body !== 'object') {
-      const error = new Error('Request body is missing or invalid');
-      autoTradeLogger.log(`[${requestId}] Binance trade API validation error`, {
-        error: error.message,
-        bodyType: typeof req.body,
-        body: req.body,
-        stack: error.stack,
-        timestamp: new Date().toISOString()
-      });
-      return res.status(400).json({ 
-        error: 'Invalid data format', 
-        details: 'Request body must be a valid JSON object',
-        requestId,
-        timestamp: new Date().toISOString()
-      });
-    }
+    // Extract parameters from both query string and request body for backward compatibility
+    // This allows the API to handle both GET requests with query parameters and POST requests with body
+    const params = {
+      ...req.query,  // Include query parameters
+      ...(req.body && typeof req.body === 'object' ? req.body : {})  // Include body parameters if available
+    };
     
-    // Extract request body - support both formats (from direct calls and from trade.ts)
+    // Log the combined parameters
+    autoTradeLogger.log(`[${requestId}] Combined parameters from query and body`, {
+      hasQuery: Object.keys(req.query).length > 0,
+      queryKeys: Object.keys(req.query),
+      hasBody: req.body && typeof req.body === 'object',
+      bodyKeys: req.body && typeof req.body === 'object' ? Object.keys(req.body) : [],
+      combinedKeys: Object.keys(params),
+      timestamp: new Date().toISOString()
+    });
+    
+    // Extract parameters - support both formats (from direct calls and from trade.ts)
     // Use destructuring with default values to handle missing properties
     const { 
       cryptoId, 
@@ -123,7 +121,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       microProcessing = false,
       isApiTest = false, // Flag for direct API testing
       symbol: directSymbol = null // Symbol parameter for direct API testing
-    } = req.body;
+    } = params;
     
     // Use 'side' if provided, otherwise fall back to 'action'
     const tradeAction = side || action;

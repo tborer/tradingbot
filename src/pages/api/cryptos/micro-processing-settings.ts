@@ -499,8 +499,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             ? settings.purchasePrice 
             : null,
           processingStatus: settings.processingStatus || defaultSettings.processingStatus,
-          // Explicitly check for testMode being true, otherwise it defaults to false
-          testMode: settings.testMode === true
+          // Preserve the exact testMode value (true or false)
+          testMode: settings.testMode !== undefined ? settings.testMode : false
         };
         
         console.log('[MICRO-SETTINGS] Validated testMode:', validatedSettings.testMode);

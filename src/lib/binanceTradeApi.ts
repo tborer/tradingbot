@@ -156,9 +156,15 @@ export async function createBinanceOrder(
     const uriPath = apiUrl.substring(baseUrl.length); // Extract URI path (e.g., /api/v3/order)
     
     // Use test endpoint if explicitly requested or in test mode
-    const endpoint = useTestEndpoint 
-      ? '/api/v3/order/test' 
-      : (testMode ? uriPath.replace('/order', '/order/test') : uriPath);
+    let endpoint;
+    if (useTestEndpoint || testMode) {
+      // Ensure the endpoint ends with '/test'
+      endpoint = '/api/v3/order/test';
+      console.log('Using test endpoint for Binance API:', endpoint);
+    } else {
+      endpoint = uriPath;
+      console.log('Using production endpoint for Binance API:', endpoint);
+    }
 
     // Prepare request parameters - use current timestamp in milliseconds
     const timestamp = Date.now();

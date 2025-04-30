@@ -448,6 +448,12 @@ export async function processMicroTrade(
       useTestEndpoint: Boolean(settings.testMode)
     };
     
+    // Log the test mode status
+    console.log(`Trade request for ${crypto.symbol} with testMode: ${settings.testMode}`, {
+      testMode: settings.testMode,
+      useTestEndpoint: settings.testMode
+    });
+    
     // Log the final validated payload with detailed type information
     console.log(`[${tradeRequestId}] Trade request payload:`, {
       ...requestPayload,

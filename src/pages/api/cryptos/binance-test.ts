@@ -52,12 +52,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return `${key}=${encodeURIComponent(safeValue)}`;
       })
       .join('&');
+    console.log('queryString built:', queryString);
     
     // Generate signature using HMAC SHA256
     const signature = crypto
       .createHmac('sha256', settings.binanceApiSecret)
       .update(queryString)
       .digest('hex');
+    console.log('signature generated:', signature);
     
     // Create the full URL with query string and signature
     const fullUrl = `${apiUrl}?${queryString}&signature=${signature}`;
@@ -73,6 +75,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       queryString,
       fullUrl: `${apiUrl}?${queryString}&signature=${signature.substring(0, 5)}...${signature.substring(signature.length - 5)}`
     };
+    console.log('requestDetails built:', requestDetails);
     
     // Log the request for debugging
     autoTradeLogger.log('Binance API test request', {

@@ -77,7 +77,7 @@ export default function BinanceApiTest() {
       const parsedQuantity = parseFloat(quantity);
       const parsedPrice = price ? parseFloat(price) : undefined;
       
-      // Prepare the request data
+      // Prepare the request data with the exact parameters Binance API expects
       const requestParams: any = {
         symbol: formattedSymbol,
         side: side,
@@ -88,13 +88,17 @@ export default function BinanceApiTest() {
       
       // Add price and timeInForce for LIMIT orders
       if (orderType === 'LIMIT' && parsedPrice) {
-        requestParams.price = parsedPrice.toString();
+        requestParams.price = parsedPrice;
         requestParams.timeInForce = 'GTC'; // Good Till Canceled
       }
       
       // Create the query string that would be used for signature
       const queryString = Object.entries(requestParams)
-        .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+        .map(([key, value]) => {
+          // Convert numbers to strings for the query string
+          const stringValue = typeof value === 'number' ? value.toString() : value;
+          return `${key}=${encodeURIComponent(stringValue)}`;
+        })
         .join('&');
       
       // Show the request details that will be sent to Binance API
@@ -110,37 +114,17 @@ export default function BinanceApiTest() {
       
       setRequestDetails(JSON.stringify(requestInfo, null, 2));
       
-      // Prepare the API request parameters
-      const apiRequestParams: any = {
-        side,
-        type: orderType,
-        quantity: parsedQuantity,
-        testMode: true,
-        useTestEndpoint: true,
-        // We need to pass a cryptoId for the API to work, but we'll use a special flag
-        // to indicate this is a direct API test
-        cryptoId: 'API_TEST',
-        symbol: formattedSymbol,
-        isApiTest: true
-      };
-      
-      // Add price for LIMIT orders
-      if (orderType === 'LIMIT' && parsedPrice) {
-        apiRequestParams.price = parsedPrice;
-      }
-      
-      // Convert parameters to query string for Binance API compatibility
-      const queryParams = new URLSearchParams();
-      Object.entries(apiRequestParams).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          queryParams.append(key, value.toString());
-        }
-      });
-      
-      // Make the actual API request through our backend using query parameters
-      const response = await fetch(`/api/cryptos/binance-trade?${queryParams.toString()}`, {
-        method: 'POST'
-        // No headers or body - all parameters are in the query string
+      // Make the actual API request through our backend using the same parameters
+      // that would be sent to Binance API
+      const response = await fetch(`/api/cryptos/binance-trade`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          directBinanceTest: true,
+          binanceParams: requestParams
+        })
       });
       
       const data = await response.json();

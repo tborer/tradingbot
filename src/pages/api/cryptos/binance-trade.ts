@@ -26,8 +26,67 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       method: req.method,
       url: req.url,
       queryParams: JSON.stringify(req.query),
+      body: req.body ? JSON.stringify(req.body) : null,
       timestamp: requestTimestamp
     });
+    
+    // Check if this is a direct Binance test request
+    if (req.body && req.body.directBinanceTest) {
+      const { binanceParams } = req.body;
+      
+      // Get the user from Supabase auth
+      const supabase = createClient({ req, res });
+      const { data, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !data || !data.user) {
+        return res.status(401).json({ error: 'Authentication required for API test' });
+      }
+      
+      // Create request details to return to client
+      const requestDetails = {
+        url: 'https://api.binance.us/api/v3/order/test',
+        method: 'POST',
+        headers: {
+          'X-MBX-APIKEY': '[Your API Key]'
+        },
+        queryString: Object.entries(binanceParams)
+          .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
+          .join('&'),
+        fullUrl: `https://api.binance.us/api/v3/order/test?${
+          Object.entries(binanceParams)
+            .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
+            .join('&')
+        }&signature=[signature]`
+      };
+      
+      try {
+        // Execute the order using the Binance API directly
+        const result = await createBinanceOrder(
+          data.user.id,
+          {
+            symbol: binanceParams.symbol,
+            side: binanceParams.side,
+            type: binanceParams.type,
+            quantity: parseFloat(binanceParams.quantity)
+          },
+          true, // testMode
+          true  // useTestEndpoint
+        );
+        
+        return res.status(200).json({
+          success: true,
+          message: 'Binance API test executed successfully',
+          requestDetails,
+          result
+        });
+      } catch (error) {
+        return res.status(500).json({
+          error: 'Failed to execute Binance API test',
+          details: error.message,
+          requestDetails
+        });
+      }
+    }
     
     // Get the user from Supabase auth
     autoTradeLogger.log('Authenticating user for Binance trade API', {

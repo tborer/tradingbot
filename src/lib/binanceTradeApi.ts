@@ -323,15 +323,11 @@ export async function createBinanceOrder(
       }
     }
     
-    // Add recvWindow parameter to prevent timestamp issues (this is a standard parameter)
-    coreParams['recvWindow'] = '5000';
-    
     // Log the constructed parameters object with emphasis on Binance API compliance
     autoTradeLogger.log(`[${requestId}] Binance API parameters constructed (STRICTLY PER API SPEC):`, {
       coreParams: JSON.stringify(coreParams),
       requiredFields: ['symbol', 'side', 'type', 'quantity', 'timestamp'],
       optionalFields: params.type === 'LIMIT' ? ['price', 'timeInForce'] : [],
-      standardFields: ['recvWindow'],
       timestamp: new Date().toISOString()
     });
     
@@ -405,8 +401,7 @@ export async function createBinanceOrder(
       response = await fetch(fullUrl, {
         method: 'POST',
         headers: {
-          'X-MBX-APIKEY': credentials.apiKey,
-          'Content-Type': 'application/x-www-form-urlencoded'
+          'X-MBX-APIKEY': credentials.apiKey
         }
       });
       
@@ -432,8 +427,7 @@ export async function createBinanceOrder(
         url: requestUrl,
         method: 'POST',
         headers: {
-          'X-MBX-APIKEY': credentials.apiKey ? `${credentials.apiKey.substring(0, 5)}...` : 'not provided',
-          'Content-Type': 'application/x-www-form-urlencoded'
+          'X-MBX-APIKEY': credentials.apiKey ? `${credentials.apiKey.substring(0, 5)}...` : 'not provided'
         },
         queryParams: {
           symbol: coreParams.symbol,
@@ -441,7 +435,6 @@ export async function createBinanceOrder(
           type: coreParams.type,
           quantity: coreParams.quantity,
           timestamp: coreParams.timestamp,
-          recvWindow: coreParams.recvWindow,
           price: coreParams.price || 'not provided',
           timeInForce: coreParams.timeInForce || 'not provided',
           newClientOrderId: coreParams.newClientOrderId || 'not provided',

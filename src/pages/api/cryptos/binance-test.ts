@@ -5,6 +5,9 @@ import crypto from 'crypto';
 import { autoTradeLogger } from '@/lib/autoTradeLogger';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  console.log('Binance test API handler called with method:', req.method);
+  console.log('Request body:', req.body);
+  
   // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -16,13 +19,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { data, error: authError } = await supabase.auth.getUser();
     
     if (authError || !data || !data.user) {
+      console.log('Authentication error:', authError);
       return res.status(401).json({ error: 'Authentication required for API test' });
     }
     
     const userId = data.user.id;
+    console.log('Authenticated user ID:', userId);
     
     // Extract parameters from request body
-    const { apiUrl, params } = req.body;
+    console.log('Extracting parameters from request body...');
+    const { apiUrl, params } = req.body || {};
+    console.log('Extracted apiUrl:', apiUrl);
+    console.log('Extracted params:', params);
     
     if (!apiUrl) {
       return res.status(400).json({ error: 'API URL is required' });

@@ -114,17 +114,24 @@ export default function BinanceApiTest() {
       
       setRequestDetails(JSON.stringify(requestInfo, null, 2));
       
+      // Prepare the request payload
+      const requestPayload = {
+        apiUrl,
+        params: requestParams
+      };
+      
+      console.log('Sending request to /api/cryptos/binance-test with payload:', requestPayload);
+      
       // Make the API request through our backend proxy
       const response = await fetch('/api/cryptos/binance-test', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          apiUrl,
-          params: requestParams
-        })
+        body: JSON.stringify(requestPayload)
       });
+      
+      console.log('Response status:', response.status);
       
       const data = await response.json();
       

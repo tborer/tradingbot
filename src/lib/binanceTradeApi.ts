@@ -314,7 +314,7 @@ export async function executeBinanceOrder(
   quantity: number,
   testMode: boolean = false,
   useTestEndpoint: boolean = false
-): Promise<any> {
+): Promise<{ result: any, requestDetails: any }> {
   // Format the symbol for Binance API
   const formattedSymbol = formatBinanceSymbol(symbol);
   
@@ -326,11 +326,69 @@ export async function executeBinanceOrder(
     quantity
   };
   
+  // Get settings to retrieve the API URL
+  const settings = await prisma.settings.findUnique({
+    where: { userId }
+  });
+
+  // Use the configured API URL or default to Binance US
+  const apiUrl = settings?.binanceTradeApi || 'https://api.binance.us/api/v3/order';
+  const baseUrl = apiUrl.split('/api/')[0]; // Extract base URL (e.g., https://api.binance.us)
+  
+  // Use test endpoint if explicitly requested or in test mode
+  let endpoint;
+  if (useTestEndpoint || testMode) {
+    // Ensure the endpoint ends with '/test'
+    endpoint = '/api/v3/order/test';
+  } else {
+    endpoint = '/api/v3/order';
+  }
+  
+  // Prepare timestamp
+  const timestamp = Date.now();
+  
+  // Build the core parameters object with ONLY the fields required by Binance API
+  const coreParams: Record<string, string> = {
+    symbol: formattedSymbol,
+    side,
+    type: 'MARKET',
+    quantity: quantity.toString(),
+    timestamp: timestamp.toString()
+  };
+  
+  // Generate the query string in the exact format required by Binance API
+  const queryString = Object.entries(coreParams)
+    .map(([key, value]) => {
+      const safeValue = value === undefined || value === null ? '' : String(value);
+      return `${key}=${encodeURIComponent(safeValue)}`;
+    })
+    .join('&');
+  
+  // Create the full URL with query string (signature will be added by createBinanceOrder)
+  const requestUrl = `${baseUrl}${endpoint}`;
+  const fullUrl = `${requestUrl}?${queryString}&signature=[signature]`;
+  
+  // Create request details to return to client
+  const requestDetails = {
+    url: requestUrl,
+    method: 'POST',
+    headers: {
+      'X-MBX-APIKEY': '[Your API Key]'
+    },
+    queryString,
+    fullUrl
+  };
+  
   // Execute the order using createBinanceOrder
-  return createBinanceOrder(
+  const result = await createBinanceOrder(
     userId,
     orderParams,
     testMode,
     useTestEndpoint
   );
+  
+  return {
+    result,
+    requestDetails
+  };
 }

@@ -197,7 +197,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
       
       // Execute the order - only pass the parameters that Binance API expects
-      tradeResult = await executeBinanceOrder(
+      const { result: tradeResult, requestDetails } = await executeBinanceOrder(
         user.id,
         formattedSymbol,
         normalizedSide as 'BUY' | 'SELL',
@@ -377,7 +377,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           totalAmount: transaction.totalAmount,
           createdAt: transaction.createdAt
         },
-        tradeResult
+        tradeResult,
+        requestDetails
       };
       
       // Return success with transaction details

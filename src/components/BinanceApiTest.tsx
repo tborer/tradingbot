@@ -97,19 +97,15 @@ export default function BinanceApiTest() {
         .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
         .join('&');
       
-      // Show the request details
+      // Show the request details that will be sent to Binance API
       const requestInfo = {
         url: apiUrl,
         method: 'POST',
         headers: {
           'X-MBX-APIKEY': '[Your API Key]'
         },
-        queryParams: requestParams,
         queryString: queryString,
-        fullUrl: `${apiUrl}?${queryString}&signature=[signature]`,
-        curlExample: `curl -X "POST" "${apiUrl}?${queryString}&signature=[signature]" \\
-    -H "X-MBX-APIKEY: [Your API Key]"`,
-        signatureGeneration: `HMAC SHA256 signature of: "${queryString}" using your Binance API secret key`
+        fullUrl: `${apiUrl}?${queryString}&signature=[signature]`
       };
       
       setRequestDetails(JSON.stringify(requestInfo, null, 2));
@@ -148,6 +144,11 @@ export default function BinanceApiTest() {
       });
       
       const data = await response.json();
+      
+      // Update request details with the actual request sent to Binance if available
+      if (data.requestDetails) {
+        setRequestDetails(JSON.stringify(data.requestDetails, null, 2));
+      }
       
       setResponseDetails(JSON.stringify(data, null, 2));
       

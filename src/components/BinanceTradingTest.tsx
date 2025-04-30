@@ -107,6 +107,11 @@ export default function BinanceTradingTest({ cryptoId, symbol }: BinanceTradingT
         throw new Error(data.error || data.details || 'Failed to execute trade');
       }
       
+      // Update request details with the actual request sent to Binance if available
+      if (data.requestDetails) {
+        setRequestDetails(JSON.stringify(data.requestDetails, null, 2));
+      }
+      
       setResult(data);
       
       toast({

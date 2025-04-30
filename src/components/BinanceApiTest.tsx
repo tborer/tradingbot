@@ -114,27 +114,33 @@ export default function BinanceApiTest() {
       
       setRequestDetails(JSON.stringify(requestInfo, null, 2));
       
-      // Make the actual API request through our backend using the same parameters
-      // that would be sent to Binance API
-      const response = await fetch(`/api/cryptos/binance-trade`, {
+      // Make the API request through our backend proxy
+      const response = await fetch('/api/cryptos/binance-test', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          directBinanceTest: true,
-          binanceParams: requestParams
+          apiUrl,
+          params: requestParams
         })
       });
       
       const data = await response.json();
       
-      // Update request details with the actual request sent to Binance if available
+      // Update request details with the actual request sent to Binance
       if (data.requestDetails) {
         setRequestDetails(JSON.stringify(data.requestDetails, null, 2));
       }
       
-      setResponseDetails(JSON.stringify(data, null, 2));
+      // Format the response data to show the Binance response separately
+      const formattedResponse = {
+        success: data.success,
+        message: data.message,
+        binanceResponse: data.binanceResponse || data.error
+      };
+      
+      setResponseDetails(JSON.stringify(formattedResponse, null, 2));
       
       if (!response.ok) {
         throw new Error(data.error || data.details || 'Failed to execute API test');

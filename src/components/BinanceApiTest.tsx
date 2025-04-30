@@ -83,8 +83,7 @@ export default function BinanceApiTest() {
         side: side,
         type: orderType,
         quantity: parsedQuantity,
-        timestamp: timestamp.toString(),
-        recvWindow: '5000'
+        timestamp: timestamp.toString()
       };
       
       // Add price and timeInForce for LIMIT orders
@@ -103,8 +102,7 @@ export default function BinanceApiTest() {
         url: apiUrl,
         method: 'POST',
         headers: {
-          'X-MBX-APIKEY': '[Your API Key]',
-          'Content-Type': 'application/x-www-form-urlencoded'
+          'X-MBX-APIKEY': '[Your API Key]'
         },
         queryParams: requestParams,
         queryString: queryString,
@@ -145,11 +143,8 @@ export default function BinanceApiTest() {
       
       // Make the actual API request through our backend using query parameters
       const response = await fetch(`/api/cryptos/binance-trade?${queryParams.toString()}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-        // No body - all parameters are in the query string
+        method: 'POST'
+        // No headers or body - all parameters are in the query string
       });
       
       const data = await response.json();
@@ -305,14 +300,13 @@ export default function BinanceApiTest() {
                 </>
               )}
               <li><span className="font-mono">timestamp</span>: Current timestamp in milliseconds</li>
-              <li><span className="font-mono">recvWindow</span>: 5000 (standard parameter)</li>
             </ul>
             <h4 className="font-medium mt-3">Signature Generation</h4>
             <p>
               The signature is generated server-side using the following process:
             </p>
             <ol className="list-decimal pl-5 space-y-1">
-              <li>Create a query string with all parameters (e.g., <span className="font-mono">symbol=BTCUSDT&side=BUY&type=MARKET&quantity=0.001&timestamp=1619846400000&recvWindow=5000</span>)</li>
+              <li>Create a query string with all parameters (e.g., <span className="font-mono">symbol=BTCUSDT&side=BUY&type=MARKET&quantity=0.001&timestamp=1619846400000</span>)</li>
               <li>Generate an HMAC SHA256 hash of this query string using your Binance API secret key as the key</li>
               <li>Convert the hash to a hex string</li>
               <li>Append the signature to the query string as <span className="font-mono">&signature=HASH</span></li>

@@ -97,11 +97,8 @@ export default function BinanceTradingTest({ cryptoId, symbol }: BinanceTradingT
       });
       
       const response = await fetch(`/api/cryptos/binance-trade?${queryParams.toString()}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-        // No body - all parameters are in the query string
+        method: 'POST'
+        // No headers or body - all parameters are in the query string
       });
       
       const data = await response.json();

@@ -185,7 +185,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Format the symbol for Binance API
       const formattedSymbol = formatBinanceSymbol(symbol);
       
-      // Execute the order
+      // Log the actual parameters being sent to Binance API
+      autoTradeLogger.log('Binance API parameters', {
+        userId: user.id,
+        symbol: formattedSymbol,
+        side: normalizedSide,
+        quantity: parsedQuantity,
+        testMode: effectiveTestMode,
+        useTestEndpoint,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Execute the order - only pass the parameters that Binance API expects
       tradeResult = await executeBinanceOrder(
         user.id,
         formattedSymbol,

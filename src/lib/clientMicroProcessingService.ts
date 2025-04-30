@@ -437,8 +437,7 @@ export async function processMicroTrade(
     }
     
     // Create a payload for the binance-trade.ts API endpoint
-    // Note: These parameters will be processed by our API endpoint, not sent directly to Binance API
-    // The API endpoint will extract only the required parameters for the Binance API
+    // Only include parameters that are needed for the Binance API
     const requestPayload = {
       cryptoId: String(cryptoId),
       side: String(action).toUpperCase(), // Use 'side' instead of 'action' to match Binance API naming

@@ -88,7 +88,8 @@ export default function BinanceTradingTest({ cryptoId, symbol }: BinanceTradingT
     setRequestDetails(JSON.stringify(requestParams, null, 2));
     
     try {
-      // Convert parameters to query string for Binance API compatibility
+      // Only include the parameters that are needed for the API
+      // Our API endpoint will handle forwarding only the required parameters to Binance
       const queryParams = new URLSearchParams();
       Object.entries(requestParams).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
@@ -98,7 +99,6 @@ export default function BinanceTradingTest({ cryptoId, symbol }: BinanceTradingT
       
       const response = await fetch(`/api/cryptos/binance-trade?${queryParams.toString()}`, {
         method: 'POST'
-        // No headers or body - all parameters are in the query string
       });
       
       const data = await response.json();

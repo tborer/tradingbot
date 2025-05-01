@@ -1,21 +1,15 @@
-import { NextApiRequest, NextApiResponse } from 'next';
-import { createClient } from '@/util/supabase/api';
+import { NextApiResponse } from 'next';
 import prisma from '@/lib/prisma';
 import crypto from 'crypto';
 import { autoTradeLogger } from '@/lib/autoTradeLogger';
+import { withAuth, AuthenticatedRequest } from '@/middleware/auth';
 
 // Global error handler to catch any unexpected errors
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Initialize req.cookies at the very beginning to prevent authentication errors
-  if (!req.cookies) {
-    req.cookies = {};
-    console.log('Binance test: req.cookies was undefined, initialized to empty object');
-  }
-  
+async function handler(req: AuthenticatedRequest, res: NextApiResponse) {
   // Wrap everything in a try-catch to ensure we catch all errors
   try {
     console.log('Binance test API handler called with method:', req.method);
@@ -33,61 +27,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
-      // Get the user from Supabase auth
-      console.log('Attempting to authenticate user...');
-      
-      // Check if environment variables are set
-      if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-        console.error('NEXT_PUBLIC_SUPABASE_URL is not defined');
-        return res.status(500).json({ error: 'Server configuration error: Missing Supabase URL' });
-      }
-      
-      if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-        console.error('NEXT_PUBLIC_SUPABASE_ANON_KEY is not defined');
-        return res.status(500).json({ error: 'Server configuration error: Missing Supabase anon key' });
-      }
-      
-      console.log('Creating Supabase client with URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
-      
-      let supabase;
-      let data;
-      let authError;
-      
-      try {
-        supabase = createClient({ req, res });
-        console.log('Supabase client created successfully');
-        
-        console.log('Calling supabase.auth.getUser()...');
-        const authResponse = await supabase.auth.getUser();
-        data = authResponse.data;
-        authError = authResponse.error;
-        console.log('supabase.auth.getUser() completed');
-      } catch (supabaseError) {
-        console.error('Error creating Supabase client or authenticating:', supabaseError);
-        return res.status(500).json({ 
-          error: 'Authentication system error',
-          details: supabaseError.message || 'Failed to initialize authentication',
-          stack: process.env.NODE_ENV === 'development' ? supabaseError.stack : undefined
-        });
-      }
-      
-      if (authError) {
-        console.log('Authentication error encountered:', authError);
-        return res.status(401).json({ error: 'Authentication required for API test' });
-      }
-      
-      if (!data) {
-        console.log('Authentication data is null or undefined');
-        return res.status(401).json({ error: 'Authentication required for API test' });
-      }
-      
-      if (!data.user) {
-        console.log('User data is null or undefined');
-        return res.status(401).json({ error: 'Authentication required for API test' });
-      }
-      
-      const userId = data.user.id;
-      console.log('Authentication successful - User ID:', userId || 'NULL/UNDEFINED');
+      // User is already authenticated by the middleware
+      const userId = req.user.id;
+      console.log('Authentication successful - User ID:', userId);
       
       // Extract parameters from request body
       console.log('Extracting parameters from request body...');
@@ -350,3 +292,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 }
+
+export default withAuth(handler);

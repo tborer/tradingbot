@@ -995,7 +995,47 @@ export async function processAllMicroProcessingCryptos(): Promise<{
       return result;
     }
     
-    // Process each crypto
+    // Call the server-side API to process micro processing
+    try {
+      const requestId = `process_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      console.log(`[${requestId}] Calling server-side API to process micro processing`);
+      
+      const response = await fetch('/api/cryptos/process-micro-processing', {
+        ...getStandardRequestConfig(),
+        method: 'POST',
+        headers: {
+          ...getStandardRequestConfig().headers,
+          'X-Request-ID': requestId
+        },
+        body: JSON.stringify({ 
+          action: 'process',
+          timestamp: new Date().toISOString()
+        })
+      });
+      
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          const text = await response.text();
+          errorData = { error: 'Failed to parse error response', details: text.substring(0, 100) };
+        }
+        
+        throw new Error(`API error: ${errorData.error || response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log(`[${requestId}] Server-side processing result:`, data);
+      
+      result.messages.push(`Server-side processing initiated at ${data.timestamp}`);
+    } catch (apiError) {
+      console.error('Error calling server-side API:', apiError);
+      result.errors++;
+      result.messages.push(`Error calling server-side API: ${apiError.message}`);
+    }
+    
+    // Process each crypto client-side as well
     for (const crypto of enabledCryptos) {
       try {
         if (!crypto || !crypto.id) {

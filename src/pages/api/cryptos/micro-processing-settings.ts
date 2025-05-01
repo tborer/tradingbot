@@ -11,6 +11,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   console.log(`[MICRO-SETTINGS] Request URL: ${req.url}`);
   console.log(`[MICRO-SETTINGS] Request query params:`, req.query);
   
+  // Initialize req.cookies at the very beginning to prevent authentication errors
+  if (!req.cookies) {
+    req.cookies = {};
+    console.log('[MICRO-SETTINGS] req.cookies was undefined, initialized to empty object');
+  }
+  
   try {
     // Get the user from Supabase auth with enhanced debugging
     console.log('[MICRO-SETTINGS] Authenticating user with Supabase');
@@ -22,12 +28,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Create Supabase client with defensive error handling
     let supabase;
     try {
-      // Ensure req.cookies exists before creating the client
-      if (!req.cookies) {
-        req.cookies = {};
-        console.log('[MICRO-SETTINGS] req.cookies was undefined, initialized to empty object');
-      }
-      
       supabase = createClient({ req, res });
       console.log('[MICRO-SETTINGS] Supabase client created successfully');
     } catch (clientError) {

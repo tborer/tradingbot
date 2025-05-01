@@ -8,6 +8,12 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Initialize req.cookies at the very beginning to prevent authentication errors
+  if (!req.cookies) {
+    req.cookies = {};
+    console.log('[PROCESS-MICRO] req.cookies was undefined, initialized to empty object');
+  }
+  
   // Wrap everything in a try-catch to ensure we catch all errors
   try {
     console.log(`[PROCESS-MICRO] API handler started: ${req.method} request received`);

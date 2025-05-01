@@ -1,8 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
+import { withCookies } from '@/util/api-middleware';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+// Define the handler function
+async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     // Initialize Supabase client
     const supabase = createClient(req, res);
@@ -228,3 +230,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 }
+
+// Export the handler wrapped with the withCookies middleware
+export default withCookies(handler, 'AUTO-TRADE-SETTINGS');

@@ -22,7 +22,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Create Supabase client with defensive error handling
     let supabase;
     try {
-      supabase = createClient(req, res);
+      // Ensure req.cookies exists before creating the client
+      if (!req.cookies) {
+        req.cookies = {};
+        console.log('[MICRO-SETTINGS] req.cookies was undefined, initialized to empty object');
+      }
+      
+      supabase = createClient({ req, res });
       console.log('[MICRO-SETTINGS] Supabase client created successfully');
     } catch (clientError) {
       console.error('[MICRO-SETTINGS] Failed to create Supabase client:', clientError);

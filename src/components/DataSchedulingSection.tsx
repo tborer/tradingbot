@@ -13,6 +13,9 @@ interface DataSchedulingProps {
     apiUrl: string;
     apiToken: string;
     dailyRunTime: string;
+    timeZone: string;
+    limit: number;
+    runTechnicalAnalysis: boolean;
     cleanupEnabled: boolean;
     cleanupDays: number;
   };
@@ -22,6 +25,9 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
   const [apiUrl, setApiUrl] = useState(initialData?.apiUrl || '');
   const [apiToken, setApiToken] = useState(initialData?.apiToken || '');
   const [dailyRunTime, setDailyRunTime] = useState(initialData?.dailyRunTime || '00:00'); // Ensure default value is in HH:MM format
+  const [timeZone] = useState(initialData?.timeZone || 'America/Chicago'); // Central Time
+  const [limit, setLimit] = useState(initialData?.limit?.toString() || '24');
+  const [runTechnicalAnalysis, setRunTechnicalAnalysis] = useState(initialData?.runTechnicalAnalysis || false);
   const [cleanupEnabled, setCleanupEnabled] = useState(initialData?.cleanupEnabled || false);
   const [cleanupDays, setCleanupDays] = useState(initialData?.cleanupDays?.toString() || '30');
   const [isSaving, setIsSaving] = useState(false);
@@ -48,6 +54,8 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
             hasApiUrl: !!data?.apiUrl,
             hasApiToken: !!data?.apiToken,
             hasDailyRunTime: !!data?.dailyRunTime,
+            hasLimit: !!data?.limit,
+            hasRunTechnicalAnalysis: !!data?.runTechnicalAnalysis,
           });
           
           if (data) {
@@ -57,6 +65,8 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
             setDailyRunTime(data.dailyRunTime && /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(data.dailyRunTime) 
               ? data.dailyRunTime 
               : '00:00');
+            setLimit(data.limit?.toString() || '24');
+            setRunTechnicalAnalysis(data.runTechnicalAnalysis || false);
             setCleanupEnabled(data.cleanupEnabled || false);
             setCleanupDays(data.cleanupDays?.toString() || '30');
           }
@@ -114,10 +124,25 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
     setIsSaving(true);
     
     try {
+      // Validate limit is a positive number
+      const limitValue = parseInt(limit);
+      if (isNaN(limitValue) || limitValue <= 0) {
+        toast({
+          title: "Invalid Limit",
+          description: "Please enter a positive number for the data limit",
+          variant: "destructive"
+        });
+        setIsSaving(false);
+        return;
+      }
+
       console.log("Submitting data scheduling settings:", {
         apiUrl,
         apiToken: "***", // Don't log the actual token
         dailyRunTime,
+        timeZone,
+        limit: limitValue,
+        runTechnicalAnalysis,
         cleanupEnabled,
         cleanupDays: parseInt(cleanupDays) || 30
       });
@@ -131,6 +156,9 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
           apiUrl: apiUrl.trim(),
           apiToken: apiToken.trim(),
           dailyRunTime,
+          timeZone,
+          limit: limitValue,
+          runTechnicalAnalysis,
           cleanupEnabled,
           cleanupDays: parseInt(cleanupDays) || 30
         }),
@@ -275,25 +303,51 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
             </div>
           </div>
           
-          <div className="space-y-2">
-            <Label htmlFor="dailyRunTime">Daily Run Time</Label>
-            <Input
-              id="dailyRunTime"
-              type="time"
-              value={dailyRunTime}
-              onChange={(e) => {
-                const newValue = e.target.value;
-                // Ensure the time value is in HH:MM format
-                if (newValue) {
-                  setDailyRunTime(newValue);
-                } else {
-                  // If the field is cleared, set a default value
-                  setDailyRunTime('00:00');
-                }
-              }}
-              required
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="dailyRunTime">Daily Run Time</Label>
+              <Input
+                id="dailyRunTime"
+                type="time"
+                value={dailyRunTime}
+                onChange={(e) => {
+                  const newValue = e.target.value;
+                  // Ensure the time value is in HH:MM format
+                  if (newValue) {
+                    setDailyRunTime(newValue);
+                  } else {
+                    // If the field is cleared, set a default value
+                    setDailyRunTime('00:00');
+                  }
+                }}
+                required
+              />
+              <p className="text-xs text-muted-foreground">Time in 24-hour format (HH:MM) - Central Time</p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="limit">Data Limit</Label>
+              <Input
+                id="limit"
+                type="number"
+                min="1"
+                placeholder="24"
+                value={limit}
+                onChange={(e) => setLimit(e.target.value)}
+                required
+              />
+              <p className="text-xs text-muted-foreground">Number of hours of data to fetch</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-2 mb-4">
+            <Switch
+              id="runTechnicalAnalysis"
+              checked={runTechnicalAnalysis}
+              onCheckedChange={setRunTechnicalAnalysis}
             />
-            <p className="text-xs text-muted-foreground">Time in 24-hour format (HH:MM)</p>
+            <Label htmlFor="runTechnicalAnalysis">Run Technical Indicator Analysis</Label>
+            <p className="text-xs text-muted-foreground ml-2">(SMA, EMA, RSI, Bollinger Bands, Support/Resistance, etc.)</p>
           </div>
           
           <div className="border-t pt-4 mt-4">

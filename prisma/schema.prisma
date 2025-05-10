@@ -25,11 +25,42 @@ model DataScheduling {
   apiUrl            String
   apiToken          String
   dailyRunTime      String
+  timeZone          String   @default("America/Chicago") // Central Time
+  limit             Int      @default(24)
+  runTechnicalAnalysis Boolean @default(false)
   cleanupEnabled    Boolean  @default(false)
   cleanupDays       Int      @default(30)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TechnicalAnalysisOutput {
+  id                String   @id @default(uuid())
+  symbol            String
+  timestamp         DateTime @default(now())
+  instrument        String
+  sma20             Float?
+  sma50             Float?
+  ema12             Float?
+  ema26             Float?
+  rsi14             Float?
+  bollingerUpper    Float?
+  bollingerMiddle   Float?
+  bollingerLower    Float?
+  supportLevel      Float?
+  resistanceLevel   Float?
+  fibonacciLevels   Json?
+  breakoutDetected  Boolean  @default(false)
+  breakoutType      String?
+  breakoutStrength  String?
+  recommendation    String?
+  confidenceScore   Float?
+  rawData           Json?
+  createdAt         DateTime @default(now())
+  
+  @@index([symbol, timestamp])
+  @@index([instrument, timestamp])
 }
 
 model HourlyCryptoHistoricalData {

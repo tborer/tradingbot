@@ -30,11 +30,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // Handle POST request to save scheduling data
   if (req.method === 'POST') {
     try {
-      const { apiUrl, apiToken, dailyRunTime, cleanupEnabled, cleanupDays } = req.body;
+      const { 
+        apiUrl, 
+        apiToken, 
+        dailyRunTime, 
+        timeZone, 
+        limit, 
+        runTechnicalAnalysis, 
+        cleanupEnabled, 
+        cleanupDays 
+      } = req.body;
 
       // Validate required fields
       if (!apiUrl || !apiToken || !dailyRunTime) {
         return res.status(400).json({ error: 'API URL, API Token, and Daily Run Time are required' });
+      }
+
+      // Validate limit is a positive number
+      if (!limit || limit <= 0) {
+        return res.status(400).json({ error: 'Limit must be a positive number' });
       }
 
       // Validate cleanupDays is a positive number if cleanup is enabled
@@ -51,6 +65,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           apiUrl,
           apiToken,
           dailyRunTime,
+          timeZone: timeZone || 'America/Chicago',
+          limit,
+          runTechnicalAnalysis: runTechnicalAnalysis || false,
           cleanupEnabled,
           cleanupDays,
           updatedAt: new Date(),
@@ -60,6 +77,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           apiUrl,
           apiToken,
           dailyRunTime,
+          timeZone: timeZone || 'America/Chicago',
+          limit,
+          runTechnicalAnalysis: runTechnicalAnalysis || false,
           cleanupEnabled,
           cleanupDays,
         },

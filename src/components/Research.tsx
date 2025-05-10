@@ -14,6 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useResearchApiLogs } from '@/contexts/ResearchApiLogContext';
 import { useAnalysis } from '@/contexts/AnalysisContext';
 import AnalysisDashboard from './AnalysisDashboardFixed';
+import DataSchedulingSection from './DataSchedulingSection';
 
 const Research: React.FC = () => {
   const [symbol, setSymbol] = useState('');
@@ -788,6 +789,9 @@ const Research: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Data Scheduling Section */}
+      <DataSchedulingSection />
+      
       <Card className="w-full">
         <CardHeader>
           <CardTitle>Research</CardTitle>

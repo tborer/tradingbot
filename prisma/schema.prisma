@@ -16,6 +16,53 @@ model User {
   stocks     Stock[]
   cryptos    Crypto[]
   settings   Settings?
+  dataScheduling DataScheduling?
+}
+
+model DataScheduling {
+  id                String   @id @default(uuid())
+  userId            String   @unique @db.Uuid
+  apiUrl            String
+  apiToken          String
+  dailyRunTime      String
+  cleanupEnabled    Boolean  @default(false)
+  cleanupDays       Int      @default(30)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model HourlyCryptoHistoricalData {
+  id                  String   @id @default(uuid())
+  unit                String
+  timestamp           BigInt
+  type                String
+  market              String
+  instrument          String
+  open                Float
+  high                Float
+  low                 Float
+  close               Float
+  firstMessageTimestamp BigInt
+  lastMessageTimestamp  BigInt
+  firstMessageValue   Float
+  highMessageValue    Float
+  highMessageTimestamp BigInt
+  lowMessageValue     Float
+  lowMessageTimestamp BigInt
+  lastMessageValue    Float
+  totalIndexUpdates   Int
+  volume              Float
+  quoteVolume         Float
+  volumeTopTier       Float
+  quoteVolumeTopTier  Float
+  volumeDirect        Float
+  quoteVolumeDirect   Float
+  volumeTopTierDirect Float
+  quoteVolumeTopTierDirect Float
+  createdAt           DateTime @default(now())
+  
+  @@index([instrument, timestamp])
 }
 
 model Stock {

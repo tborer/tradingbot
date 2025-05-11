@@ -58,9 +58,24 @@ export function calculatePatternMaturity(
   
   // Simple implementation - can be enhanced with more sophisticated logic
   try {
-    // If patterns are strings, parse them
-    const initial = typeof initialPatterns === 'string' ? JSON.parse(initialPatterns) : initialPatterns;
-    const final = typeof finalPatterns === 'string' ? JSON.parse(finalPatterns) : finalPatterns;
+    // Handle special string values like "none" that aren't valid JSON
+    const parseIfNeeded = (pattern: any) => {
+      if (typeof pattern === 'string') {
+        if (pattern.toLowerCase() === 'none') {
+          return [];
+        }
+        try {
+          return JSON.parse(pattern);
+        } catch (e) {
+          console.log(`Could not parse pattern: ${pattern}`);
+          return [];
+        }
+      }
+      return pattern;
+    };
+    
+    const initial = parseIfNeeded(initialPatterns);
+    const final = parseIfNeeded(finalPatterns);
     
     // Check if patterns have completion or confidence properties
     if (Array.isArray(initial) && Array.isArray(final) && initial.length > 0 && final.length > 0) {

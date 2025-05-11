@@ -24,23 +24,34 @@ export function encodeFibonacciTargets(fibData: any): any {
   if (!fibData) return null;
   
   try {
-    // If fibData is a string, parse it
-    const fibLevels = typeof fibData === 'string' ? JSON.parse(fibData) : fibData;
+    // Handle special string values like "none" that aren't valid JSON
+    if (typeof fibData === 'string') {
+      if (fibData.toLowerCase() === 'none') {
+        return [];
+      }
+      
+      try {
+        fibData = JSON.parse(fibData);
+      } catch (e) {
+        console.log(`Could not parse Fibonacci data: ${fibData}`);
+        return [];
+      }
+    }
     
-    if (!Array.isArray(fibLevels)) {
-      return null;
+    if (!Array.isArray(fibData)) {
+      return [];
     }
     
     // Transform into a more structured format
-    return fibLevels.map(level => ({
-      ratio: level.ratio,
-      price: level.price,
+    return fibData.map(level => ({
+      ratio: level.ratio || 0,
+      price: level.price || 0,
       strength: level.strength || 1,
       proximity: level.proximity || 0,
     }));
   } catch (error) {
     console.error("Error encoding Fibonacci targets:", error);
-    return null;
+    return [];
   }
 }
 

@@ -3,7 +3,7 @@ import { createClient } from '@/util/supabase/api';
 import { fetchAndStoreHourlyCryptoData, cleanupOldData } from '@/lib/dataSchedulingService';
 
 // Set a timeout for API requests to prevent function timeout errors
-const API_TIMEOUT = 10000; // 10 seconds
+const API_TIMEOUT = 30000; // 30 seconds - increased from 10 seconds
 
 // Helper function to fetch with timeout
 const fetchWithTimeout = async (url: string, options: RequestInit, timeout: number) => {
@@ -43,7 +43,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Set a timeout to ensure we respond before the serverless function times out
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Operation timed out')), 12000)
+      setTimeout(() => reject(new Error('Operation timed out')), 25000) // Increased from 12000 to 25000 ms
     );
 
     if (operation === 'fetch') {

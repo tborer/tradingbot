@@ -185,6 +185,8 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
     }
   };
 
+  const [inProgress, setInProgress] = useState(false);
+  
   const runOperation = async (operation: 'fetch' | 'cleanup' | 'both') => {
     if (!user) {
       toast({
@@ -204,6 +206,7 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
     }
     
     setOperationResult(null);
+    setInProgress(false);
     
     try {
       const response = await fetch('/api/data-scheduling/run', {
@@ -215,6 +218,30 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
       });
 
       const result = await response.json();
+      
+      // Handle 202 Accepted status (operation in progress)
+      if (response.status === 202) {
+        setInProgress(true);
+        let message = '';
+        
+        if (operation === 'both') {
+          message = `Fetch: ${result.fetch.message} Cleanup: ${result.cleanup.message}`;
+        } else {
+          message = result.message;
+        }
+        
+        setOperationResult({
+          success: true,
+          message
+        });
+        
+        toast({
+          title: "Operation In Progress",
+          description: "The operation is running in the background. This may take several minutes for multiple cryptocurrencies.",
+        });
+        
+        return;
+      }
       
       if (response.ok) {
         let message = '';
@@ -407,6 +434,17 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
           {operationResult && (
             <div className={`p-3 mt-4 rounded-md ${operationResult.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
               {operationResult.message}
+              {inProgress && (
+                <div className="mt-2">
+                  <p className="font-medium">Processing in background:</p>
+                  <ul className="list-disc pl-5 mt-1 text-sm">
+                    <li>Data is being fetched and processed in batches</li>
+                    <li>Technical analysis is running for each cryptocurrency</li>
+                    <li>This process may take several minutes to complete</li>
+                    <li>You can navigate away from this page - processing will continue</li>
+                  </ul>
+                </div>
+              )}
             </div>
           )}
         </div>

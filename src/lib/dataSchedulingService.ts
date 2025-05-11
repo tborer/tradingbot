@@ -12,6 +12,7 @@ import {
 import { calculateDerivedIndicators } from '@/lib/derivedIndicatorsUtils';
 import { generateTemporalFeatures, saveTemporalFeatures } from '@/lib/temporalFeaturesUtils';
 import { generatePatternEncodings, savePatternEncodings } from '@/lib/patternEncodingsUtils';
+import { generateComprehensiveFeatureSet, saveComprehensiveFeatureSet } from '@/lib/comprehensiveFeatureUtils';
 
 /**
  * Fetches data from the configured API and stores it in the database
@@ -332,6 +333,10 @@ async function runTechnicalAnalysis(data: any[], symbol: string, instrument: str
     const patternEncodings = await generatePatternEncodings(symbol, now);
     await savePatternEncodings(symbol, patternEncodings);
     
+    // Generate and store comprehensive feature set
+    const comprehensiveFeatures = await generateComprehensiveFeatureSet(symbol, 'hourly', now);
+    await saveComprehensiveFeatureSet(symbol, comprehensiveFeatures);
+    
     console.log(`Technical analysis and advanced features completed for ${symbol}`);
   } catch (error) {
     console.error(`Error running technical analysis for ${symbol}:`, error);
@@ -407,16 +412,26 @@ export async function cleanupOldData(userId: string): Promise<{
         },
       },
     });
+    
+    // Delete comprehensive features
+    const comprehensiveFeaturesResult = await prisma.cryptoComprehensiveFeatures.deleteMany({
+      where: {
+        timestamp: {
+          lt: cutoffDate,
+        },
+      },
+    });
 
     // Calculate total deleted records
     const totalCount = 
       historicalDataResult.count + 
       temporalFeaturesResult.count + 
-      patternEncodingsResult.count;
+      patternEncodingsResult.count +
+      comprehensiveFeaturesResult.count;
 
     return {
       success: true,
-      message: `Deleted ${totalCount} records older than ${settings.cleanupDays} days (${historicalDataResult.count} historical data, ${temporalFeaturesResult.count} temporal features, ${patternEncodingsResult.count} pattern encodings)`,
+      message: `Deleted ${totalCount} records older than ${settings.cleanupDays} days (${historicalDataResult.count} historical data, ${temporalFeaturesResult.count} temporal features, ${patternEncodingsResult.count} pattern encodings, ${comprehensiveFeaturesResult.count} comprehensive features)`,
       count: totalCount,
     };
   } catch (error) {

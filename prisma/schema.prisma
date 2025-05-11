@@ -83,6 +83,39 @@ model CryptoDerivedIndicators {
   @@index([symbol, timestamp])
 }
 
+model CryptoTemporalFeatures {
+  id                      String   @id @default(uuid())
+  symbol                  String
+  timestamp               DateTime @default(now())
+  lookbackDays            Int      @default(10)
+  priceVelocity           Float?   // Rate of price change over time
+  priceAcceleration       Float?   // Change in velocity of price
+  rsiVelocity             Float?   // How fast RSI is changing
+  trendConsistency        Float?   // Consistency of trend (0-1)
+  patternMaturity         Float?   // How mature detected patterns are
+  srTestFrequency         Int?     // How often price tests support/resistance
+  bbSqueezeStrength       Float?   // Strength of Bollinger Band squeeze
+  maCrossoverRecent       Boolean? // Recent moving average crossover
+  createdAt               DateTime @default(now())
+  
+  @@index([symbol, timestamp])
+}
+
+model CryptoTechnicalPatternEncodings {
+  id                      String   @id @default(uuid())
+  symbol                  String
+  timestamp               DateTime @default(now())
+  bullishPatternStrength  Float?   // Strength of bullish patterns (0-1)
+  bearishPatternStrength  Float?   // Strength of bearish patterns (0-1)
+  patternCompletion       Json?    // Completion percentage of patterns
+  trendEncoding           Json?    // Encoded trend information
+  fibExtensionTargets     Json?    // Encoded Fibonacci targets
+  srStrength              Json?    // Support/resistance strength encoding
+  createdAt               DateTime @default(now())
+  
+  @@index([symbol, timestamp])
+}
+
 model HourlyCryptoHistoricalData {
   id                  String   @id @default(uuid())
   unit                String

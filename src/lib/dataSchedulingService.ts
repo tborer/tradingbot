@@ -10,6 +10,8 @@ import {
   calculateWeightedDecision
 } from '@/lib/analysisUtils';
 import { calculateDerivedIndicators } from '@/lib/derivedIndicatorsUtils';
+import { generateTemporalFeatures, saveTemporalFeatures } from '@/lib/temporalFeaturesUtils';
+import { generatePatternEncodings, savePatternEncodings } from '@/lib/patternEncodingsUtils';
 
 /**
  * Fetches data from the configured API and stores it in the database
@@ -321,7 +323,16 @@ async function runTechnicalAnalysis(data: any[], symbol: string, instrument: str
       }
     });
     
-    console.log(`Technical analysis completed for ${symbol}`);
+    // Generate and store temporal features
+    const now = new Date();
+    const temporalFeatures = await generateTemporalFeatures(symbol, now);
+    await saveTemporalFeatures(symbol, temporalFeatures);
+    
+    // Generate and store pattern encodings
+    const patternEncodings = await generatePatternEncodings(symbol, now);
+    await savePatternEncodings(symbol, patternEncodings);
+    
+    console.log(`Technical analysis and advanced features completed for ${symbol}`);
   } catch (error) {
     console.error(`Error running technical analysis for ${symbol}:`, error);
     // Don't throw, just log the error to prevent stopping the entire process
@@ -361,13 +372,17 @@ export async function cleanupOldData(userId: string): Promise<{
       };
     }
 
-    // Calculate the cutoff timestamp
+    // Calculate the cutoff timestamp for BigInt timestamp fields
     const daysAgo = new Date();
     daysAgo.setDate(daysAgo.getDate() - settings.cleanupDays);
     const timestamp = BigInt(Math.floor(daysAgo.getTime() / 1000));
 
-    // Delete records older than the specified number of days
-    const result = await prisma.hourlyCryptoHistoricalData.deleteMany({
+    // Calculate the cutoff date for DateTime timestamp fields
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - settings.cleanupDays);
+
+    // Delete hourly crypto historical data
+    const historicalDataResult = await prisma.hourlyCryptoHistoricalData.deleteMany({
       where: {
         timestamp: {
           lt: timestamp,
@@ -375,10 +390,34 @@ export async function cleanupOldData(userId: string): Promise<{
       },
     });
 
+    // Delete temporal features
+    const temporalFeaturesResult = await prisma.cryptoTemporalFeatures.deleteMany({
+      where: {
+        timestamp: {
+          lt: cutoffDate,
+        },
+      },
+    });
+
+    // Delete pattern encodings
+    const patternEncodingsResult = await prisma.cryptoTechnicalPatternEncodings.deleteMany({
+      where: {
+        timestamp: {
+          lt: cutoffDate,
+        },
+      },
+    });
+
+    // Calculate total deleted records
+    const totalCount = 
+      historicalDataResult.count + 
+      temporalFeaturesResult.count + 
+      patternEncodingsResult.count;
+
     return {
       success: true,
-      message: `Deleted ${result.count} records older than ${settings.cleanupDays} days`,
-      count: result.count,
+      message: `Deleted ${totalCount} records older than ${settings.cleanupDays} days (${historicalDataResult.count} historical data, ${temporalFeaturesResult.count} temporal features, ${patternEncodingsResult.count} pattern encodings)`,
+      count: totalCount,
     };
   } catch (error) {
     console.error('Error in cleanupOldData:', error);

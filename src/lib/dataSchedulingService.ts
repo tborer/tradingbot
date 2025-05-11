@@ -9,6 +9,7 @@ import {
   detectBreakoutPatterns,
   calculateWeightedDecision
 } from '@/lib/analysisUtils';
+import { calculateDerivedIndicators } from '@/lib/derivedIndicatorsUtils';
 
 /**
  * Fetches data from the configured API and stores it in the database
@@ -119,34 +120,42 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
         const savedData = await Promise.all(
           data.Data.map(async (entry) => {
             try {
+              // Safely convert timestamp values to BigInt, with fallbacks for missing values
+              const safelyConvertToBigInt = (value: any) => {
+                if (value === undefined || value === null) {
+                  return BigInt(0); // Default to 0 if value is missing
+                }
+                return BigInt(value);
+              };
+              
               return await prisma.hourlyCryptoHistoricalData.create({
                 data: {
-                  unit: entry.UNIT,
-                  timestamp: BigInt(entry.TIMESTAMP),
-                  type: entry.TYPE,
-                  market: entry.MARKET,
-                  instrument: entry.INSTRUMENT,
-                  open: entry.OPEN,
-                  high: entry.HIGH,
-                  low: entry.LOW,
-                  close: entry.CLOSE,
-                  firstMessageTimestamp: BigInt(entry.FIRST_MESSAGE_TIMESTAMP),
-                  lastMessageTimestamp: BigInt(entry.LAST_MESSAGE_TIMESTAMP),
-                  firstMessageValue: entry.FIRST_MESSAGE_VALUE,
-                  highMessageValue: entry.HIGH_MESSAGE_VALUE,
-                  highMessageTimestamp: BigInt(entry.HIGH_MESSAGE_TIMESTAMP),
-                  lowMessageValue: entry.LOW_MESSAGE_VALUE,
-                  lowMessageTimestamp: BigInt(entry.LOW_MESSAGE_TIMESTAMP),
-                  lastMessageValue: entry.LAST_MESSAGE_VALUE,
-                  totalIndexUpdates: entry.TOTAL_INDEX_UPDATES,
-                  volume: entry.VOLUME,
-                  quoteVolume: entry.QUOTE_VOLUME,
-                  volumeTopTier: entry.VOLUME_TOP_TIER,
-                  quoteVolumeTopTier: entry.QUOTE_VOLUME_TOP_TIER,
-                  volumeDirect: entry.VOLUME_DIRECT,
-                  quoteVolumeDirect: entry.QUOTE_VOLUME_DIRECT,
-                  volumeTopTierDirect: entry.VOLUME_TOP_TIER_DIRECT,
-                  quoteVolumeTopTierDirect: entry.QUOTE_VOLUME_TOP_TIER_DIRECT,
+                  unit: entry.UNIT || 'HOUR',
+                  timestamp: safelyConvertToBigInt(entry.TIMESTAMP),
+                  type: entry.TYPE || 'PRICE',
+                  market: entry.MARKET || 'CRYPTO',
+                  instrument: entry.INSTRUMENT || `${crypto.symbol}-USD`,
+                  open: entry.OPEN || 0,
+                  high: entry.HIGH || 0,
+                  low: entry.LOW || 0,
+                  close: entry.CLOSE || 0,
+                  firstMessageTimestamp: safelyConvertToBigInt(entry.FIRST_MESSAGE_TIMESTAMP),
+                  lastMessageTimestamp: safelyConvertToBigInt(entry.LAST_MESSAGE_TIMESTAMP),
+                  firstMessageValue: entry.FIRST_MESSAGE_VALUE || 0,
+                  highMessageValue: entry.HIGH_MESSAGE_VALUE || 0,
+                  highMessageTimestamp: safelyConvertToBigInt(entry.HIGH_MESSAGE_TIMESTAMP),
+                  lowMessageValue: entry.LOW_MESSAGE_VALUE || 0,
+                  lowMessageTimestamp: safelyConvertToBigInt(entry.LOW_MESSAGE_TIMESTAMP),
+                  lastMessageValue: entry.LAST_MESSAGE_VALUE || 0,
+                  totalIndexUpdates: entry.TOTAL_INDEX_UPDATES || 0,
+                  volume: entry.VOLUME || 0,
+                  quoteVolume: entry.QUOTE_VOLUME || 0,
+                  volumeTopTier: entry.VOLUME_TOP_TIER || 0,
+                  quoteVolumeTopTier: entry.QUOTE_VOLUME_TOP_TIER || 0,
+                  volumeDirect: entry.VOLUME_DIRECT || 0,
+                  quoteVolumeDirect: entry.QUOTE_VOLUME_DIRECT || 0,
+                  volumeTopTierDirect: entry.VOLUME_TOP_TIER_DIRECT || 0,
+                  quoteVolumeTopTierDirect: entry.QUOTE_VOLUME_TOP_TIER_DIRECT || 0,
                 },
               });
             } catch (error) {
@@ -248,8 +257,12 @@ async function runTechnicalAnalysis(data: any[], symbol: string, instrument: str
       breakoutAnalysis
     );
     
+    // Calculate previous indicators for comparison (if available)
+    const previousEma12 = prices.length > 1 ? calculateEMA(prices.slice(1), 12) : null;
+    const previousEma26 = prices.length > 1 ? calculateEMA(prices.slice(1), 26) : null;
+    
     // Store the analysis results
-    await prisma.technicalAnalysisOutput.create({
+    const technicalAnalysis = await prisma.technicalAnalysisOutput.create({
       data: {
         symbol,
         instrument,
@@ -272,9 +285,39 @@ async function runTechnicalAnalysis(data: any[], symbol: string, instrument: str
         rawData: {
           prices,
           currentPrice,
+          previousEma12,
+          previousEma26,
           timestamp: new Date(),
           explanation: decision.explanation
         }
+      }
+    });
+    
+    // Calculate and store derived indicators
+    const technicalAnalysisWithPrevious = {
+      ...technicalAnalysis,
+      rawData: {
+        ...technicalAnalysis.rawData,
+        previousEma12,
+        previousEma26
+      }
+    };
+    
+    const derivedIndicators = calculateDerivedIndicators(technicalAnalysisWithPrevious);
+    
+    await prisma.cryptoDerivedIndicators.create({
+      data: {
+        technicalAnalysisId: technicalAnalysis.id,
+        symbol,
+        timestamp: new Date(),
+        trendStrength: derivedIndicators.trendStrength,
+        volatilityRatio: derivedIndicators.volatilityRatio,
+        rsiWithTrendContext: derivedIndicators.rsiWithTrendContext,
+        maConvergence: derivedIndicators.maConvergence,
+        nearestSupportDistance: derivedIndicators.nearestSupportDistance,
+        nearestResistanceDistance: derivedIndicators.nearestResistanceDistance,
+        fibConfluenceStrength: derivedIndicators.fibConfluenceStrength,
+        bbPosition: derivedIndicators.bbPosition
       }
     });
     

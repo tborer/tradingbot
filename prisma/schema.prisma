@@ -58,9 +58,29 @@ model TechnicalAnalysisOutput {
   confidenceScore   Float?
   rawData           Json?
   createdAt         DateTime @default(now())
+  derivedIndicators CryptoDerivedIndicators?
   
   @@index([symbol, timestamp])
   @@index([instrument, timestamp])
+}
+
+model CryptoDerivedIndicators {
+  id                      String   @id @default(uuid())
+  technicalAnalysisId     String   @unique
+  technicalAnalysis       TechnicalAnalysisOutput @relation(fields: [technicalAnalysisId], references: [id], onDelete: Cascade)
+  symbol                  String
+  timestamp               DateTime @default(now())
+  trendStrength           Float?   // Distance between short and long EMAs relative to price
+  volatilityRatio         Float?   // Width of Bollinger Bands relative to middle band
+  rsiWithTrendContext     Float?   // RSI adjusted for trend direction
+  maConvergence           Float?   // Rate of convergence/divergence between moving averages
+  nearestSupportDistance  Float?   // Percentage distance to nearest support level
+  nearestResistanceDistance Float?  // Percentage distance to nearest resistance level
+  fibConfluenceStrength   Int?     // Count of Fibonacci levels near support/resistance
+  bbPosition              Float?   // Position within Bollinger Bands (0-1)
+  createdAt               DateTime @default(now())
+  
+  @@index([symbol, timestamp])
 }
 
 model HourlyCryptoHistoricalData {

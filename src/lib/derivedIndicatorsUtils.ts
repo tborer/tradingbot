@@ -1,4 +1,4 @@
-import { calculateDistanceFrom, calculatePercentToNearestLevel, calculateFibonacciConfluence } from './analysisUtils';
+// Helper functions for derived indicators calculations
 
 /**
  * Calculate derived indicators from technical analysis data

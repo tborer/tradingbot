@@ -43,9 +43,25 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeout: numb
  * Process a batch of cryptocurrencies in parallel
  */
 async function processCryptoBatch(
-  cryptos: { symbol: string }[], 
-  settings: any
+  userId: string,
+  cryptoSymbols: string[],
+  apiUrl: string,
+  apiToken: string,
+  limit: number = 24,
+  runTechnicalAnalysis: boolean = false,
+  processId?: string
 ): Promise<any[]> {
+  // Create crypto objects from symbols
+  const cryptos = cryptoSymbols.map(symbol => ({ symbol }));
+  
+  // Create settings object
+  const settings = {
+    apiUrl,
+    apiToken,
+    limit,
+    runTechnicalAnalysis
+  };
+  
   // Process each crypto in the batch concurrently
   return Promise.all(
     cryptos.map(async (crypto) => {
@@ -176,6 +192,32 @@ async function processCryptoBatch(
           }
         }
 
+        // Update processing status if process ID is provided
+        if (processId) {
+          try {
+            await prisma.processingStatus.update({
+              where: { processId },
+              data: {
+                processedItems: {
+                  increment: 1
+                },
+                details: {
+                  update: {
+                    [crypto.symbol]: {
+                      success: true,
+                      dataCount: savedData.length,
+                      analysisSuccess: analysisResult?.success || false
+                    }
+                  }
+                },
+                updatedAt: new Date()
+              }
+            });
+          } catch (statusError) {
+            console.error(`Error updating processing status for ${crypto.symbol}:`, statusError);
+          }
+        }
+
         return {
           symbol: crypto.symbol,
           success: true,
@@ -185,6 +227,32 @@ async function processCryptoBatch(
         };
       } catch (error) {
         console.error(`Error processing ${crypto.symbol}:`, error);
+        
+        // Update processing status with error if process ID is provided
+        if (processId) {
+          try {
+            await prisma.processingStatus.update({
+              where: { processId },
+              data: {
+                processedItems: {
+                  increment: 1
+                },
+                details: {
+                  update: {
+                    [crypto.symbol]: {
+                      success: false,
+                      error: error instanceof Error ? error.message : String(error)
+                    }
+                  }
+                },
+                updatedAt: new Date()
+              }
+            });
+          } catch (statusError) {
+            console.error(`Error updating processing status for ${crypto.symbol}:`, statusError);
+          }
+        }
+        
         return {
           symbol: crypto.symbol,
           success: false,
@@ -205,6 +273,7 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
   message: string;
   data?: any;
   error?: any;
+  processId?: string;
 }> {
   try {
     // Get the user's data scheduling settings
@@ -238,6 +307,21 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
       };
     }
 
+    // Create a processing status record
+    const processId = `data-fetch-${Date.now()}`;
+    await prisma.processingStatus.create({
+      data: {
+        processId,
+        userId,
+        status: 'RUNNING',
+        type: 'DATA_SCHEDULING',
+        totalItems: userCryptos.length,
+        processedItems: 0,
+        details: {},
+        startedAt: new Date()
+      }
+    });
+
     console.log(`Processing ${userCryptos.length} cryptocurrencies in batches of ${BATCH_SIZE}`);
     
     // Process cryptos in batches
@@ -246,7 +330,25 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
       const batch = userCryptos.slice(i, i + BATCH_SIZE);
       console.log(`Processing batch ${Math.floor(i/BATCH_SIZE) + 1} of ${Math.ceil(userCryptos.length/BATCH_SIZE)}`);
       
-      const batchResults = await processCryptoBatch(batch, settings);
+      // Update processing status
+      await prisma.processingStatus.update({
+        where: { processId },
+        data: {
+          processedItems: i,
+          updatedAt: new Date()
+        }
+      });
+      
+      const batchResults = await processCryptoBatch(
+        userId,
+        batch.map(c => c.symbol),
+        settings.apiUrl,
+        settings.apiToken,
+        settings.limit,
+        settings.runTechnicalAnalysis,
+        processId
+      );
+      
       results.push(...batchResults);
       
       // Add a small delay between batches to avoid overwhelming the API
@@ -258,17 +360,45 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
     const successCount = results.filter(r => r.success).length;
     const totalCount = results.length;
 
+    // Update processing status to completed
+    await prisma.processingStatus.update({
+      where: { processId },
+      data: {
+        status: 'COMPLETED',
+        processedItems: totalCount,
+        completedAt: new Date()
+      }
+    });
+
     return {
       success: successCount > 0,
       message: `Successfully processed ${successCount} of ${totalCount} cryptocurrencies`,
       data: results,
+      processId
     };
   } catch (error) {
     console.error('Error in fetchAndStoreHourlyCryptoData:', error);
+    
+    // Update processing status to failed
+    const processId = `data-fetch-${Date.now()}`;
+    try {
+      await prisma.processingStatus.update({
+        where: { processId },
+        data: {
+          status: 'FAILED',
+          error: error instanceof Error ? error.message : String(error),
+          completedAt: new Date()
+        }
+      });
+    } catch (statusError) {
+      console.error('Error updating processing status:', statusError);
+    }
+    
     return {
       success: false,
       message: 'Failed to fetch and store hourly crypto data',
-      error,
+      error: error instanceof Error ? error.message : String(error),
+      processId
     };
   }
 }
@@ -617,3 +747,6 @@ export async function cleanupOldData(userId: string): Promise<{
     };
   }
 }
+
+// Export the processCryptoBatch function for use in the API route
+export { processCryptoBatch };

@@ -1,27 +1,10 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@/util/supabase/api';
-import { fetchAndStoreHourlyCryptoData, cleanupOldData } from '@/lib/dataSchedulingService';
+import prisma from '@/lib/prisma';
+import { fetchAndStoreHourlyCryptoData, cleanupOldData, processCryptoBatch } from '@/lib/dataSchedulingService';
 
 // Set a timeout for API requests to prevent function timeout errors
-const API_TIMEOUT = 30000; // 30 seconds - increased from 10 seconds
-
-// Helper function to fetch with timeout
-const fetchWithTimeout = async (url: string, options: RequestInit, timeout: number) => {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-  
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-    clearTimeout(id);
-    return response;
-  } catch (error) {
-    clearTimeout(id);
-    throw error;
-  }
-};
+const API_TIMEOUT = 50000; // 50 seconds - increased from 30 seconds
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Only allow POST requests
@@ -41,27 +24,114 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Determine which operation to run
     const { operation } = req.body;
 
-    // Set a timeout to ensure we respond before the serverless function times out
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Operation timed out')), 25000) // Increased from 12000 to 25000 ms
-    );
-
     if (operation === 'fetch') {
-      // Run the data collection process with a timeout
+      // Start the data collection process in the background
       try {
-        const resultPromise = fetchAndStoreHourlyCryptoData(user.id);
-        const result = await Promise.race([resultPromise, timeoutPromise]);
-        return res.status(result.success ? 200 : 500).json(result);
-      } catch (error) {
-        if (error.message === 'Operation timed out') {
-          // If the operation timed out, return a 202 Accepted status
-          // This indicates the request was valid but processing is still ongoing
-          return res.status(202).json({
-            success: true,
-            message: 'Data fetch operation started but is taking longer than expected. Check back later for results.',
-            inProgress: true
+        // Get user's cryptos to use for data collection
+        const userCryptos = await prisma.crypto.findMany({
+          where: { userId: user.id },
+          select: { symbol: true },
+        });
+
+        if (userCryptos.length === 0) {
+          return res.status(400).json({ 
+            error: 'No cryptocurrencies found in your portfolio. Please add some on the dashboard first.' 
           });
         }
+
+        // Get the user's data scheduling settings
+        const settings = await prisma.dataScheduling.findUnique({
+          where: { userId: user.id },
+        });
+
+        if (!settings) {
+          return res.status(404).json({ error: 'Data scheduling settings not found' });
+        }
+
+        // Create a processing status record
+        const processId = `data-fetch-${Date.now()}`;
+        await prisma.processingStatus.create({
+          data: {
+            processId,
+            userId: user.id,
+            status: 'RUNNING',
+            type: 'DATA_SCHEDULING',
+            totalItems: userCryptos.length,
+            processedItems: 0,
+            details: {},
+            startedAt: new Date()
+          }
+        });
+
+        // Start the background processing without awaiting it
+        (async () => {
+          try {
+            // Process all cryptos in batches
+            const cryptoSymbols = userCryptos.map(c => c.symbol);
+            const batchSize = 5;
+            
+            for (let i = 0; i < cryptoSymbols.length; i += batchSize) {
+              const batchSymbols = cryptoSymbols.slice(i, i + batchSize);
+              
+              // Update processing status
+              await prisma.processingStatus.update({
+                where: { processId },
+                data: {
+                  processedItems: i,
+                  updatedAt: new Date()
+                }
+              });
+              
+              // Process batch
+              await processCryptoBatch(
+                user.id,
+                batchSymbols,
+                settings.apiUrl,
+                settings.apiToken,
+                settings.limit,
+                settings.runTechnicalAnalysis,
+                processId
+              );
+              
+              // Add a small delay between batches
+              if (i + batchSize < cryptoSymbols.length) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            }
+
+            // Update process status to completed
+            await prisma.processingStatus.update({
+              where: { processId },
+              data: {
+                status: 'COMPLETED',
+                completedAt: new Date(),
+                processedItems: cryptoSymbols.length
+              }
+            });
+          } catch (error) {
+            console.error('Background processing error:', error);
+            
+            // Update process status to failed
+            await prisma.processingStatus.update({
+              where: { processId },
+              data: {
+                status: 'FAILED',
+                error: error instanceof Error ? error.message : String(error),
+                completedAt: new Date()
+              }
+            });
+          }
+        })();
+
+        // Return immediately with a 202 Accepted status
+        return res.status(202).json({ 
+          success: true,
+          message: 'Data fetch operation started in the background. This may take several minutes to complete.',
+          inProgress: true,
+          processId
+        });
+      } catch (error) {
+        console.error('Error starting data fetch operation:', error);
         throw error;
       }
     } else if (operation === 'cleanup') {
@@ -69,32 +139,122 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const result = await cleanupOldData(user.id);
       return res.status(result.success ? 200 : 500).json(result);
     } else if (operation === 'both') {
-      // Run both processes with a timeout for the fetch operation
+      // Start the data collection process in the background
       try {
-        const fetchPromise = fetchAndStoreHourlyCryptoData(user.id);
-        const fetchResult = await Promise.race([fetchPromise, timeoutPromise]);
-        const cleanupResult = await cleanupOldData(user.id);
-        
-        return res.status(fetchResult.success && cleanupResult.success ? 200 : 500).json({
-          fetch: fetchResult,
-          cleanup: cleanupResult,
-          success: fetchResult.success && cleanupResult.success,
+        // Get user's cryptos to use for data collection
+        const userCryptos = await prisma.crypto.findMany({
+          where: { userId: user.id },
+          select: { symbol: true },
         });
-      } catch (error) {
-        if (error.message === 'Operation timed out') {
-          // If the fetch operation timed out, still run cleanup and return partial results
-          const cleanupResult = await cleanupOldData(user.id);
-          return res.status(202).json({
-            fetch: {
-              success: true,
-              message: 'Data fetch operation started but is taking longer than expected. Check back later for results.',
-              inProgress: true
-            },
-            cleanup: cleanupResult,
-            success: cleanupResult.success,
-            partialResults: true
+
+        if (userCryptos.length === 0) {
+          return res.status(400).json({ 
+            error: 'No cryptocurrencies found in your portfolio. Please add some on the dashboard first.' 
           });
         }
+
+        // Get the user's data scheduling settings
+        const settings = await prisma.dataScheduling.findUnique({
+          where: { userId: user.id },
+        });
+
+        if (!settings) {
+          return res.status(404).json({ error: 'Data scheduling settings not found' });
+        }
+
+        // Create a processing status record
+        const processId = `data-fetch-${Date.now()}`;
+        await prisma.processingStatus.create({
+          data: {
+            processId,
+            userId: user.id,
+            status: 'RUNNING',
+            type: 'DATA_SCHEDULING',
+            totalItems: userCryptos.length,
+            processedItems: 0,
+            details: {},
+            startedAt: new Date()
+          }
+        });
+
+        // Start the background processing without awaiting it
+        (async () => {
+          try {
+            // Process all cryptos in batches
+            const cryptoSymbols = userCryptos.map(c => c.symbol);
+            const batchSize = 5;
+            
+            for (let i = 0; i < cryptoSymbols.length; i += batchSize) {
+              const batchSymbols = cryptoSymbols.slice(i, i + batchSize);
+              
+              // Update processing status
+              await prisma.processingStatus.update({
+                where: { processId },
+                data: {
+                  processedItems: i,
+                  updatedAt: new Date()
+                }
+              });
+              
+              // Process batch
+              await processCryptoBatch(
+                user.id,
+                batchSymbols,
+                settings.apiUrl,
+                settings.apiToken,
+                settings.limit,
+                settings.runTechnicalAnalysis,
+                processId
+              );
+              
+              // Add a small delay between batches
+              if (i + batchSize < cryptoSymbols.length) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            }
+
+            // Update process status to completed
+            await prisma.processingStatus.update({
+              where: { processId },
+              data: {
+                status: 'COMPLETED',
+                completedAt: new Date(),
+                processedItems: cryptoSymbols.length
+              }
+            });
+          } catch (error) {
+            console.error('Background processing error:', error);
+            
+            // Update process status to failed
+            await prisma.processingStatus.update({
+              where: { processId },
+              data: {
+                status: 'FAILED',
+                error: error instanceof Error ? error.message : String(error),
+                completedAt: new Date()
+              }
+            });
+          }
+        })();
+
+        // Run the cleanup process immediately
+        const cleanupResult = await cleanupOldData(user.id);
+
+        // Return immediately with a 202 Accepted status for the fetch operation
+        // and the result of the cleanup operation
+        return res.status(202).json({
+          fetch: {
+            success: true,
+            message: 'Data fetch operation started in the background. This may take several minutes to complete.',
+            inProgress: true,
+            processId
+          },
+          cleanup: cleanupResult,
+          success: cleanupResult.success,
+          partialResults: true
+        });
+      } catch (error) {
+        console.error('Error starting data fetch operation:', error);
         throw error;
       }
     } else {
@@ -108,3 +268,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 }
+
+// Configure the API route
+export const config = {
+  api: {
+    bodyParser: true,
+    responseLimit: false,
+  },
+};

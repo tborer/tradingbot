@@ -36,6 +36,12 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
   const [operationResult, setOperationResult] = useState<{
     success: boolean;
     message: string;
+    processId?: string;
+  } | null>(null);
+  const [processingStatus, setProcessingStatus] = useState<{
+    status: string;
+    progress: number;
+    error?: string;
   } | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
@@ -186,6 +192,94 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
   };
 
   const [inProgress, setInProgress] = useState(false);
+  const [statusPollingInterval, setStatusPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  
+  // Function to start polling for status updates
+  const startStatusPolling = (processId: string) => {
+    // Clear any existing polling interval
+    if (statusPollingInterval) {
+      clearInterval(statusPollingInterval);
+    }
+    
+    // Set up polling every 3 seconds
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/data-scheduling/status?processId=${processId}`);
+        
+        if (response.ok) {
+          const result = await response.json();
+          
+          if (result.success && result.data) {
+            const { status, processedItems, totalItems, error } = result.data;
+            const progress = totalItems > 0 ? Math.round((processedItems / totalItems) * 100) : 0;
+            
+            setProcessingStatus({
+              status,
+              progress,
+              error
+            });
+            
+            // If the process is completed or failed, stop polling
+            if (status === 'COMPLETED' || status === 'FAILED') {
+              if (statusPollingInterval) {
+                clearInterval(statusPollingInterval);
+                setStatusPollingInterval(null);
+              }
+              
+              // If completed, update the operation result
+              if (status === 'COMPLETED') {
+                setInProgress(false);
+                toast({
+                  title: "Processing Complete",
+                  description: "The data processing operation has completed successfully.",
+                });
+              }
+              
+              // If failed, show an error
+              if (status === 'FAILED') {
+                setInProgress(false);
+                toast({
+                  title: "Processing Failed",
+                  description: error || "The data processing operation failed.",
+                  variant: "destructive"
+                });
+              }
+            }
+          }
+        } else {
+          console.error('Failed to fetch processing status:', response.status);
+          
+          // If we get a 404, the process might have been deleted or doesn't exist
+          if (response.status === 404) {
+            if (statusPollingInterval) {
+              clearInterval(statusPollingInterval);
+              setStatusPollingInterval(null);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error polling for status:', error);
+      }
+    }, 3000);
+    
+    setStatusPollingInterval(interval);
+    
+    // Clean up the interval when the component unmounts
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  };
+  
+  // Clean up the polling interval when the component unmounts
+  useEffect(() => {
+    return () => {
+      if (statusPollingInterval) {
+        clearInterval(statusPollingInterval);
+      }
+    };
+  }, [statusPollingInterval]);
   
   const runOperation = async (operation: 'fetch' | 'cleanup' | 'both') => {
     if (!user) {
@@ -217,22 +311,76 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
         body: JSON.stringify({ operation }),
       });
 
-      const result = await response.json();
+      // Check if the response is ok before trying to parse JSON
+      if (!response.ok && response.status !== 202) {
+        // For non-200 and non-202 responses, try to get text content first
+        const errorText = await response.text();
+        let errorMessage = 'Operation failed';
+        
+        try {
+          // Try to parse as JSON if possible
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error || errorJson.message || errorMessage;
+        } catch (parseError) {
+          // If not valid JSON, use the text content
+          errorMessage = errorText || errorMessage;
+        }
+        
+        setOperationResult({
+          success: false,
+          message: errorMessage
+        });
+        
+        toast({
+          title: "Operation Failed",
+          description: errorMessage,
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // For successful responses, parse JSON
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        // Handle case where response is not valid JSON
+        console.error("Failed to parse response as JSON:", jsonError);
+        
+        // Get the text content instead
+        const textContent = await response.text();
+        
+        setOperationResult({
+          success: response.ok,
+          message: textContent || 'Operation completed but returned an invalid response format'
+        });
+        
+        toast({
+          title: response.ok ? "Operation Completed" : "Response Error",
+          description: "The server returned a non-JSON response. The operation may have completed but with unexpected output.",
+          variant: response.ok ? "default" : "destructive"
+        });
+        return;
+      }
       
       // Handle 202 Accepted status (operation in progress)
       if (response.status === 202) {
         setInProgress(true);
         let message = '';
+        let processId = '';
         
-        if (operation === 'both') {
+        if (operation === 'both' && result.fetch && result.cleanup) {
           message = `Fetch: ${result.fetch.message} Cleanup: ${result.cleanup.message}`;
+          processId = result.fetch.processId;
         } else {
-          message = result.message;
+          message = result.message || 'Operation is running in the background';
+          processId = result.processId;
         }
         
         setOperationResult({
           success: true,
-          message
+          message,
+          processId
         });
         
         toast({
@@ -240,16 +388,22 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
           description: "The operation is running in the background. This may take several minutes for multiple cryptocurrencies.",
         });
         
+        // Start polling for status updates if we have a process ID
+        if (processId) {
+          startStatusPolling(processId);
+        }
+        
         return;
       }
       
+      // Handle successful response
       if (response.ok) {
         let message = '';
         
-        if (operation === 'both') {
+        if (operation === 'both' && result.fetch && result.cleanup) {
           message = `Fetch: ${result.fetch.message}. Cleanup: ${result.cleanup.message}`;
         } else {
-          message = result.message;
+          message = result.message || 'Operation completed successfully';
         }
         
         setOperationResult({
@@ -260,17 +414,6 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
         toast({
           title: "Operation Successful",
           description: message,
-        });
-      } else {
-        setOperationResult({
-          success: false,
-          message: result.error || 'Operation failed'
-        });
-        
-        toast({
-          title: "Operation Failed",
-          description: result.error || 'An unknown error occurred',
-          variant: "destructive"
         });
       }
     } catch (error) {
@@ -443,6 +586,23 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
                     <li>This process may take several minutes to complete</li>
                     <li>You can navigate away from this page - processing will continue</li>
                   </ul>
+                  
+                  {processingStatus && (
+                    <div className="mt-3">
+                      <p className="font-medium">Status: {processingStatus.status}</p>
+                      <div className="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+                        <div 
+                          className="bg-blue-600 h-2.5 rounded-full" 
+                          style={{ width: `${processingStatus.progress}%` }}
+                        ></div>
+                      </div>
+                      <p className="text-xs mt-1">{processingStatus.progress}% complete</p>
+                      
+                      {processingStatus.error && (
+                        <p className="text-red-600 mt-2">Error: {processingStatus.error}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

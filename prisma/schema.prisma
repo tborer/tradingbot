@@ -35,6 +35,24 @@ model DataScheduling {
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model ProcessingStatus {
+  processId         String   @id
+  userId            String   @db.Uuid
+  status            String   // RUNNING, COMPLETED, FAILED
+  type              String   // DATA_SCHEDULING, etc.
+  startedAt         DateTime @default(now())
+  completedAt       DateTime?
+  totalItems        Int      @default(0)
+  processedItems    Int      @default(0)
+  error             String?
+  details           Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId, type])
+  @@index([status])
+}
+
 model TechnicalAnalysisOutput {
   id                String   @id @default(uuid())
   symbol            String

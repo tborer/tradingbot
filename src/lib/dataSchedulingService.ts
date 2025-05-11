@@ -58,8 +58,22 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
       try {
         // Construct the URL with the instrument and limit parameters
         const instrument = `${crypto.symbol}-USD`;
-        const baseUrl = settings.apiUrl.endsWith('/') ? settings.apiUrl.slice(0, -1) : settings.apiUrl;
-        const url = `${baseUrl}/index/cc/v1/historical/hours?market=cadli&instrument=${instrument}&limit=${settings.limit}&aggregate=1&response_format=JSON`;
+        // Ensure the base URL doesn't have trailing slashes and doesn't already contain the endpoint path
+        let baseUrl = settings.apiUrl;
+        // Remove trailing slash if present
+        if (baseUrl.endsWith('/')) {
+          baseUrl = baseUrl.slice(0, -1);
+        }
+        
+        // Ensure we don't have duplicate path segments
+        let url;
+        if (baseUrl.includes('/index/cc/v1/historical/hours')) {
+          // If the base URL already contains the endpoint path, use it directly
+          url = `${baseUrl}?market=cadli&instrument=${instrument}&limit=${settings.limit}&aggregate=1&response_format=JSON`;
+        } else {
+          // Otherwise, append the endpoint path
+          url = `${baseUrl}/index/cc/v1/historical/hours?market=cadli&instrument=${instrument}&limit=${settings.limit}&aggregate=1&response_format=JSON`;
+        }
         
         console.log(`Fetching data for ${instrument} from ${url}`);
 

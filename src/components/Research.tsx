@@ -8,6 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CheckCircledIcon, CrossCircledIcon } from '@radix-ui/react-icons';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { fetchHistoricalData } from '@/lib/alphaVantage';
 import { fetchCoinDeskHistoricalData, formatCoinDeskDataForAnalysis } from '@/lib/coinDesk';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,6 +16,7 @@ import { useResearchApiLogs } from '@/contexts/ResearchApiLogContext';
 import { useAnalysis } from '@/contexts/AnalysisContext';
 import AnalysisDashboard from './AnalysisDashboardFixed';
 import DataSchedulingSection from './DataSchedulingSection';
+import SchedulingProcessLogs from './SchedulingProcessLogs';
 
 const Research: React.FC = () => {
   const [symbol, setSymbol] = useState('');
@@ -789,8 +791,21 @@ const Research: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Data Scheduling Section */}
-      <DataSchedulingSection />
+      {/* Tabs for different sections */}
+      <div className="w-full">
+        <Tabs defaultValue="scheduling" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="scheduling">Data Scheduling</TabsTrigger>
+            <TabsTrigger value="logs">Process Logs</TabsTrigger>
+          </TabsList>
+          <TabsContent value="scheduling">
+            <DataSchedulingSection />
+          </TabsContent>
+          <TabsContent value="logs">
+            <SchedulingProcessLogs />
+          </TabsContent>
+        </Tabs>
+      </div>
       
       <Card className="w-full">
         <CardHeader>

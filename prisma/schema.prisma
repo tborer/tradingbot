@@ -48,9 +48,30 @@ model ProcessingStatus {
   details           Json?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  logs              SchedulingProcessLog[]
 
   @@index([userId, type])
   @@index([status])
+}
+
+model SchedulingProcessLog {
+  id                String   @id @default(uuid())
+  processId         String
+  process           ProcessingStatus @relation(fields: [processId], references: [processId], onDelete: Cascade)
+  userId            String   @db.Uuid
+  timestamp         DateTime @default(now())
+  level             String   // INFO, WARNING, ERROR, DEBUG
+  category          String   // SCHEDULING, API_CALL, DATA_PROCESSING, ANALYSIS
+  operation         String   // e.g., FETCH_START, API_REQUEST, DATA_RECEIVED, ANALYSIS_START
+  symbol            String?  // Cryptocurrency symbol if applicable
+  message           String   // Log message
+  details           Json?    // Additional details (request/response data, etc.)
+  duration          Int?     // Duration in milliseconds if applicable
+  
+  @@index([processId, timestamp])
+  @@index([userId, category])
+  @@index([level])
+  @@index([symbol, operation])
 }
 
 model TechnicalAnalysisOutput {

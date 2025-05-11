@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
 import { fetchAndStoreHourlyCryptoData, cleanupOldData, processCryptoBatch } from '@/lib/dataSchedulingService';
+import { logScheduling } from '@/lib/schedulingLogger';
 
 // Set a timeout for API requests to prevent function timeout errors
 const API_TIMEOUT = 50000; // 50 seconds - increased from 30 seconds
@@ -66,12 +67,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Start the background processing without awaiting it
         (async () => {
           try {
+            await logScheduling({
+              processId,
+              userId: user.id,
+              operation: 'BACKGROUND_PROCESSING_START',
+              message: 'Starting background processing of data fetch operation'
+            });
+            
             // Process all cryptos in batches
             const cryptoSymbols = userCryptos.map(c => c.symbol);
             const batchSize = 5;
             
+            await logScheduling({
+              processId,
+              userId: user.id,
+              operation: 'BATCH_CONFIGURATION',
+              message: `Configured batch processing with batch size ${batchSize}`,
+              details: { 
+                totalCryptos: cryptoSymbols.length,
+                batchSize,
+                totalBatches: Math.ceil(cryptoSymbols.length / batchSize)
+              }
+            });
+            
             for (let i = 0; i < cryptoSymbols.length; i += batchSize) {
               const batchSymbols = cryptoSymbols.slice(i, i + batchSize);
+              const batchNumber = Math.floor(i / batchSize) + 1;
+              const totalBatches = Math.ceil(cryptoSymbols.length / batchSize);
+              
+              await logScheduling({
+                processId,
+                userId: user.id,
+                operation: 'BATCH_START',
+                message: `Starting batch ${batchNumber} of ${totalBatches}`,
+                details: { 
+                  batchNumber,
+                  totalBatches,
+                  symbols: batchSymbols,
+                  progress: `${Math.round((i / cryptoSymbols.length) * 100)}%`
+                }
+              });
               
               // Update processing status
               await prisma.processingStatus.update({
@@ -93,6 +128,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 processId
               );
               
+              await logScheduling({
+                processId,
+                userId: user.id,
+                operation: 'BATCH_COMPLETE',
+                message: `Completed batch ${batchNumber} of ${totalBatches}`,
+                details: { 
+                  batchNumber,
+                  totalBatches,
+                  progress: `${Math.round(((i + batchSize) / cryptoSymbols.length) * 100)}%`
+                }
+              });
+              
               // Add a small delay between batches
               if (i + batchSize < cryptoSymbols.length) {
                 await new Promise(resolve => setTimeout(resolve, 1000));
@@ -108,8 +155,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 processedItems: cryptoSymbols.length
               }
             });
+            
+            await logScheduling({
+              processId,
+              userId: user.id,
+              operation: 'BACKGROUND_PROCESSING_COMPLETE',
+              message: 'Background processing completed successfully',
+              details: { 
+                totalProcessed: cryptoSymbols.length,
+                duration: `${Math.round((Date.now() - new Date(processId.split('-')[1]).getTime()) / 1000)} seconds`
+              }
+            });
           } catch (error) {
             console.error('Background processing error:', error);
+            
+            await logScheduling({
+              processId,
+              userId: user.id,
+              operation: 'BACKGROUND_PROCESSING_ERROR',
+              message: 'Error in background processing',
+              error
+            });
             
             // Update process status to failed
             await prisma.processingStatus.update({
@@ -180,12 +246,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Start the background processing without awaiting it
         (async () => {
           try {
+            await logScheduling({
+              processId,
+              userId: user.id,
+              operation: 'BACKGROUND_PROCESSING_START',
+              message: 'Starting background processing of data fetch operation (with cleanup)'
+            });
+            
             // Process all cryptos in batches
             const cryptoSymbols = userCryptos.map(c => c.symbol);
             const batchSize = 5;
             
+            await logScheduling({
+              processId,
+              userId: user.id,
+              operation: 'BATCH_CONFIGURATION',
+              message: `Configured batch processing with batch size ${batchSize}`,
+              details: { 
+                totalCryptos: cryptoSymbols.length,
+                batchSize,
+                totalBatches: Math.ceil(cryptoSymbols.length / batchSize)
+              }
+            });
+            
             for (let i = 0; i < cryptoSymbols.length; i += batchSize) {
               const batchSymbols = cryptoSymbols.slice(i, i + batchSize);
+              const batchNumber = Math.floor(i / batchSize) + 1;
+              const totalBatches = Math.ceil(cryptoSymbols.length / batchSize);
+              
+              await logScheduling({
+                processId,
+                userId: user.id,
+                operation: 'BATCH_START',
+                message: `Starting batch ${batchNumber} of ${totalBatches}`,
+                details: { 
+                  batchNumber,
+                  totalBatches,
+                  symbols: batchSymbols,
+                  progress: `${Math.round((i / cryptoSymbols.length) * 100)}%`
+                }
+              });
               
               // Update processing status
               await prisma.processingStatus.update({
@@ -207,6 +307,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 processId
               );
               
+              await logScheduling({
+                processId,
+                userId: user.id,
+                operation: 'BATCH_COMPLETE',
+                message: `Completed batch ${batchNumber} of ${totalBatches}`,
+                details: { 
+                  batchNumber,
+                  totalBatches,
+                  progress: `${Math.round(((i + batchSize) / cryptoSymbols.length) * 100)}%`
+                }
+              });
+              
               // Add a small delay between batches
               if (i + batchSize < cryptoSymbols.length) {
                 await new Promise(resolve => setTimeout(resolve, 1000));
@@ -222,8 +334,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 processedItems: cryptoSymbols.length
               }
             });
+            
+            await logScheduling({
+              processId,
+              userId: user.id,
+              operation: 'BACKGROUND_PROCESSING_COMPLETE',
+              message: 'Background processing completed successfully',
+              details: { 
+                totalProcessed: cryptoSymbols.length,
+                duration: `${Math.round((Date.now() - new Date(processId.split('-')[1]).getTime()) / 1000)} seconds`
+              }
+            });
           } catch (error) {
             console.error('Background processing error:', error);
+            
+            await logScheduling({
+              processId,
+              userId: user.id,
+              operation: 'BACKGROUND_PROCESSING_ERROR',
+              message: 'Error in background processing',
+              error
+            });
             
             // Update process status to failed
             await prisma.processingStatus.update({

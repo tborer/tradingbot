@@ -22,6 +22,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    // Clean up any stale processing statuses before starting a new operation
+    const { cleanupStaleProcessingStatuses } = require('@/lib/dataSchedulingService');
+    await cleanupStaleProcessingStatuses(user.id);
+    
     // Determine which operation to run
     const { operation } = req.body;
 

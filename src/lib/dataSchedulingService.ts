@@ -1434,3 +1434,34 @@ export async function cleanupOldData(userId: string): Promise<{
 
 // Export the processCryptoBatch function for use in the API route
 export { processCryptoBatch };
+
+/**
+ * Cleans up stale processing statuses that have been "RUNNING" for too long
+ */
+export async function cleanupStaleProcessingStatuses(userId: string): Promise<void> {
+  try {
+    // Find all statuses that have been "RUNNING" for more than 30 minutes
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    
+    const staleStatuses = await prisma.processingStatus.updateMany({
+      where: {
+        userId,
+        status: 'RUNNING',
+        updatedAt: {
+          lt: thirtyMinutesAgo
+        }
+      },
+      data: {
+        status: 'FAILED',
+        error: 'Process timed out or was interrupted',
+        completedAt: new Date()
+      }
+    });
+    
+    if (staleStatuses.count > 0) {
+      console.log(`Cleaned up ${staleStatuses.count} stale processing statuses for user ${userId}`);
+    }
+  } catch (error) {
+    console.error('Error cleaning up stale processing statuses:', error);
+  }
+}

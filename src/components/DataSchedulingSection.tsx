@@ -493,7 +493,11 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
                 }}
                 required
               />
-              <p className="text-xs text-muted-foreground">Time in 24-hour format (HH:MM) - Central Time</p>
+              <p className="text-xs text-muted-foreground">
+                Time in 24-hour format (HH:MM) - Central Time
+                <br />
+                <span className="font-medium">The system will automatically run data collection daily at this time.</span>
+              </p>
             </div>
             
             <div className="space-y-2">

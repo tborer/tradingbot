@@ -17,6 +17,7 @@ import { useAnalysis } from '@/contexts/AnalysisContext';
 import AnalysisDashboard from './AnalysisDashboardFixed';
 import DataSchedulingSection from './DataSchedulingSection';
 import SchedulingProcessLogs from './SchedulingProcessLogs';
+import TradingSignals from './TradingSignals';
 
 const Research: React.FC = () => {
   const [symbol, setSymbol] = useState('');
@@ -794,15 +795,19 @@ const Research: React.FC = () => {
       {/* Tabs for different sections */}
       <div className="w-full">
         <Tabs defaultValue="scheduling" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="scheduling">Data Scheduling</TabsTrigger>
             <TabsTrigger value="logs">Process Logs</TabsTrigger>
+            <TabsTrigger value="signals">Trading Signals</TabsTrigger>
           </TabsList>
           <TabsContent value="scheduling">
             <DataSchedulingSection />
           </TabsContent>
           <TabsContent value="logs">
             <SchedulingProcessLogs />
+          </TabsContent>
+          <TabsContent value="signals">
+            <TradingSignals />
           </TabsContent>
         </Tabs>
       </div>

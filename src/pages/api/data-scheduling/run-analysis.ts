@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { runTechnicalAnalysis } from '@/lib/dataSchedulingService';
 import { generateComprehensiveFeatureSet } from '@/lib/comprehensiveFeatureUtils';
 import { runPredictionsForAllCryptos, updatePredictionOutcomes } from '@/lib/predictionModels/predictionRunner';
+import { generateTradingSignalsForAllCryptos } from '@/lib/tradingSignals/signalGenerator';
 import { schedulingLogger } from '@/lib/schedulingLogger';
 import { cleanupStaleProcessingStatuses } from '@/lib/dataSchedulingService';
 
@@ -89,7 +90,7 @@ async function runAnalysisProcess(processId: string, userId: string): Promise<vo
         processId
       },
       data: {
-        totalItems: cryptos.length * 4 // 4 steps per crypto
+        totalItems: cryptos.length * 5 // 5 steps per crypto (added trading signals)
       }
     });
 
@@ -291,6 +292,50 @@ async function runAnalysisProcess(processId: string, userId: string): Promise<vo
         category: 'ANALYSIS',
         operation: 'OUTCOME_UPDATE_ERROR',
         message: `Prediction outcome update error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+      throw error;
+    }
+
+    // Step 5: Generate trading signals
+    await schedulingLogger.log({
+      processId,
+      userId,
+      level: 'INFO',
+      category: 'ANALYSIS',
+      operation: 'TRADING_SIGNALS_START',
+      message: 'Starting trading signal generation'
+    });
+
+    try {
+      const signalsResult = await generateTradingSignalsForAllCryptos(userId);
+      
+      // Update processed items
+      processedItems += cryptos.length;
+      await prisma.processingStatus.update({
+        where: {
+          processId
+        },
+        data: {
+          processedItems
+        }
+      });
+      
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'INFO',
+        category: 'ANALYSIS',
+        operation: 'TRADING_SIGNALS_COMPLETE',
+        message: `Trading signal generation completed: Generated signals for ${signalsResult.length} cryptocurrencies`
+      });
+    } catch (error) {
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'ERROR',
+        category: 'ANALYSIS',
+        operation: 'TRADING_SIGNALS_ERROR',
+        message: `Trading signal generation error: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
       throw error;
     }

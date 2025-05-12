@@ -1,76 +1,383 @@
-// New models to add to schema.prisma
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                String              @id @default(uuid())
+  email             String              @unique
+  name              String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  stocks            Stock[]
+  cryptos           Crypto[]
+  transactions      Transaction[]
+  cryptoTransactions CryptoTransaction[]
+  settings          Settings?
+  usdBalance        USDBalance?
+  autoTradeSettings AutoTradeSettings[]
+  autoTradeLogs     AutoTradeLog[]
+  predictionModels  CryptoPredictionModel[]
+  tradingSignals    TradingSignal[]
+}
+
+model Stock {
+  id          String        @id @default(uuid())
+  symbol      String
+  shares      Float
+  userId      String
+  user        User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([userId, symbol])
+}
+
+model Transaction {
+  id        String   @id @default(uuid())
+  stockId   String
+  stock     Stock    @relation(fields: [stockId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  type      String
+  shares    Float
+  price     Float
+  timestamp DateTime @default(now())
+}
+
+model Crypto {
+  id                String              @id @default(uuid())
+  symbol            String
+  shares            Float
+  userId            String
+  user              User                @relation(fields: [userId], references: [id])
+  transactions      CryptoTransaction[]
+  lastPrice         Float?
+  lastUpdated       DateTime?
+  autoTradeSettings AutoTradeSettings?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([userId, symbol])
+}
+
+model CryptoTransaction {
+  id        String   @id @default(uuid())
+  cryptoId  String
+  crypto    Crypto   @relation(fields: [cryptoId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  type      String
+  shares    Float
+  price     Float
+  timestamp DateTime @default(now())
+}
+
+model USDBalance {
+  id      String @id @default(uuid())
+  userId  String @unique
+  user    User   @relation(fields: [userId], references: [id])
+  balance Float  @default(0)
+}
+
+model Settings {
+  id                     String  @id @default(uuid())
+  userId                 String  @unique
+  user                   User    @relation(fields: [userId], references: [id])
+  finnhubApiKey          String?
+  alphaVantageApiKey     String?
+  openAiApiKey           String?
+  anthropicApiKey        String?
+  googleAiApiKey         String?
+  coinDeskApiKey         String?
+  krakenApiKey           String?
+  krakenApiSecret        String?
+  krakenWebSocketEnabled Boolean @default(false)
+  finnhubWebSocketEnabled Boolean @default(false)
+}
+
+model AutoTradeSettings {
+  id                  String   @id @default(uuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id])
+  cryptoId            String   @unique
+  crypto              Crypto   @relation(fields: [cryptoId], references: [id])
+  enabled             Boolean  @default(false)
+  buyThreshold        Float?
+  sellThreshold       Float?
+  buyAmount           Float?
+  sellAmount          Float?
+  maxBuyPrice         Float?
+  minSellPrice        Float?
+  lastBuyTimestamp    DateTime?
+  lastSellTimestamp   DateTime?
+  cooldownMinutes     Int      @default(60)
+  buyEnabled          Boolean  @default(true)
+  sellEnabled         Boolean  @default(true)
+  isProcessing        Boolean  @default(false)
+  processingStartedAt DateTime?
+}
+
+model AutoTradeLog {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  symbol          String
+  action          String
+  price           Float?
+  amount          Float?
+  status          String
+  message         String?
+  timestamp       DateTime @default(now())
+  transactionId   String?
+  processingTime  Int?     // in milliseconds
+}
+
+model HourlyCryptoData {
+  id        String   @id @default(uuid())
+  userId    String
+  symbol    String
+  timestamp DateTime
+  data      Json
+  createdAt DateTime @default(now())
+
+  @@unique([userId, symbol, timestamp])
+}
+
+model DataSchedulingSettings {
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+  apiUrl                String?
+  apiToken              String?
+  dailyRunTime          String?
+  cleanupDays           Int?
+  cleanupEnabled        Boolean  @default(false)
+  enabled               Boolean  @default(false)
+  limit                 Int      @default(24)
+  runTechnicalAnalysis  Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model ProcessingStatus {
+  id        String   @id @default(uuid())
+  userId    String
+  status    String
+  startTime DateTime @default(now())
+  endTime   DateTime?
+  details   String?
+}
+
+model CryptoTechnicalAnalysis {
+  id        String   @id @default(uuid())
+  userId    String
+  symbol    String
+  timestamp DateTime
+  timeframe String   @default("1h")
+  sma20     Float?
+  sma50     Float?
+  ema12     Float?
+  ema26     Float?
+  rsi       Float?
+  macd      Float?
+  macdSignal Float?
+  macdHistogram Float?
+  bollingerUpper Float?
+  bollingerLower Float?
+  bollingerMiddle Float?
+  trendLines Json?
+  fibonacci  Json?
+  breakoutPatterns Json?
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, symbol, timestamp, timeframe])
+}
+
+model CryptoDerivedIndicators {
+  id                String   @id @default(uuid())
+  userId            String
+  symbol            String
+  timestamp         DateTime
+  timeframe         String   @default("1h")
+  priceRelativeToSMA20 Float?
+  priceRelativeToSMA50 Float?
+  priceRelativeToEMA12 Float?
+  priceRelativeToEMA26 Float?
+  rsiCategory       String?  // "Oversold", "Neutral", "Overbought"
+  macdCrossover     String?  // "Bullish", "Bearish", "None"
+  bollingerPosition String?  // "Upper", "Middle", "Lower"
+  bollingerWidth    Float?
+  bollingerSqueeze  Boolean?
+  trendStrength     Float?
+  trendDirection    String?  // "Up", "Down", "Sideways"
+  supportDistance   Float?
+  resistanceDistance Float?
+  volatilityIndex   Float?
+  momentumIndex     Float?
+  createdAt         DateTime @default(now())
+
+  @@unique([userId, symbol, timestamp, timeframe])
+}
+
+model CryptoTemporalFeatures {
+  id                String   @id @default(uuid())
+  userId            String
+  symbol            String
+  timestamp         DateTime
+  timeframe         String   @default("1h")
+  priceChangeRate1h Float?
+  priceChangeRate4h Float?
+  priceChangeRate24h Float?
+  volumeChangeRate1h Float?
+  volumeChangeRate4h Float?
+  volumeChangeRate24h Float?
+  rsiChangeRate     Float?
+  macdChangeRate    Float?
+  trendConsistency  Float?
+  volatilityChange  Float?
+  supportBreakCount Int?
+  resistanceBreakCount Int?
+  rangeWidth        Float?
+  rangePosition     Float?
+  createdAt         DateTime @default(now())
+
+  @@unique([userId, symbol, timestamp, timeframe])
+}
+
+model CryptoTechnicalPatternEncodings {
+  id                String   @id @default(uuid())
+  userId            String
+  symbol            String
+  timestamp         DateTime
+  timeframe         String   @default("1h")
+  headAndShoulders  Float?
+  doubleTop         Float?
+  doubleBottom      Float?
+  tripleTop         Float?
+  tripleBottom      Float?
+  bullishFlag       Float?
+  bearishFlag       Float?
+  bullishPennant    Float?
+  bearishPennant    Float?
+  symmetricalTriangle Float?
+  ascendingTriangle Float?
+  descendingTriangle Float?
+  bullishRectangle  Float?
+  bearishRectangle  Float?
+  cupAndHandle      Float?
+  inverseCupAndHandle Float?
+  bullishWedge      Float?
+  bearishWedge      Float?
+  createdAt         DateTime @default(now())
+
+  @@unique([userId, symbol, timestamp, timeframe])
+}
+
+model SchedulingProcess {
+  id        String   @id @default(uuid())
+  userId    String
+  processId String
+  category  String
+  message   String
+  timestamp DateTime @default(now())
+  status    String?
+  details   Json?
+}
 
 model CryptoPredictionModel {
   id                String   @id @default(uuid())
-  name              String
-  type              String   // 'direction', 'volatility', 'keyLevels'
-  version           String
-  description       String?
-  configuration     Json
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  modelType         String   // "direction", "volatility", "keyLevels"
+  symbol            String?  // null means applies to all symbols
+  timeframe         String   // "1h", "4h", "1d"
+  configuration     Json?
   accuracy          Float?
-  lastTrainedAt     DateTime?
+  lastTrainingDate  DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   directionPredictions CryptoPriceDirectionPrediction[]
   volatilityPredictions CryptoVolatilityPrediction[]
   keyLevelPredictions CryptoKeyLevelPrediction[]
-  
-  @@unique([name, version])
 }
 
 model CryptoPriceDirectionPrediction {
   id                String   @id @default(uuid())
   modelId           String
-  model             CryptoPredictionModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  model             CryptoPredictionModel @relation(fields: [modelId], references: [id])
   symbol            String
-  timestamp         DateTime @default(now())
-  predictionTime    DateTime // Time for which prediction is made
-  probability       Float    // 0-1 probability of price increase
-  direction         String   // 'up' or 'down'
-  confidence        Float    // 0-1 confidence score
-  timeframe         String   // e.g., '1h', '4h', '1d'
-  actualOutcome     String?  // 'up', 'down', or null if not yet known
-  featureSnapshot   Json?    // Snapshot of features used for prediction
+  timestamp         DateTime
+  predictedDirection String   // "UP" or "DOWN"
+  confidence        Float
+  actualDirection   String?  // "UP" or "DOWN", filled after outcome is known
+  wasCorrect        Boolean?
+  predictedForTimestamp DateTime
   createdAt         DateTime @default(now())
-  
-  @@index([symbol, predictionTime])
-  @@index([modelId, timestamp])
+
+  @@unique([modelId, symbol, timestamp])
 }
 
 model CryptoVolatilityPrediction {
   id                String   @id @default(uuid())
   modelId           String
-  model             CryptoPredictionModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  model             CryptoPredictionModel @relation(fields: [modelId], references: [id])
   symbol            String
-  timestamp         DateTime @default(now())
-  predictionTime    DateTime // Time for which prediction is made
-  expectedVolatility Float    // Predicted volatility as percentage
-  volatilityMin     Float    // Lower bound of volatility range
-  volatilityMax     Float    // Upper bound of volatility range
-  confidence        Float    // 0-1 confidence score
-  timeframe         String   // e.g., '1h', '4h', '1d'
-  actualVolatility  Float?   // Actual volatility observed, if known
-  featureSnapshot   Json?    // Snapshot of features used for prediction
+  timestamp         DateTime
+  predictedVolatility String  // "HIGH", "MEDIUM", "LOW"
+  confidence        Float
+  actualVolatility  String?  // "HIGH", "MEDIUM", "LOW", filled after outcome is known
+  wasCorrect        Boolean?
+  predictedForTimestamp DateTime
   createdAt         DateTime @default(now())
-  
-  @@index([symbol, predictionTime])
-  @@index([modelId, timestamp])
+
+  @@unique([modelId, symbol, timestamp])
 }
 
 model CryptoKeyLevelPrediction {
   id                String   @id @default(uuid())
   modelId           String
-  model             CryptoPredictionModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  model             CryptoPredictionModel @relation(fields: [modelId], references: [id])
+  symbol            String
+  timestamp         DateTime
+  predictedSupport  Json     // array of price levels
+  predictedResistance Json    // array of price levels
+  confidence        Float
+  supportAccuracy   Float?   // percentage of support levels that held
+  resistanceAccuracy Float?  // percentage of resistance levels that held
+  predictedForTimestamp DateTime
+  createdAt         DateTime @default(now())
+
+  @@unique([modelId, symbol, timestamp])
+}
+
+model TradingSignal {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
   symbol            String
   timestamp         DateTime @default(now())
-  predictionTime    DateTime // Time for which prediction is made
-  levels            Json     // Array of predicted price levels with type and strength
-  confidence        Float    // 0-1 confidence score
-  timeframe         String   // e.g., '1h', '4h', '1d'
-  actualLevelsHit   Json?    // Levels that were actually hit
-  featureSnapshot   Json?    // Snapshot of features used for prediction
+  signalType        String   // "ENTRY" or "EXIT"
+  direction         String?  // "LONG" or "SHORT", null for EXIT signals
+  price             Float
+  confidence        Float?
+  reason            String
+  timeframe         String
+  targetPrice       Float?
+  stopLossPrice     Float?
+  relatedSignalId   String?  // For EXIT signals, references the related ENTRY signal
+  profitLoss        Float?   // For EXIT signals
+  profitLossPercentage Float? // For EXIT signals
+  status            String   @default("ACTIVE") // "ACTIVE", "EXECUTED", "EXPIRED", "CANCELLED"
+  executedAt        DateTime?
   createdAt         DateTime @default(now())
-  
-  @@index([symbol, predictionTime])
-  @@index([modelId, timestamp])
+  updatedAt         DateTime @updatedAt
 }

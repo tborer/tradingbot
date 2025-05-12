@@ -32,6 +32,7 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
   const [cleanupDays, setCleanupDays] = useState(initialData?.cleanupDays?.toString() || '30');
   const [isSaving, setIsSaving] = useState(false);
   const [isRunningFetch, setIsRunningFetch] = useState(false);
+  const [isRunningAnalysis, setIsRunningAnalysis] = useState(false);
   const [isRunningCleanup, setIsRunningCleanup] = useState(false);
   const [operationResult, setOperationResult] = useState<{
     success: boolean;
@@ -383,7 +384,7 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
     };
   }, [statusPollingInterval]);
   
-  const runOperation = async (operation: 'fetch' | 'cleanup' | 'both') => {
+  const runOperation = async (operation: 'fetch' | 'analysis' | 'cleanup' | 'both') => {
     if (!user) {
       toast({
         title: "Authentication Required",
@@ -396,6 +397,9 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
     // Set the appropriate loading state
     if (operation === 'fetch' || operation === 'both') {
       setIsRunningFetch(true);
+    }
+    if (operation === 'analysis') {
+      setIsRunningAnalysis(true);
     }
     if (operation === 'cleanup' || operation === 'both') {
       setIsRunningCleanup(true);
@@ -412,12 +416,17 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
     
     while (retryCount < maxRetries) {
       try {
-        response = await fetch('/api/data-scheduling/run', {
+        // Use the appropriate endpoint based on the operation
+        const endpoint = operation === 'analysis' 
+          ? '/api/data-scheduling/run-analysis' 
+          : '/api/data-scheduling/run';
+          
+        response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ operation }),
+          body: JSON.stringify({ operation: operation === 'analysis' ? undefined : operation }),
         });
         
         // If we get a successful response or a 202 (Accepted), break out of the retry loop
@@ -579,6 +588,7 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
     } finally {
       // Reset loading states
       setIsRunningFetch(false);
+      setIsRunningAnalysis(false);
       setIsRunningCleanup(false);
     }
   };
@@ -711,8 +721,19 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
               disabled={isRunningFetch || !apiUrl || !apiToken}
               variant="outline"
               className="w-full md:w-auto"
+              title="Fetch data from API and store it in the database"
             >
               {isRunningFetch ? "Fetching Data..." : "Fetch Data Now"}
+            </Button>
+            
+            <Button 
+              onClick={() => runOperation('analysis')} 
+              disabled={isRunningAnalysis}
+              variant="outline"
+              className="w-full md:w-auto"
+              title="Run technical analysis on the stored data"
+            >
+              {isRunningAnalysis ? "Running Analysis..." : "Run Analysis"}
             </Button>
             
             <Button 
@@ -720,6 +741,7 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
               disabled={isRunningCleanup || !cleanupEnabled}
               variant="outline"
               className="w-full md:w-auto"
+              title="Clean up old data based on the configured retention period"
             >
               {isRunningCleanup ? "Cleaning Up..." : "Clean Up Old Data"}
             </Button>

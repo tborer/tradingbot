@@ -24,12 +24,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Process ID is required' });
     }
 
-    // Get the processing status
-    const processingStatus = await prisma.processingStatus.findUnique({
-      where: {
-        processId,
-      },
-    });
+    // Get the processing status with retry logic for database connectivity issues
+    let processingStatus = null;
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount < maxRetries) {
+      try {
+        processingStatus = await prisma.processingStatus.findUnique({
+          where: {
+            processId,
+          },
+        });
+        break; // Success, exit the retry loop
+      } catch (dbError) {
+        // Check if it's a database connectivity error
+        if (dbError instanceof Error && 
+            dbError.message.includes("Can't reach database server")) {
+          retryCount++;
+          if (retryCount < maxRetries) {
+            // Exponential backoff: 500ms, 1s, 2s
+            const delay = 500 * Math.pow(2, retryCount - 1);
+            console.log(`Database connectivity error, retrying (attempt ${retryCount + 1}) after ${delay}ms delay...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+        }
+        // If it's not a connectivity error or we've exhausted retries, rethrow
+        throw dbError;
+      }
+    }
 
     if (!processingStatus) {
       return res.status(404).json({ error: 'Processing status not found' });

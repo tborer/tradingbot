@@ -121,14 +121,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 }
               });
               
-              // Process batch and get results
+              // Process batch and get results - only fetch data, don't run analysis
               const batchResults = await processCryptoBatch(
                 user.id,
                 batchSymbols,
                 settings.apiUrl,
                 settings.apiToken,
                 settings.limit,
-                settings.runTechnicalAnalysis,
+                false, // Don't run analysis here, it will be done separately
                 processId
               );
               
@@ -310,14 +310,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 }
               });
               
-              // Process batch
+              // Process batch - only fetch data, don't run analysis
               const batchResults = await processCryptoBatch(
                 user.id,
                 batchSymbols,
                 settings.apiUrl,
                 settings.apiToken,
                 settings.limit,
-                settings.runTechnicalAnalysis,
+                false, // Don't run analysis here, it will be done separately
                 processId
               );
               

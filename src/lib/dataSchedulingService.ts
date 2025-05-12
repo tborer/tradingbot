@@ -113,6 +113,8 @@ async function fetchWithTimeout(
 
 /**
  * Process a batch of cryptocurrencies in parallel
+ * If runTechnicalAnalysis is true, it will also run the analysis
+ * Otherwise, it will only fetch and store the data
  */
 async function processCryptoBatch(
   userId: string,
@@ -356,7 +358,8 @@ async function processCryptoBatch(
           });
         }
 
-        // Run technical analysis if enabled
+        // Run basic technical analysis if enabled
+        // This only calculates and stores the basic indicators, not the derived ones
         let analysisResult = null;
         if (settings.runTechnicalAnalysis) {
           if (processId) {
@@ -364,7 +367,7 @@ async function processCryptoBatch(
               processId,
               userId,
               symbol: crypto.symbol,
-              operation: 'ANALYSIS_START',
+              operation: 'BASIC_ANALYSIS_START',
               analysisType: 'TECHNICAL',
               details: { dataPoints: data.Data.length }
             });
@@ -384,7 +387,7 @@ async function processCryptoBatch(
                 processId,
                 userId,
                 symbol: crypto.symbol,
-                operation: 'ANALYSIS_COMPLETE',
+                operation: 'BASIC_ANALYSIS_COMPLETE',
                 analysisType: 'TECHNICAL',
                 success: analysisResult.success,
                 details: { steps: analysisResult.steps }
@@ -398,7 +401,7 @@ async function processCryptoBatch(
                 processId,
                 userId,
                 symbol: crypto.symbol,
-                operation: 'ANALYSIS_ERROR',
+                operation: 'BASIC_ANALYSIS_ERROR',
                 analysisType: 'TECHNICAL',
                 success: false,
                 error: analysisError
@@ -704,7 +707,8 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
 }
 
 /**
- * Run technical analysis on the data and store the results
+ * Run basic technical analysis on the data and store the results
+ * This only calculates and stores the basic indicators, not the derived ones
  * Returns a result object with success/error information
  */
 async function runTechnicalAnalysis(
@@ -719,19 +723,11 @@ async function runTechnicalAnalysis(
   error?: any;
   steps?: {
     basicIndicators: boolean;
-    derivedIndicators: boolean;
-    temporalFeatures: boolean;
-    patternEncodings: boolean;
-    comprehensiveFeatures: boolean;
   };
 }> {
   // Track which steps completed successfully
   const completedSteps = {
-    basicIndicators: false,
-    derivedIndicators: false,
-    temporalFeatures: false,
-    patternEncodings: false,
-    comprehensiveFeatures: false
+    basicIndicators: false
   };
   
   try {
@@ -942,234 +938,22 @@ async function runTechnicalAnalysis(
       };
     }
     
-    // Calculate and store derived indicators
-    try {
-      if (technicalAnalysis) {
-        if (processId && userId) {
-          await logAnalysis({
-            processId,
-            userId,
-            symbol,
-            operation: 'DERIVED_INDICATORS_START',
-            analysisType: 'DERIVED',
-            details: { technicalAnalysisId: technicalAnalysis.id }
-          });
-        }
-        
-        const technicalAnalysisWithPrevious = {
-          ...technicalAnalysis,
-          rawData: {
-            ...technicalAnalysis.rawData,
-            previousEma12: technicalAnalysis.rawData.previousEma12,
-            previousEma26: technicalAnalysis.rawData.previousEma26
-          }
-        };
-        
-        const derivedIndicators = calculateDerivedIndicators(technicalAnalysisWithPrevious);
-        
-        await prisma.cryptoDerivedIndicators.create({
-          data: {
-            technicalAnalysisId: technicalAnalysis.id,
-            symbol,
-            timestamp: new Date(),
-            trendStrength: derivedIndicators.trendStrength,
-            volatilityRatio: derivedIndicators.volatilityRatio,
-            rsiWithTrendContext: derivedIndicators.rsiWithTrendContext,
-            maConvergence: derivedIndicators.maConvergence,
-            nearestSupportDistance: derivedIndicators.nearestSupportDistance,
-            nearestResistanceDistance: derivedIndicators.nearestResistanceDistance,
-            fibConfluenceStrength: derivedIndicators.fibConfluenceStrength,
-            bbPosition: derivedIndicators.bbPosition
-          }
-        });
-        
-        if (processId && userId) {
-          await logAnalysis({
-            processId,
-            userId,
-            symbol,
-            operation: 'DERIVED_INDICATORS_COMPLETE',
-            analysisType: 'DERIVED',
-            success: true
-          });
-        }
-        
-        completedSteps.derivedIndicators = true;
-      }
-    } catch (error) {
-      console.error(`Error calculating derived indicators for ${symbol}:`, error);
-      
-      if (processId && userId) {
-        await logAnalysis({
-          processId,
-          userId,
-          symbol,
-          operation: 'DERIVED_INDICATORS_ERROR',
-          analysisType: 'DERIVED',
-          success: false,
-          error
-        });
-      }
-      // Continue with other steps even if this one fails
-    }
+    // We're only calculating basic indicators now, not derived ones
+    // The advanced analysis will be done separately
     
-    // Generate and store temporal features
-    try {
-      if (processId && userId) {
-        await logAnalysis({
-          processId,
-          userId,
-          symbol,
-          operation: 'TEMPORAL_FEATURES_START',
-          analysisType: 'TEMPORAL'
-        });
-      }
-      
-      const now = new Date();
-      const temporalFeatures = await generateTemporalFeatures(symbol, now);
-      await saveTemporalFeatures(symbol, temporalFeatures);
-      
-      if (processId && userId) {
-        await logAnalysis({
-          processId,
-          userId,
-          symbol,
-          operation: 'TEMPORAL_FEATURES_COMPLETE',
-          analysisType: 'TEMPORAL',
-          success: true
-        });
-      }
-      
-      completedSteps.temporalFeatures = true;
-    } catch (error) {
-      console.error(`Error generating temporal features for ${symbol}:`, error);
-      
-      if (processId && userId) {
-        await logAnalysis({
-          processId,
-          userId,
-          symbol,
-          operation: 'TEMPORAL_FEATURES_ERROR',
-          analysisType: 'TEMPORAL',
-          success: false,
-          error
-        });
-      }
-      // Continue with other steps even if this one fails
-    }
+    // Determine success based on completed steps
+    console.log(`Basic technical analysis for ${symbol} completed with steps:`, completedSteps);
     
-    // Generate and store pattern encodings
-    try {
-      if (processId && userId) {
-        await logAnalysis({
-          processId,
-          userId,
-          symbol,
-          operation: 'PATTERN_ENCODINGS_START',
-          analysisType: 'PATTERN'
-        });
-      }
-      
-      const now = new Date();
-      const patternEncodings = await generatePatternEncodings(symbol, now);
-      await savePatternEncodings(symbol, patternEncodings);
-      
-      if (processId && userId) {
-        await logAnalysis({
-          processId,
-          userId,
-          symbol,
-          operation: 'PATTERN_ENCODINGS_COMPLETE',
-          analysisType: 'PATTERN',
-          success: true
-        });
-      }
-      
-      completedSteps.patternEncodings = true;
-    } catch (error) {
-      console.error(`Error generating pattern encodings for ${symbol}:`, error);
-      
-      if (processId && userId) {
-        await logAnalysis({
-          processId,
-          userId,
-          symbol,
-          operation: 'PATTERN_ENCODINGS_ERROR',
-          analysisType: 'PATTERN',
-          success: false,
-          error
-        });
-      }
-      // Continue with other steps even if this one fails
-    }
-    
-    // Generate and store comprehensive feature set
-    try {
-      if (processId && userId) {
-        await logAnalysis({
-          processId,
-          userId,
-          symbol,
-          operation: 'COMPREHENSIVE_FEATURES_START',
-          analysisType: 'COMPREHENSIVE'
-        });
-      }
-      
-      const now = new Date();
-      const comprehensiveFeatures = await generateComprehensiveFeatureSet(symbol, 'hourly', now);
-      await saveComprehensiveFeatureSet(symbol, comprehensiveFeatures);
-      
-      if (processId && userId) {
-        await logAnalysis({
-          processId,
-          userId,
-          symbol,
-          operation: 'COMPREHENSIVE_FEATURES_COMPLETE',
-          analysisType: 'COMPREHENSIVE',
-          success: true
-        });
-      }
-      
-      completedSteps.comprehensiveFeatures = true;
-    } catch (error) {
-      console.error(`Error generating comprehensive features for ${symbol}:`, error);
-      
-      if (processId && userId) {
-        await logAnalysis({
-          processId,
-          userId,
-          symbol,
-          operation: 'COMPREHENSIVE_FEATURES_ERROR',
-          analysisType: 'COMPREHENSIVE',
-          success: false,
-          error
-        });
-      }
-      // This is the last step, so we can just log the error
-    }
-    
-    // Determine overall success based on completed steps
-    const allStepsCompleted = Object.values(completedSteps).every(step => step);
-    const someStepsCompleted = Object.values(completedSteps).some(step => step);
-    
-    console.log(`Technical analysis for ${symbol} completed with steps:`, completedSteps);
-    
-    if (allStepsCompleted) {
+    if (completedSteps.basicIndicators) {
       return {
         success: true,
-        message: `All technical analysis steps completed successfully for ${symbol}`,
-        steps: completedSteps
-      };
-    } else if (someStepsCompleted) {
-      return {
-        success: true,
-        message: `Some technical analysis steps completed for ${symbol}`,
+        message: `Basic technical analysis completed successfully for ${symbol}`,
         steps: completedSteps
       };
     } else {
       return {
         success: false,
-        message: `Failed to complete any technical analysis steps for ${symbol}`,
+        message: `Failed to complete basic technical analysis for ${symbol}`,
         steps: completedSteps
       };
     }

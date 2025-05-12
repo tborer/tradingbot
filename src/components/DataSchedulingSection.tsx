@@ -50,37 +50,70 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
     const fetchSchedulingData = async () => {
       if (!user) return;
       
-      try {
-        console.log("Fetching data scheduling settings...");
-        const response = await fetch('/api/data-scheduling');
-        if (response.ok) {
-          const data = await response.json();
-          console.log("Received data scheduling settings:", {
-            hasData: !!data,
-            hasApiUrl: !!data?.apiUrl,
-            hasApiToken: !!data?.apiToken,
-            hasDailyRunTime: !!data?.dailyRunTime,
-            hasLimit: !!data?.limit,
-            hasRunTechnicalAnalysis: !!data?.runTechnicalAnalysis,
-          });
+      // Add retry logic for fetching data
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount < maxRetries) {
+        try {
+          console.log(`Fetching data scheduling settings... (attempt ${retryCount + 1})`);
+          const response = await fetch('/api/data-scheduling');
           
-          if (data) {
-            setApiUrl(data.apiUrl || '');
-            setApiToken(data.apiToken || '');
-            // Ensure dailyRunTime is in valid format, default to '00:00' if not
-            setDailyRunTime(data.dailyRunTime && /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(data.dailyRunTime) 
-              ? data.dailyRunTime 
-              : '00:00');
-            setLimit(data.limit?.toString() || '24');
-            setRunTechnicalAnalysis(data.runTechnicalAnalysis || false);
-            setCleanupEnabled(data.cleanupEnabled || false);
-            setCleanupDays(data.cleanupDays?.toString() || '30');
+          if (response.ok) {
+            const data = await response.json();
+            console.log("Received data scheduling settings:", {
+              hasData: !!data,
+              hasApiUrl: !!data?.apiUrl,
+              hasApiToken: !!data?.apiToken,
+              hasDailyRunTime: !!data?.dailyRunTime,
+              hasLimit: !!data?.limit,
+              hasRunTechnicalAnalysis: !!data?.runTechnicalAnalysis,
+            });
+            
+            if (data) {
+              setApiUrl(data.apiUrl || '');
+              setApiToken(data.apiToken || '');
+              // Ensure dailyRunTime is in valid format, default to '00:00' if not
+              setDailyRunTime(data.dailyRunTime && /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(data.dailyRunTime) 
+                ? data.dailyRunTime 
+                : '00:00');
+              setLimit(data.limit?.toString() || '24');
+              setRunTechnicalAnalysis(data.runTechnicalAnalysis || false);
+              setCleanupEnabled(data.cleanupEnabled || false);
+              setCleanupDays(data.cleanupDays?.toString() || '30');
+            }
+            break; // Success, exit the retry loop
+          } else {
+            // If we get a 5xx error, retry
+            if (response.status >= 500) {
+              retryCount++;
+              if (retryCount < maxRetries) {
+                // Exponential backoff: 1s, 2s, 4s
+                const delay = 1000 * Math.pow(2, retryCount - 1);
+                console.log(`Retrying fetch scheduling data (attempt ${retryCount + 1}) after ${delay}ms delay...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                continue;
+              }
+            }
+            
+            console.error('Failed to fetch scheduling data, status:', response.status);
+            break; // Non-retryable error, exit the loop
           }
-        } else {
-          console.error('Failed to fetch scheduling data, status:', response.status);
+        } catch (error) {
+          // For network errors, retry
+          if (error instanceof TypeError && error.message.includes('fetch')) {
+            retryCount++;
+            if (retryCount < maxRetries) {
+              const delay = 1000 * Math.pow(2, retryCount - 1);
+              console.log(`Network error, retrying fetch scheduling data (attempt ${retryCount + 1}) after ${delay}ms delay...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              continue;
+            }
+          }
+          
+          console.error('Failed to fetch scheduling data:', error);
+          break; // Non-retryable error, exit the loop
         }
-      } catch (error) {
-        console.error('Failed to fetch scheduling data:', error);
       }
     };
 
@@ -153,31 +186,69 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
         cleanupDays: parseInt(cleanupDays) || 30
       });
 
-      const response = await fetch('/api/data-scheduling', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          apiUrl: apiUrl.trim(),
-          apiToken: apiToken.trim(),
-          dailyRunTime,
-          timeZone,
-          limit: limitValue,
-          runTechnicalAnalysis,
-          cleanupEnabled,
-          cleanupDays: parseInt(cleanupDays) || 30
-        }),
-      });
-
-      if (response.ok) {
-        toast({
-          title: "Settings Saved",
-          description: "Your data scheduling settings have been saved successfully",
-        });
-      } else {
-        const error = await response.json();
-        throw new Error(error.error || error.message || 'Failed to save settings');
+      // Add retry logic for the fetch request
+      let retryCount = 0;
+      const maxRetries = 3;
+      let response;
+      
+      while (retryCount < maxRetries) {
+        try {
+          response = await fetch('/api/data-scheduling', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              apiUrl: apiUrl.trim(),
+              apiToken: apiToken.trim(),
+              dailyRunTime,
+              timeZone,
+              limit: limitValue,
+              runTechnicalAnalysis,
+              cleanupEnabled,
+              cleanupDays: parseInt(cleanupDays) || 30
+            }),
+          });
+          
+          // If successful, break out of the retry loop
+          if (response.ok) {
+            toast({
+              title: "Settings Saved",
+              description: "Your data scheduling settings have been saved successfully",
+            });
+            break;
+          } else {
+            // If we get a 5xx error, retry
+            if (response.status >= 500) {
+              retryCount++;
+              if (retryCount < maxRetries) {
+                // Exponential backoff: 1s, 2s, 4s
+                const delay = 1000 * Math.pow(2, retryCount - 1);
+                console.log(`Retrying save settings (attempt ${retryCount + 1}) after ${delay}ms delay...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                continue;
+              }
+            }
+            
+            // For non-5xx errors or if we've exhausted retries, throw an error
+            const errorData = await response.json();
+            throw new Error(errorData.error || errorData.message || 'Failed to save settings');
+          }
+        } catch (fetchError) {
+          // For network errors, retry
+          if (fetchError instanceof TypeError && fetchError.message.includes('fetch')) {
+            retryCount++;
+            if (retryCount < maxRetries) {
+              const delay = 1000 * Math.pow(2, retryCount - 1);
+              console.log(`Network error, retrying save settings (attempt ${retryCount + 1}) after ${delay}ms delay...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              continue;
+            }
+          }
+          
+          // Re-throw the error if it's not a network error or we've exhausted retries
+          throw fetchError;
+        }
       }
     } catch (error) {
       console.error('Error saving scheduling settings:', error);
@@ -203,62 +274,93 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
     
     // Set up polling every 2 seconds for more responsive updates
     const interval = setInterval(async () => {
-      try {
-        const response = await fetch(`/api/data-scheduling/status?processId=${processId}`);
-        
-        if (response.ok) {
-          const result = await response.json();
+      // Add retry logic for status polling
+      let retryCount = 0;
+      const maxRetries = 3;
+      let success = false;
+      
+      while (retryCount < maxRetries && !success) {
+        try {
+          const response = await fetch(`/api/data-scheduling/status?processId=${processId}`);
           
-          if (result.success && result.data) {
-            const { status, processedItems, totalItems, error } = result.data;
-            const progress = totalItems > 0 ? Math.round((processedItems / totalItems) * 100) : 0;
+          if (response.ok) {
+            const result = await response.json();
+            success = true;
             
-            setProcessingStatus({
-              status,
-              progress,
-              error
-            });
+            if (result.success && result.data) {
+              const { status, processedItems, totalItems, error } = result.data;
+              const progress = totalItems > 0 ? Math.round((processedItems / totalItems) * 100) : 0;
+              
+              setProcessingStatus({
+                status,
+                progress,
+                error
+              });
+              
+              // If the process is completed or failed, stop polling
+              if (status === 'COMPLETED' || status === 'FAILED') {
+                if (statusPollingInterval) {
+                  clearInterval(statusPollingInterval);
+                  setStatusPollingInterval(null);
+                }
+                
+                // If completed, update the operation result
+                if (status === 'COMPLETED') {
+                  setInProgress(false);
+                  toast({
+                    title: "Processing Complete",
+                    description: "The data processing operation has completed successfully.",
+                  });
+                }
+                
+                // If failed, show an error
+                if (status === 'FAILED') {
+                  setInProgress(false);
+                  toast({
+                    title: "Processing Failed",
+                    description: error || "The data processing operation failed.",
+                    variant: "destructive"
+                  });
+                }
+              }
+            }
+          } else {
+            console.error('Failed to fetch processing status:', response.status);
             
-            // If the process is completed or failed, stop polling
-            if (status === 'COMPLETED' || status === 'FAILED') {
+            // If we get a 404, the process might have been deleted or doesn't exist
+            if (response.status === 404) {
               if (statusPollingInterval) {
                 clearInterval(statusPollingInterval);
                 setStatusPollingInterval(null);
               }
-              
-              // If completed, update the operation result
-              if (status === 'COMPLETED') {
-                setInProgress(false);
-                toast({
-                  title: "Processing Complete",
-                  description: "The data processing operation has completed successfully.",
-                });
-              }
-              
-              // If failed, show an error
-              if (status === 'FAILED') {
-                setInProgress(false);
-                toast({
-                  title: "Processing Failed",
-                  description: error || "The data processing operation failed.",
-                  variant: "destructive"
-                });
+              success = true; // Exit the retry loop
+            } 
+            // If we get a 5xx error, retry
+            else if (response.status >= 500) {
+              retryCount++;
+              if (retryCount < maxRetries) {
+                // Short delay for status polling retries (200ms)
+                await new Promise(resolve => setTimeout(resolve, 200));
+                continue;
               }
             }
           }
-        } else {
-          console.error('Failed to fetch processing status:', response.status);
+        } catch (error) {
+          console.error('Error polling for status:', error);
           
-          // If we get a 404, the process might have been deleted or doesn't exist
-          if (response.status === 404) {
-            if (statusPollingInterval) {
-              clearInterval(statusPollingInterval);
-              setStatusPollingInterval(null);
+          // For network errors, retry
+          if (error instanceof TypeError && error.message.includes('fetch')) {
+            retryCount++;
+            if (retryCount < maxRetries) {
+              // Short delay for status polling retries (200ms)
+              await new Promise(resolve => setTimeout(resolve, 200));
+              continue;
             }
           }
         }
-      } catch (error) {
-        console.error('Error polling for status:', error);
+        
+        // If we get here and haven't continued the loop, exit
+        break;
       }
     }, 2000); // Changed from 3000 to 2000 for more responsive updates
     
@@ -303,14 +405,58 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
     setInProgress(false);
     setProcessingStatus(null); // Reset processing status
     
+    // Add retry logic for the operation execution
+    let retryCount = 0;
+    const maxRetries = 3;
+    let response;
+    
+    while (retryCount < maxRetries) {
+      try {
+        response = await fetch('/api/data-scheduling/run', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ operation }),
+        });
+        
+        // If we get a successful response or a 202 (Accepted), break out of the retry loop
+        if (response.ok || response.status === 202) {
+          break;
+        }
+        
+        // If we get a 5xx error, retry
+        if (response.status >= 500) {
+          retryCount++;
+          if (retryCount < maxRetries) {
+            // Exponential backoff: 1s, 2s, 4s
+            const delay = 1000 * Math.pow(2, retryCount - 1);
+            console.log(`Retrying operation execution (attempt ${retryCount + 1}) after ${delay}ms delay...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+        }
+        
+        // For non-5xx errors or if we've exhausted retries, continue with error handling
+        break;
+      } catch (fetchError) {
+        // For network errors, retry
+        if (fetchError instanceof TypeError && fetchError.message.includes('fetch')) {
+          retryCount++;
+          if (retryCount < maxRetries) {
+            const delay = 1000 * Math.pow(2, retryCount - 1);
+            console.log(`Network error, retrying operation execution (attempt ${retryCount + 1}) after ${delay}ms delay...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+        }
+        
+        // Re-throw the error if it's not a network error or we've exhausted retries
+        throw fetchError;
+      }
+    }
+    
     try {
-      const response = await fetch('/api/data-scheduling/run', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ operation }),
-      });
 
       // Check if the response is ok before trying to parse JSON
       if (!response.ok && response.status !== 202) {

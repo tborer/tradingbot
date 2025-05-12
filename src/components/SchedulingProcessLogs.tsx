@@ -51,8 +51,11 @@ const SchedulingProcessLogs: React.FC = () => {
   useEffect(() => {
     if (selectedProcessId) {
       fetchLogs();
+    } else if (processIds.length > 0 && !selectedProcessId) {
+      // Auto-select the first process ID if none is selected
+      setSelectedProcessId(processIds[0]);
     }
-  }, [selectedProcessId, selectedCategory, selectedLevel, selectedSymbol, searchQuery, page]);
+  }, [selectedProcessId, selectedCategory, selectedLevel, selectedSymbol, searchQuery, page, processIds]);
   
   const fetchProcessIds = async () => {
     try {

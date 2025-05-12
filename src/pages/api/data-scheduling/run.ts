@@ -108,7 +108,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 }
               });
               
-              // Update processing status
+              // Update processing status with the current progress
               await prisma.processingStatus.update({
                 where: { processId },
                 data: {
@@ -117,8 +117,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 }
               });
               
-              // Process batch
-              await processCryptoBatch(
+              // Process batch and get results
+              const batchResults = await processCryptoBatch(
                 user.id,
                 batchSymbols,
                 settings.apiUrl,
@@ -127,6 +127,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 settings.runTechnicalAnalysis,
                 processId
               );
+              
+              // Update processing status again after batch is complete
+              // This ensures the progress bar updates correctly
+              await prisma.processingStatus.update({
+                where: { processId },
+                data: {
+                  processedItems: i + batchSymbols.length,
+                  updatedAt: new Date()
+                }
+              });
               
               await logScheduling({
                 processId,
@@ -297,7 +307,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               });
               
               // Process batch
-              await processCryptoBatch(
+              const batchResults = await processCryptoBatch(
                 user.id,
                 batchSymbols,
                 settings.apiUrl,
@@ -306,6 +316,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 settings.runTechnicalAnalysis,
                 processId
               );
+              
+              // Update processing status again after batch is complete
+              // This ensures the progress bar updates correctly
+              await prisma.processingStatus.update({
+                where: { processId },
+                data: {
+                  processedItems: i + batchSymbols.length,
+                  updatedAt: new Date()
+                }
+              });
               
               await logScheduling({
                 processId,

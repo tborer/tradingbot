@@ -60,6 +60,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ];
     }
 
+    // Add symbol filter
+    if (symbol && typeof symbol === 'string') {
+      // Handle null symbols by using a more complex condition
+      if (symbol.toLowerCase() === 'none' || symbol.toLowerCase() === 'null') {
+        where.symbol = null;
+      } else {
+        where.symbol = { contains: symbol, mode: 'insensitive' };
+      }
+    }
+
     // Parse pagination parameters
     const pageNum = parseInt(page as string, 10);
     const pageSizeNum = parseInt(pageSize as string, 10);

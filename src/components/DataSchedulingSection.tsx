@@ -201,7 +201,7 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
       clearInterval(statusPollingInterval);
     }
     
-    // Set up polling every 3 seconds
+    // Set up polling every 2 seconds for more responsive updates
     const interval = setInterval(async () => {
       try {
         const response = await fetch(`/api/data-scheduling/status?processId=${processId}`);
@@ -260,7 +260,7 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
       } catch (error) {
         console.error('Error polling for status:', error);
       }
-    }, 3000);
+    }, 2000); // Changed from 3000 to 2000 for more responsive updates
     
     setStatusPollingInterval(interval);
     
@@ -301,6 +301,7 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
     
     setOperationResult(null);
     setInProgress(false);
+    setProcessingStatus(null); // Reset processing status
     
     try {
       const response = await fetch('/api/data-scheduling/run', {

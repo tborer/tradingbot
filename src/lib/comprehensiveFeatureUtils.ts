@@ -16,6 +16,8 @@ export async function generateComprehensiveFeatureSet(
   date: Date = new Date()
 ): Promise<any> {
   try {
+    console.log(`Generating comprehensive feature set for ${symbol} (${timeframe}) at ${date.toISOString()}`);
+    
     // Get the most recent technical analysis data
     const technicalAnalysis = await prisma.technicalAnalysisOutput.findFirst({
       where: {
@@ -33,30 +35,157 @@ export async function generateComprehensiveFeatureSet(
     });
 
     if (!technicalAnalysis) {
-      throw new Error(`No technical analysis data found for ${symbol}`);
+      console.error(`No technical analysis data found for ${symbol}`);
+      return {
+        crypto: symbol,
+        timeframe,
+        date,
+        price: 0,
+        original_indicators: {
+          sma20: null,
+          sma50: null,
+          ema12: null,
+          ema26: null,
+          rsi14: null,
+          bollingerUpper: null,
+          bollingerMiddle: null,
+          bollingerLower: null,
+          supportLevel: null,
+          resistanceLevel: null,
+          breakoutDetected: false,
+          breakoutType: 'none',
+          recommendation: 'hold',
+          confidenceScore: 0,
+        },
+        derived_indicators: {
+          trendStrength: null,
+          volatilityRatio: null,
+          rsiWithTrendContext: null,
+          maConvergence: null,
+          nearestSupportDistance: null,
+          nearestResistanceDistance: null,
+          fibConfluenceStrength: null,
+          bbPosition: null,
+        },
+        temporal_features: {
+          priceVelocity: 0,
+          priceAcceleration: 0,
+          rsiVelocity: 0,
+          trendConsistency: 0,
+          patternMaturity: 0,
+          srTestFrequency: 0,
+          bbSqueezeStrength: 0,
+          maCrossoverRecent: false,
+        },
+        pattern_encodings: {
+          bullishPatternStrength: 0,
+          bearishPatternStrength: 0,
+          patternCompletion: [],
+          trendEncoding: {
+            strength: 0,
+            direction: 0,
+            duration: 0,
+            deviation: 0,
+          },
+          fibExtensionTargets: [],
+          srStrength: {
+            support: [],
+            resistance: [],
+          },
+        },
+        generated_at: new Date()
+      };
     }
 
+    console.log(`Found technical analysis data from ${technicalAnalysis.timestamp}`);
+
     // Get price data from technical analysis
-    const priceData = technicalAnalysis.rawData ? 
-      (typeof technicalAnalysis.rawData === 'string' ? 
-        JSON.parse(technicalAnalysis.rawData) : 
-        technicalAnalysis.rawData) : 
-      null;
+    let priceData = null;
+    try {
+      if (technicalAnalysis.rawData) {
+        priceData = typeof technicalAnalysis.rawData === 'string' ? 
+          JSON.parse(technicalAnalysis.rawData) : 
+          technicalAnalysis.rawData;
+        console.log(`Successfully parsed price data from rawData`);
+      }
+    } catch (error) {
+      console.error(`Error parsing rawData:`, error);
+      priceData = null;
+    }
 
     // Generate derived indicators if not already available
     let derivedIndicators = technicalAnalysis.derivedIndicators;
     if (!derivedIndicators) {
-      const calculatedIndicators = calculateDerivedIndicators(technicalAnalysis);
-      derivedIndicators = calculatedIndicators;
+      console.log(`No derived indicators found, calculating them now`);
+      try {
+        const calculatedIndicators = calculateDerivedIndicators(technicalAnalysis);
+        derivedIndicators = calculatedIndicators;
+        console.log(`Successfully calculated derived indicators`);
+      } catch (error) {
+        console.error(`Error calculating derived indicators:`, error);
+        derivedIndicators = {
+          trendStrength: null,
+          volatilityRatio: null,
+          rsiWithTrendContext: null,
+          maConvergence: null,
+          nearestSupportDistance: null,
+          nearestResistanceDistance: null,
+          fibConfluenceStrength: null,
+          bbPosition: null,
+        };
+      }
+    } else {
+      console.log(`Using existing derived indicators`);
     }
 
     // Generate temporal features
-    const temporalFeatures = await generateTemporalFeatures(symbol, date);
+    let temporalFeatures;
+    try {
+      console.log(`Generating temporal features`);
+      temporalFeatures = await generateTemporalFeatures(symbol, date);
+      console.log(`Successfully generated temporal features`);
+    } catch (error) {
+      console.error(`Error generating temporal features:`, error);
+      temporalFeatures = {
+        priceVelocity: 0,
+        priceAcceleration: 0,
+        rsiVelocity: 0,
+        trendConsistency: 0,
+        patternMaturity: 0,
+        srTestFrequency: 0,
+        bbSqueezeStrength: 0,
+        maCrossoverRecent: false,
+      };
+    }
 
     // Generate pattern encodings
-    const patternEncodings = await generatePatternEncodings(symbol, date);
+    let patternEncodings;
+    try {
+      console.log(`Generating pattern encodings`);
+      patternEncodings = await generatePatternEncodings(symbol, date);
+      console.log(`Successfully generated pattern encodings`);
+    } catch (error) {
+      console.error(`Error generating pattern encodings:`, error);
+      patternEncodings = {
+        bullishPatternStrength: 0,
+        bearishPatternStrength: 0,
+        patternCompletion: [],
+        trendEncoding: {
+          strength: 0,
+          direction: 0,
+          duration: 0,
+          deviation: 0,
+        },
+        fibExtensionTargets: [],
+        srStrength: {
+          support: [],
+          resistance: [],
+        },
+      };
+    }
 
     // Combine all features into a single feature vector
+    console.log(`Combining all features into a comprehensive feature set`);
     return {
       // Basic information
       crypto: symbol,
@@ -64,7 +193,7 @@ export async function generateComprehensiveFeatureSet(
       date,
       
       // Raw price data
-      price: priceData?.currentPrice || technicalAnalysis.bollingerMiddle,
+      price: priceData?.currentPrice || priceData?.price || technicalAnalysis.bollingerMiddle || 0,
       
       // Original indicators
       original_indicators: {
@@ -78,10 +207,10 @@ export async function generateComprehensiveFeatureSet(
         bollingerLower: technicalAnalysis.bollingerLower,
         supportLevel: technicalAnalysis.supportLevel,
         resistanceLevel: technicalAnalysis.resistanceLevel,
-        breakoutDetected: technicalAnalysis.breakoutDetected,
-        breakoutType: technicalAnalysis.breakoutType,
-        recommendation: technicalAnalysis.recommendation,
-        confidenceScore: technicalAnalysis.confidenceScore,
+        breakoutDetected: technicalAnalysis.breakoutDetected || false,
+        breakoutType: technicalAnalysis.breakoutType || 'none',
+        recommendation: technicalAnalysis.recommendation || 'hold',
+        confidenceScore: technicalAnalysis.confidenceScore || 0,
       },
       
       // Generated features
@@ -94,7 +223,66 @@ export async function generateComprehensiveFeatureSet(
     };
   } catch (error) {
     console.error(`Error generating comprehensive feature set for ${symbol}:`, error);
-    throw error;
+    // Return a default feature set instead of throwing an error
+    return {
+      crypto: symbol,
+      timeframe,
+      date,
+      price: 0,
+      original_indicators: {
+        sma20: null,
+        sma50: null,
+        ema12: null,
+        ema26: null,
+        rsi14: null,
+        bollingerUpper: null,
+        bollingerMiddle: null,
+        bollingerLower: null,
+        supportLevel: null,
+        resistanceLevel: null,
+        breakoutDetected: false,
+        breakoutType: 'none',
+        recommendation: 'hold',
+        confidenceScore: 0,
+      },
+      derived_indicators: {
+        trendStrength: null,
+        volatilityRatio: null,
+        rsiWithTrendContext: null,
+        maConvergence: null,
+        nearestSupportDistance: null,
+        nearestResistanceDistance: null,
+        fibConfluenceStrength: null,
+        bbPosition: null,
+      },
+      temporal_features: {
+        priceVelocity: 0,
+        priceAcceleration: 0,
+        rsiVelocity: 0,
+        trendConsistency: 0,
+        patternMaturity: 0,
+        srTestFrequency: 0,
+        bbSqueezeStrength: 0,
+        maCrossoverRecent: false,
+      },
+      pattern_encodings: {
+        bullishPatternStrength: 0,
+        bearishPatternStrength: 0,
+        patternCompletion: [],
+        trendEncoding: {
+          strength: 0,
+          direction: 0,
+          duration: 0,
+          deviation: 0,
+        },
+        fibExtensionTargets: [],
+        srStrength: {
+          support: [],
+          resistance: [],
+        },
+      },
+      generated_at: new Date()
+    };
   }
 }
 

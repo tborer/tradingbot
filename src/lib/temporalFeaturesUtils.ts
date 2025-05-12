@@ -54,7 +54,10 @@ export function calculatePatternMaturity(
   initialPatterns: any,
   finalPatterns: any
 ): number {
-  if (!initialPatterns || !finalPatterns) return 0;
+  if (!initialPatterns || !finalPatterns) {
+    console.log(`Cannot calculate pattern maturity: missing patterns (initial: ${!!initialPatterns}, final: ${!!finalPatterns})`);
+    return 0;
+  }
   
   // Simple implementation - can be enhanced with more sophisticated logic
   try {
@@ -62,35 +65,72 @@ export function calculatePatternMaturity(
     const parseIfNeeded = (pattern: any) => {
       if (typeof pattern === 'string') {
         if (pattern.toLowerCase() === 'none') {
+          console.log(`Pattern value is 'none', returning empty array`);
           return [];
         }
         try {
           return JSON.parse(pattern);
         } catch (e) {
-          console.log(`Could not parse pattern: ${pattern}`);
+          console.log(`Could not parse pattern string: "${pattern.substring(0, 50)}${pattern.length > 50 ? '...' : ''}" - ${e.message}`);
           return [];
         }
       }
+      
+      // If it's already an object but not an array, wrap it in an array
+      if (pattern && typeof pattern === 'object' && !Array.isArray(pattern)) {
+        console.log(`Pattern is an object but not an array, wrapping in array`);
+        return [pattern];
+      }
+      
       return pattern;
     };
     
     const initial = parseIfNeeded(initialPatterns);
     const final = parseIfNeeded(finalPatterns);
     
+    // Log the parsed patterns for debugging
+    console.log(`Parsed initial pattern: ${JSON.stringify(initial).substring(0, 100)}`);
+    console.log(`Parsed final pattern: ${JSON.stringify(final).substring(0, 100)}`);
+    
     // Check if patterns have completion or confidence properties
-    if (Array.isArray(initial) && Array.isArray(final) && initial.length > 0 && final.length > 0) {
-      // If we have completion percentages, use those
-      if (final[0].completion_percentage && initial[0].completion_percentage) {
-        return (final[0].completion_percentage - initial[0].completion_percentage) / 100;
+    if (Array.isArray(initial) && Array.isArray(final)) {
+      if (initial.length === 0 && final.length === 0) {
+        console.log(`Both initial and final patterns are empty arrays`);
+        return 0;
       }
       
-      // Otherwise use a simple binary comparison
-      return final.length >= initial.length ? 1 : 0;
+      if (initial.length > 0 && final.length > 0) {
+        // If we have completion percentages, use those
+        if (final[0].completion_percentage !== undefined && initial[0].completion_percentage !== undefined) {
+          const maturity = (final[0].completion_percentage - initial[0].completion_percentage) / 100;
+          console.log(`Calculated pattern maturity using completion percentages: ${maturity}`);
+          return maturity;
+        }
+        
+        // Otherwise use a simple binary comparison
+        const maturity = final.length >= initial.length ? 1 : 0;
+        console.log(`Calculated pattern maturity using array length comparison: ${maturity}`);
+        return maturity;
+      }
+      
+      // If one array has items and the other doesn't
+      if (initial.length === 0 && final.length > 0) {
+        console.log(`Initial pattern is empty but final has items, returning 1`);
+        return 1; // Pattern appeared
+      }
+      
+      if (initial.length > 0 && final.length === 0) {
+        console.log(`Initial pattern has items but final is empty, returning 0`);
+        return 0; // Pattern disappeared
+      }
     }
     
+    console.log(`Could not determine pattern maturity, returning 0`);
     return 0;
   } catch (error) {
     console.error("Error calculating pattern maturity:", error);
+    console.error(`Initial patterns: ${JSON.stringify(initialPatterns).substring(0, 100)}`);
+    console.error(`Final patterns: ${JSON.stringify(finalPatterns).substring(0, 100)}`);
     return 0;
   }
 }
@@ -218,10 +258,130 @@ export async function generateTemporalFeatures(
   bbSqueezeStrength: number;
   maCrossoverRecent: boolean;
 }> {
-  // Get sequence of indicators for lookback period
-  const indicatorSequence = await getIndicatorSequence(symbol, date, lookbackDays);
-  
-  if (indicatorSequence.length < 2) {
+  try {
+    console.log(`Generating temporal features for ${symbol} at ${date.toISOString()} with ${lookbackDays} days lookback`);
+    
+    // Get sequence of indicators for lookback period
+    const indicatorSequence = await getIndicatorSequence(symbol, date, lookbackDays);
+    
+    console.log(`Retrieved ${indicatorSequence.length} indicator records for analysis`);
+    
+    if (indicatorSequence.length < 2) {
+      console.log(`Insufficient indicator data (${indicatorSequence.length} records, need at least 2)`);
+      return {
+        priceVelocity: 0,
+        priceAcceleration: 0,
+        rsiVelocity: 0,
+        trendConsistency: 0,
+        patternMaturity: 0,
+        srTestFrequency: 0,
+        bbSqueezeStrength: 0,
+        maCrossoverRecent: false,
+      };
+    }
+    
+    // Extract price data (using bollingerMiddle as price proxy if available)
+    const prices = indicatorSequence.map(d => {
+      try {
+        if (d.rawData) {
+          const rawData = typeof d.rawData === 'string' ? JSON.parse(d.rawData) : d.rawData;
+          return rawData.currentPrice || rawData.price || d.bollingerMiddle || 0;
+        }
+        return d.bollingerMiddle || 0;
+      } catch (error) {
+        console.error(`Error extracting price from rawData:`, error);
+        return d.bollingerMiddle || 0;
+      }
+    }).filter(p => p > 0);
+    
+    console.log(`Extracted ${prices.length} valid price points`);
+    
+    // Extract RSI data
+    const rsiValues = indicatorSequence.map(d => d.rsi14 || 0).filter(r => r > 0);
+    console.log(`Extracted ${rsiValues.length} valid RSI values`);
+    
+    // Extract support/resistance levels
+    const supportLevels = indicatorSequence
+      .filter(d => d.supportLevel)
+      .map(d => d.supportLevel as number);
+    
+    const resistanceLevels = indicatorSequence
+      .filter(d => d.resistanceLevel)
+      .map(d => d.resistanceLevel as number);
+    
+    console.log(`Extracted ${supportLevels.length} support levels and ${resistanceLevels.length} resistance levels`);
+    
+    // Extract Bollinger Band data
+    const bollingerData = indicatorSequence
+      .filter(d => d.bollingerUpper && d.bollingerLower && d.bollingerMiddle)
+      .map(d => ({
+        upper: d.bollingerUpper as number,
+        lower: d.bollingerLower as number,
+        middle: d.bollingerMiddle as number,
+      }));
+    
+    console.log(`Extracted ${bollingerData.length} complete Bollinger Band data points`);
+    
+    // Extract EMA data for crossover detection
+    const emaShort = indicatorSequence.map(d => d.ema12 || 0).filter(e => e > 0);
+    const emaLong = indicatorSequence.map(d => d.ema26 || 0).filter(e => e > 0);
+    
+    console.log(`Extracted ${emaShort.length} EMA12 values and ${emaLong.length} EMA26 values`);
+    
+    // Calculate trend consistency (price > SMA50)
+    const trendBooleans = indicatorSequence
+      .filter(d => d.sma50 && d.bollingerMiddle)
+      .map(d => (d.bollingerMiddle as number) > (d.sma50 as number));
+    
+    console.log(`Calculated ${trendBooleans.length} trend boolean values`);
+    
+    // Calculate pattern maturity
+    let patternMaturity = 0;
+    if (indicatorSequence.length >= 2) {
+      console.log(`Calculating pattern maturity from ${indicatorSequence.length} indicators`);
+      try {
+        const firstPatterns = indicatorSequence[0].breakoutType;
+        const lastPatterns = indicatorSequence[indicatorSequence.length - 1].breakoutType;
+        
+        console.log(`First pattern type: ${typeof firstPatterns === 'string' ? firstPatterns : JSON.stringify(firstPatterns).substring(0, 100)}`);
+        console.log(`Last pattern type: ${typeof lastPatterns === 'string' ? lastPatterns : JSON.stringify(lastPatterns).substring(0, 100)}`);
+        
+        patternMaturity = calculatePatternMaturity(firstPatterns, lastPatterns);
+        console.log(`Calculated pattern maturity: ${patternMaturity}`);
+      } catch (error) {
+        console.error(`Error calculating pattern maturity:`, error);
+        patternMaturity = 0;
+      }
+    } else {
+      console.log(`Not enough indicators to calculate pattern maturity`);
+    }
+    
+    // Calculate all features
+    const priceVelocity = prices.length >= 2 ? calculateChangeRate(prices) : 0;
+    const priceAcceleration = prices.length >= 3 ? calculateAcceleration(prices) : 0;
+    const rsiVelocity = rsiValues.length >= 2 ? calculateChangeRate(rsiValues) : 0;
+    const trendConsistency = trendBooleans.length > 0 ? calculateConsistency(trendBooleans) : 0;
+    const srTestFrequency = prices.length > 0 && (supportLevels.length > 0 || resistanceLevels.length > 0) ? 
+      countLevelTests(prices, [...supportLevels, ...resistanceLevels]) : 0;
+    const bbSqueezeStrength = bollingerData.length > 0 ? calculateBollingerSqueeze(bollingerData) : 0;
+    const maCrossoverRecent = emaShort.length >= 2 && emaLong.length >= 2 ? 
+      detectRecentCrossover(emaShort, emaLong) : false;
+    
+    console.log(`Successfully calculated all temporal features for ${symbol}`);
+    
+    return {
+      priceVelocity,
+      priceAcceleration,
+      rsiVelocity,
+      trendConsistency,
+      patternMaturity,
+      srTestFrequency,
+      bbSqueezeStrength,
+      maCrossoverRecent,
+    };
+  } catch (error) {
+    console.error(`Error generating temporal features for ${symbol}:`, error);
+    // Return default values in case of error
     return {
       priceVelocity: 0,
       priceAcceleration: 0,
@@ -233,64 +393,6 @@ export async function generateTemporalFeatures(
       maCrossoverRecent: false,
     };
   }
-  
-  // Extract price data (using bollingerMiddle as price proxy if available)
-  const prices = indicatorSequence.map(d => {
-    if (d.rawData && typeof d.rawData === 'object') {
-      const rawData = d.rawData as any;
-      return rawData.price || d.bollingerMiddle || 0;
-    }
-    return d.bollingerMiddle || 0;
-  }).filter(p => p > 0);
-  
-  // Extract RSI data
-  const rsiValues = indicatorSequence.map(d => d.rsi14 || 0).filter(r => r > 0);
-  
-  // Extract support/resistance levels
-  const supportLevels = indicatorSequence
-    .filter(d => d.supportLevel)
-    .map(d => d.supportLevel as number);
-  
-  const resistanceLevels = indicatorSequence
-    .filter(d => d.resistanceLevel)
-    .map(d => d.resistanceLevel as number);
-  
-  // Extract Bollinger Band data
-  const bollingerData = indicatorSequence
-    .filter(d => d.bollingerUpper && d.bollingerLower && d.bollingerMiddle)
-    .map(d => ({
-      upper: d.bollingerUpper as number,
-      lower: d.bollingerLower as number,
-      middle: d.bollingerMiddle as number,
-    }));
-  
-  // Extract EMA data for crossover detection
-  const emaShort = indicatorSequence.map(d => d.ema12 || 0).filter(e => e > 0);
-  const emaLong = indicatorSequence.map(d => d.ema26 || 0).filter(e => e > 0);
-  
-  // Calculate trend consistency (price > SMA50)
-  const trendBooleans = indicatorSequence
-    .filter(d => d.sma50 && d.bollingerMiddle)
-    .map(d => (d.bollingerMiddle as number) > (d.sma50 as number));
-  
-  // Calculate pattern maturity
-  let patternMaturity = 0;
-  if (indicatorSequence.length >= 2) {
-    const firstPatterns = indicatorSequence[0].breakoutType;
-    const lastPatterns = indicatorSequence[indicatorSequence.length - 1].breakoutType;
-    patternMaturity = calculatePatternMaturity(firstPatterns, lastPatterns);
-  }
-  
-  return {
-    priceVelocity: calculateChangeRate(prices),
-    priceAcceleration: calculateAcceleration(prices),
-    rsiVelocity: calculateChangeRate(rsiValues),
-    trendConsistency: calculateConsistency(trendBooleans),
-    patternMaturity,
-    srTestFrequency: countLevelTests(prices, [...supportLevels, ...resistanceLevels]),
-    bbSqueezeStrength: calculateBollingerSqueeze(bollingerData),
-    maCrossoverRecent: detectRecentCrossover(emaShort, emaLong),
-  };
 }
 
 /**

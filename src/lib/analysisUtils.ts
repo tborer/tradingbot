@@ -7,28 +7,35 @@
  * @returns The calculated EMA value
  */
 export function calculateEMA(prices: number[], period: number): number | null {
-  if (!prices || prices.length < period) {
-    return null;
-  }
+  try {
+    if (!prices || prices.length < period) {
+      console.log(`Cannot calculate EMA: insufficient data (${prices?.length || 0} prices, need ${period})`);
+      return null;
+    }
 
-  // Calculate the multiplier
-  const multiplier = 2 / (period + 1);
-  
-  // Start with SMA for the first EMA value
-  const sma = calculateSMA(prices.slice(0, period), period);
-  if (sma === null) {
+    // Calculate the multiplier
+    const multiplier = 2 / (period + 1);
+    
+    // Start with SMA for the first EMA value
+    const sma = calculateSMA(prices.slice(0, period), period);
+    if (sma === null) {
+      console.log(`Cannot calculate EMA: SMA calculation failed`);
+      return null;
+    }
+    
+    // Calculate EMA starting with SMA as the first value
+    let ema = sma;
+    
+    // Calculate EMA for each price after the initial period
+    for (let i = period - 1; i >= 0; i--) {
+      ema = (prices[i] - ema) * multiplier + ema;
+    }
+    
+    return ema;
+  } catch (error) {
+    console.error(`Error calculating EMA for period ${period}:`, error);
     return null;
   }
-  
-  // Calculate EMA starting with SMA as the first value
-  let ema = sma;
-  
-  // Calculate EMA for each price after the initial period
-  for (let i = period - 1; i >= 0; i--) {
-    ema = (prices[i] - ema) * multiplier + ema;
-  }
-  
-  return ema;
 }
 
 /**
@@ -61,49 +68,55 @@ export function getEMAMessage(currentPrice: number, ema: number | null, period: 
  * @returns The calculated RSI value (0-100)
  */
 export function calculateRSI(prices: number[], period: number = 14): number | null {
-  if (!prices || prices.length < period + 1) {
+  try {
+    if (!prices || prices.length < period + 1) {
+      console.log(`Cannot calculate RSI: insufficient data (${prices?.length || 0} prices, need ${period + 1})`);
+      return null;
+    }
+
+    // Calculate price changes
+    const priceChanges: number[] = [];
+    for (let i = prices.length - 1; i > 0; i--) {
+      priceChanges.push(prices[i - 1] - prices[i]);
+    }
+    
+    // Calculate gains and losses
+    const gains: number[] = [];
+    const losses: number[] = [];
+    
+    for (let i = 0; i < priceChanges.length; i++) {
+      if (priceChanges[i] >= 0) {
+        gains.push(priceChanges[i]);
+        losses.push(0);
+      } else {
+        gains.push(0);
+        losses.push(Math.abs(priceChanges[i]));
+      }
+    }
+    
+    // Calculate average gain and average loss for the first period
+    let avgGain = gains.slice(0, period).reduce((sum, gain) => sum + gain, 0) / period;
+    let avgLoss = losses.slice(0, period).reduce((sum, loss) => sum + loss, 0) / period;
+    
+    // Calculate smoothed average gain and loss for subsequent periods
+    for (let i = period; i < gains.length; i++) {
+      avgGain = ((avgGain * (period - 1)) + gains[i]) / period;
+      avgLoss = ((avgLoss * (period - 1)) + losses[i]) / period;
+    }
+    
+    // Calculate RS and RSI
+    if (avgLoss === 0) {
+      return 100; // No losses means RSI is 100
+    }
+    
+    const rs = avgGain / avgLoss;
+    const rsi = 100 - (100 / (1 + rs));
+    
+    return rsi;
+  } catch (error) {
+    console.error(`Error calculating RSI for period ${period}:`, error);
     return null;
   }
-
-  // Calculate price changes
-  const priceChanges: number[] = [];
-  for (let i = prices.length - 1; i > 0; i--) {
-    priceChanges.push(prices[i - 1] - prices[i]);
-  }
-  
-  // Calculate gains and losses
-  const gains: number[] = [];
-  const losses: number[] = [];
-  
-  for (let i = 0; i < priceChanges.length; i++) {
-    if (priceChanges[i] >= 0) {
-      gains.push(priceChanges[i]);
-      losses.push(0);
-    } else {
-      gains.push(0);
-      losses.push(Math.abs(priceChanges[i]));
-    }
-  }
-  
-  // Calculate average gain and average loss for the first period
-  let avgGain = gains.slice(0, period).reduce((sum, gain) => sum + gain, 0) / period;
-  let avgLoss = losses.slice(0, period).reduce((sum, loss) => sum + loss, 0) / period;
-  
-  // Calculate smoothed average gain and loss for subsequent periods
-  for (let i = period; i < gains.length; i++) {
-    avgGain = ((avgGain * (period - 1)) + gains[i]) / period;
-    avgLoss = ((avgLoss * (period - 1)) + losses[i]) / period;
-  }
-  
-  // Calculate RS and RSI
-  if (avgLoss === 0) {
-    return 100; // No losses means RSI is 100
-  }
-  
-  const rs = avgGain / avgLoss;
-  const rsi = 100 - (100 / (1 + rs));
-  
-  return rsi;
 }
 
 /**
@@ -162,26 +175,32 @@ export function calculateBollingerBands(
   period: number = 20, 
   stdDevMultiplier: number = 2
 ): { upper: number | null; middle: number | null; lower: number | null } {
-  if (!prices || prices.length < period) {
+  try {
+    if (!prices || prices.length < period) {
+      console.log(`Cannot calculate Bollinger Bands: insufficient data (${prices?.length || 0} prices, need ${period})`);
+      return { upper: null, middle: null, lower: null };
+    }
+
+    // Calculate SMA (middle band)
+    const periodPrices = prices.slice(0, period);
+    const sma = periodPrices.reduce((sum, price) => sum + price, 0) / period;
+    
+    // Calculate standard deviation
+    const stdDev = calculateStandardDeviation(periodPrices, sma);
+    
+    // Calculate upper and lower bands
+    const upperBand = sma + (stdDevMultiplier * stdDev);
+    const lowerBand = sma - (stdDevMultiplier * stdDev);
+    
+    return {
+      upper: upperBand,
+      middle: sma,
+      lower: lowerBand
+    };
+  } catch (error) {
+    console.error(`Error calculating Bollinger Bands for period ${period}:`, error);
     return { upper: null, middle: null, lower: null };
   }
-
-  // Calculate SMA (middle band)
-  const periodPrices = prices.slice(0, period);
-  const sma = periodPrices.reduce((sum, price) => sum + price, 0) / period;
-  
-  // Calculate standard deviation
-  const stdDev = calculateStandardDeviation(periodPrices, sma);
-  
-  // Calculate upper and lower bands
-  const upperBand = sma + (stdDevMultiplier * stdDev);
-  const lowerBand = sma - (stdDevMultiplier * stdDev);
-  
-  return {
-    upper: upperBand,
-    middle: sma,
-    lower: lowerBand
-  };
 }
 
 /**
@@ -241,12 +260,18 @@ export function getBollingerBandsMessage(
  * @returns The calculated SMA value
  */
 export function calculateSMA(prices: number[], period: number): number | null {
-  if (!prices || prices.length < period) {
+  try {
+    if (!prices || prices.length < period) {
+      console.log(`Cannot calculate SMA: insufficient data (${prices?.length || 0} prices, need ${period})`);
+      return null;
+    }
+
+    const sum = prices.slice(0, period).reduce((acc, price) => acc + price, 0);
+    return sum / period;
+  } catch (error) {
+    console.error(`Error calculating SMA for period ${period}:`, error);
     return null;
   }
-
-  const sum = prices.slice(0, period).reduce((acc, price) => acc + price, 0);
-  return sum / period;
 }
 
 /**
@@ -278,22 +303,28 @@ export function getSMAMessage(currentPrice: number, sma: number | null, period: 
  * @returns Object containing support and resistance levels
  */
 export function identifyTrendLines(prices: number[]): { support: number | null; resistance: number | null } {
-  if (!prices || prices.length < 10) {
+  try {
+    if (!prices || prices.length < 10) {
+      console.log(`Cannot identify trend lines: insufficient data (${prices?.length || 0} prices, need at least 10)`);
+      return { support: null, resistance: null };
+    }
+
+    // Sort prices to find min and max
+    const sortedPrices = [...prices].sort((a, b) => a - b);
+    
+    // Find support (lower 25% of price range)
+    const supportIndex = Math.floor(sortedPrices.length * 0.25);
+    const support = sortedPrices[supportIndex];
+    
+    // Find resistance (upper 75% of price range)
+    const resistanceIndex = Math.floor(sortedPrices.length * 0.75);
+    const resistance = sortedPrices[resistanceIndex];
+
+    return { support, resistance };
+  } catch (error) {
+    console.error(`Error identifying trend lines:`, error);
     return { support: null, resistance: null };
   }
-
-  // Sort prices to find min and max
-  const sortedPrices = [...prices].sort((a, b) => a - b);
-  
-  // Find support (lower 25% of price range)
-  const supportIndex = Math.floor(sortedPrices.length * 0.25);
-  const support = sortedPrices[supportIndex];
-  
-  // Find resistance (upper 75% of price range)
-  const resistanceIndex = Math.floor(sortedPrices.length * 0.75);
-  const resistance = sortedPrices[resistanceIndex];
-
-  return { support, resistance };
 }
 
 /**
@@ -534,17 +565,50 @@ export function calculateFibonacciRetracements(highPrice: number, lowPrice: numb
   level786: number; // 78.6% retracement
   level1000: number; // 100% retracement (low)
 } {
-  const diff = highPrice - lowPrice;
-  
-  return {
-    level0: highPrice,
-    level236: highPrice - (diff * 0.236),
-    level382: highPrice - (diff * 0.382),
-    level500: highPrice - (diff * 0.5),
-    level618: highPrice - (diff * 0.618),
-    level786: highPrice - (diff * 0.786),
-    level1000: lowPrice
-  };
+  try {
+    if (isNaN(highPrice) || isNaN(lowPrice)) {
+      console.error(`Cannot calculate Fibonacci retracements: invalid prices (high: ${highPrice}, low: ${lowPrice})`);
+      // Return default values instead of throwing an error
+      return {
+        level0: 0,
+        level236: 0,
+        level382: 0,
+        level500: 0,
+        level618: 0,
+        level786: 0,
+        level1000: 0
+      };
+    }
+    
+    if (highPrice <= lowPrice) {
+      console.warn(`Unusual Fibonacci input: high price (${highPrice}) is not greater than low price (${lowPrice})`);
+      // Swap values if they're in the wrong order
+      [highPrice, lowPrice] = [lowPrice, highPrice];
+    }
+    
+    const diff = highPrice - lowPrice;
+    
+    return {
+      level0: highPrice,
+      level236: highPrice - (diff * 0.236),
+      level382: highPrice - (diff * 0.382),
+      level500: highPrice - (diff * 0.5),
+      level618: highPrice - (diff * 0.618),
+      level786: highPrice - (diff * 0.786),
+      level1000: lowPrice
+    };
+  } catch (error) {
+    console.error(`Error calculating Fibonacci retracements:`, error);
+    return {
+      level0: 0,
+      level236: 0,
+      level382: 0,
+      level500: 0,
+      level618: 0,
+      level786: 0,
+      level1000: 0
+    };
+  }
 }
 
 /**
@@ -640,8 +704,133 @@ export function detectBreakoutPatterns(
   priceNearResistance: boolean;
   priceNearSupport: boolean;
 } {
-  if (!prices || prices.length < 10 || !trendLines.support || !trendLines.resistance || 
-      !bollingerBands.upper || !bollingerBands.middle || !bollingerBands.lower) {
+  try {
+    // Validate inputs
+    if (!prices || prices.length < 10) {
+      console.log(`Cannot detect breakout patterns: insufficient price data (${prices?.length || 0} prices, need at least 10)`);
+      return {
+        breakoutDetected: false,
+        breakoutType: 'none',
+        breakoutStrength: 'none',
+        consolidationDetected: false,
+        volatilityContraction: false,
+        priceNearResistance: false,
+        priceNearSupport: false
+      };
+    }
+    
+    if (!trendLines.support || !trendLines.resistance) {
+      console.log(`Cannot detect breakout patterns: missing trend lines (support: ${trendLines.support}, resistance: ${trendLines.resistance})`);
+      return {
+        breakoutDetected: false,
+        breakoutType: 'none',
+        breakoutStrength: 'none',
+        consolidationDetected: false,
+        volatilityContraction: false,
+        priceNearResistance: false,
+        priceNearSupport: false
+      };
+    }
+    
+    if (!bollingerBands.upper || !bollingerBands.middle || !bollingerBands.lower) {
+      console.log(`Cannot detect breakout patterns: missing Bollinger Bands (upper: ${bollingerBands.upper}, middle: ${bollingerBands.middle}, lower: ${bollingerBands.lower})`);
+      return {
+        breakoutDetected: false,
+        breakoutType: 'none',
+        breakoutStrength: 'none',
+        consolidationDetected: false,
+        volatilityContraction: false,
+        priceNearResistance: false,
+        priceNearSupport: false
+      };
+    }
+
+    const currentPrice = prices[0];
+    const previousPrice = prices[1];
+    
+    // Check if price is near support or resistance (within 3%)
+    const priceNearSupport = Math.abs((currentPrice - trendLines.support) / trendLines.support) < 0.03;
+    const priceNearResistance = Math.abs((currentPrice - trendLines.resistance) / trendLines.resistance) < 0.03;
+    
+    // Calculate Bollinger Band width (volatility indicator)
+    const bandWidth = (bollingerBands.upper - bollingerBands.lower) / bollingerBands.middle;
+    
+    // Check for volatility contraction (narrowing Bollinger Bands)
+    // Calculate previous Bollinger Bands (using prices[1:21] instead of prices[0:20])
+    const previousPeriodPrices = prices.slice(1, 21);
+    
+    // Make sure we have enough previous prices
+    if (previousPeriodPrices.length < 20) {
+      console.log(`Cannot calculate previous Bollinger Bands: insufficient previous price data (${previousPeriodPrices.length} prices, need 20)`);
+      return {
+        breakoutDetected: false,
+        breakoutType: 'none',
+        breakoutStrength: 'none',
+        consolidationDetected: false,
+        volatilityContraction: false,
+        priceNearResistance,
+        priceNearSupport
+      };
+    }
+    
+    const previousSMA = previousPeriodPrices.reduce((sum, price) => sum + price, 0) / 20;
+    const previousStdDev = calculateStandardDeviation(previousPeriodPrices, previousSMA);
+    const previousBandWidth = (2 * previousStdDev) / previousSMA;
+    
+    const volatilityContraction = bandWidth < previousBandWidth;
+    
+    // Check for price consolidation (prices moving in a narrow range)
+    const recentPrices = prices.slice(0, 10);
+    const priceRange = Math.max(...recentPrices) - Math.min(...recentPrices);
+    const avgPrice = recentPrices.reduce((sum, price) => sum + price, 0) / recentPrices.length;
+    const consolidationDetected = (priceRange / avgPrice) < 0.05; // Less than 5% range
+    
+    // Detect breakout
+    let breakoutDetected = false;
+    let breakoutType: 'bullish' | 'bearish' | 'none' = 'none';
+    let breakoutStrength: 'strong' | 'moderate' | 'weak' | 'none' = 'none';
+    
+    // Bullish breakout: price breaks above resistance or upper Bollinger Band
+    if (previousPrice < trendLines.resistance && currentPrice > trendLines.resistance) {
+      breakoutDetected = true;
+      breakoutType = 'bullish';
+      breakoutStrength = 'strong';
+    } else if (previousPrice < bollingerBands.upper && currentPrice > bollingerBands.upper) {
+      breakoutDetected = true;
+      breakoutType = 'bullish';
+      breakoutStrength = 'moderate';
+    } else if (consolidationDetected && currentPrice > bollingerBands.middle && previousPrice < bollingerBands.middle) {
+      breakoutDetected = true;
+      breakoutType = 'bullish';
+      breakoutStrength = 'weak';
+    }
+    
+    // Bearish breakout: price breaks below support or lower Bollinger Band
+    if (previousPrice > trendLines.support && currentPrice < trendLines.support) {
+      breakoutDetected = true;
+      breakoutType = 'bearish';
+      breakoutStrength = 'strong';
+    } else if (previousPrice > bollingerBands.lower && currentPrice < bollingerBands.lower) {
+      breakoutDetected = true;
+      breakoutType = 'bearish';
+      breakoutStrength = 'moderate';
+    } else if (consolidationDetected && currentPrice < bollingerBands.middle && previousPrice > bollingerBands.middle) {
+      breakoutDetected = true;
+      breakoutType = 'bearish';
+      breakoutStrength = 'weak';
+    }
+    
+    return {
+      breakoutDetected,
+      breakoutType,
+      breakoutStrength,
+      consolidationDetected,
+      volatilityContraction,
+      priceNearResistance,
+      priceNearSupport
+    };
+  } catch (error) {
+    console.error(`Error detecting breakout patterns:`, error);
     return {
       breakoutDetected: false,
       breakoutType: 'none',
@@ -652,76 +841,6 @@ export function detectBreakoutPatterns(
       priceNearSupport: false
     };
   }
-
-  const currentPrice = prices[0];
-  const previousPrice = prices[1];
-  
-  // Check if price is near support or resistance (within 3%)
-  const priceNearSupport = Math.abs((currentPrice - trendLines.support) / trendLines.support) < 0.03;
-  const priceNearResistance = Math.abs((currentPrice - trendLines.resistance) / trendLines.resistance) < 0.03;
-  
-  // Calculate Bollinger Band width (volatility indicator)
-  const bandWidth = (bollingerBands.upper - bollingerBands.lower) / bollingerBands.middle;
-  
-  // Check for volatility contraction (narrowing Bollinger Bands)
-  // Calculate previous Bollinger Bands (using prices[1:21] instead of prices[0:20])
-  const previousPeriodPrices = prices.slice(1, 21);
-  const previousSMA = previousPeriodPrices.reduce((sum, price) => sum + price, 0) / 20;
-  const previousStdDev = calculateStandardDeviation(previousPeriodPrices, previousSMA);
-  const previousBandWidth = (2 * previousStdDev) / previousSMA;
-  
-  const volatilityContraction = bandWidth < previousBandWidth;
-  
-  // Check for price consolidation (prices moving in a narrow range)
-  const recentPrices = prices.slice(0, 10);
-  const priceRange = Math.max(...recentPrices) - Math.min(...recentPrices);
-  const avgPrice = recentPrices.reduce((sum, price) => sum + price, 0) / recentPrices.length;
-  const consolidationDetected = (priceRange / avgPrice) < 0.05; // Less than 5% range
-  
-  // Detect breakout
-  let breakoutDetected = false;
-  let breakoutType: 'bullish' | 'bearish' | 'none' = 'none';
-  let breakoutStrength: 'strong' | 'moderate' | 'weak' | 'none' = 'none';
-  
-  // Bullish breakout: price breaks above resistance or upper Bollinger Band
-  if (previousPrice < trendLines.resistance && currentPrice > trendLines.resistance) {
-    breakoutDetected = true;
-    breakoutType = 'bullish';
-    breakoutStrength = 'strong';
-  } else if (previousPrice < bollingerBands.upper && currentPrice > bollingerBands.upper) {
-    breakoutDetected = true;
-    breakoutType = 'bullish';
-    breakoutStrength = 'moderate';
-  } else if (consolidationDetected && currentPrice > bollingerBands.middle && previousPrice < bollingerBands.middle) {
-    breakoutDetected = true;
-    breakoutType = 'bullish';
-    breakoutStrength = 'weak';
-  }
-  
-  // Bearish breakout: price breaks below support or lower Bollinger Band
-  if (previousPrice > trendLines.support && currentPrice < trendLines.support) {
-    breakoutDetected = true;
-    breakoutType = 'bearish';
-    breakoutStrength = 'strong';
-  } else if (previousPrice > bollingerBands.lower && currentPrice < bollingerBands.lower) {
-    breakoutDetected = true;
-    breakoutType = 'bearish';
-    breakoutStrength = 'moderate';
-  } else if (consolidationDetected && currentPrice < bollingerBands.middle && previousPrice > bollingerBands.middle) {
-    breakoutDetected = true;
-    breakoutType = 'bearish';
-    breakoutStrength = 'weak';
-  }
-  
-  return {
-    breakoutDetected,
-    breakoutType,
-    breakoutStrength,
-    consolidationDetected,
-    volatilityContraction,
-    priceNearResistance,
-    priceNearSupport
-  };
 }
 
 /**

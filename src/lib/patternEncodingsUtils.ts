@@ -21,36 +21,74 @@ export function calculatePatternStrength(patterns: any[]): number {
  * Encode Fibonacci targets into a structured format
  */
 export function encodeFibonacciTargets(fibData: any): any {
-  if (!fibData) return null;
+  if (!fibData) {
+    console.log(`Cannot encode Fibonacci targets: missing data`);
+    return [];
+  }
   
   try {
     // Handle special string values like "none" that aren't valid JSON
     if (typeof fibData === 'string') {
       if (fibData.toLowerCase() === 'none') {
+        console.log(`Fibonacci data is 'none', returning empty array`);
         return [];
       }
       
       try {
+        console.log(`Attempting to parse Fibonacci data string`);
         fibData = JSON.parse(fibData);
       } catch (e) {
-        console.log(`Could not parse Fibonacci data: ${fibData}`);
+        console.error(`Could not parse Fibonacci data string: "${fibData.substring(0, 50)}${fibData.length > 50 ? '...' : ''}" - ${e.message}`);
         return [];
       }
     }
     
+    // Handle non-array Fibonacci data
     if (!Array.isArray(fibData)) {
+      console.log(`Fibonacci data is not an array, it's a ${typeof fibData}`);
+      
+      // If it's an object with level properties, convert to array
+      if (typeof fibData === 'object' && fibData !== null) {
+        // Check if it's a Fibonacci levels object with level0, level236, etc.
+        if ('level0' in fibData || 'level236' in fibData || 'level382' in fibData) {
+          console.log(`Converting Fibonacci levels object to array`);
+          const levels = [];
+          
+          if ('level0' in fibData) levels.push({ ratio: 0, price: fibData.level0, strength: 1, proximity: 0 });
+          if ('level236' in fibData) levels.push({ ratio: 0.236, price: fibData.level236, strength: 1, proximity: 0 });
+          if ('level382' in fibData) levels.push({ ratio: 0.382, price: fibData.level382, strength: 1, proximity: 0 });
+          if ('level500' in fibData) levels.push({ ratio: 0.5, price: fibData.level500, strength: 1, proximity: 0 });
+          if ('level618' in fibData) levels.push({ ratio: 0.618, price: fibData.level618, strength: 1, proximity: 0 });
+          if ('level786' in fibData) levels.push({ ratio: 0.786, price: fibData.level786, strength: 1, proximity: 0 });
+          if ('level1000' in fibData) levels.push({ ratio: 1, price: fibData.level1000, strength: 1, proximity: 0 });
+          
+          return levels;
+        }
+        
+        return [];
+      }
+      
       return [];
     }
     
     // Transform into a more structured format
-    return fibData.map(level => ({
-      ratio: level.ratio || 0,
-      price: level.price || 0,
-      strength: level.strength || 1,
-      proximity: level.proximity || 0,
-    }));
+    console.log(`Transforming ${fibData.length} Fibonacci levels`);
+    return fibData.map(level => {
+      if (!level || typeof level !== 'object') {
+        console.log(`Invalid Fibonacci level: ${level}, using defaults`);
+        return { ratio: 0, price: 0, strength: 1, proximity: 0 };
+      }
+      
+      return {
+        ratio: level.ratio || 0,
+        price: level.price || 0,
+        strength: level.strength || 1,
+        proximity: level.proximity || 0,
+      };
+    });
   } catch (error) {
     console.error("Error encoding Fibonacci targets:", error);
+    console.error(`Fibonacci data: ${typeof fibData === 'string' ? fibData.substring(0, 100) : JSON.stringify(fibData).substring(0, 100)}`);
     return [];
   }
 }
@@ -326,48 +364,84 @@ export async function generatePatternEncodings(
   fibExtensionTargets: any;
   srStrength: any;
 }> {
-  // Get pattern data
-  const patternData = await getBreakoutPatterns(symbol, date);
-  const trendData = await getTrendLines(symbol, date);
-  const fibData = await getFibonacciLevels(symbol, date);
-  const srLevels = await getSupportResistanceLevels(symbol, date);
-  
-  // Calculate bullish and bearish pattern strengths
-  const bullishPatterns = patternData.filter(p => p.direction === 'bullish');
-  const bearishPatterns = patternData.filter(p => p.direction === 'bearish');
-  
-  const bullishPatternStrength = calculatePatternStrength(bullishPatterns);
-  const bearishPatternStrength = calculatePatternStrength(bearishPatterns);
-  
-  // Pattern completion data
-  const patternCompletion = patternData.map(p => ({
-    type: p.type,
-    completion: p.completion_percentage,
-    confidence: p.confidence,
-  }));
-  
-  // Trend encoding
-  const trendEncoding = {
-    strength: trendData.strength,
-    direction: trendData.direction === 'up' ? 1 : -1,
-    duration: trendData.duration_days,
-    deviation: trendData.average_deviation,
-  };
-  
-  // Fibonacci extension targets
-  const fibExtensionTargets = encodeFibonacciTargets(fibData);
-  
-  // Support/resistance strength encoding
-  const srStrength = encodeSupportResistanceStrength(srLevels);
-  
-  return {
-    bullishPatternStrength,
-    bearishPatternStrength,
-    patternCompletion,
-    trendEncoding,
-    fibExtensionTargets,
-    srStrength,
-  };
+  try {
+    console.log(`Generating pattern encodings for ${symbol} at ${date.toISOString()}`);
+    
+    // Get pattern data
+    const patternData = await getBreakoutPatterns(symbol, date);
+    console.log(`Retrieved ${patternData.length} breakout patterns`);
+    
+    const trendData = await getTrendLines(symbol, date);
+    console.log(`Retrieved trend data with direction: ${trendData.direction}`);
+    
+    const fibData = await getFibonacciLevels(symbol, date);
+    console.log(`Retrieved Fibonacci data: ${typeof fibData === 'string' ? fibData.substring(0, 50) : JSON.stringify(fibData).substring(0, 50)}...`);
+    
+    const srLevels = await getSupportResistanceLevels(symbol, date);
+    console.log(`Retrieved ${srLevels.length} support/resistance levels`);
+    
+    // Calculate bullish and bearish pattern strengths
+    const bullishPatterns = patternData.filter(p => p.direction === 'bullish');
+    const bearishPatterns = patternData.filter(p => p.direction === 'bearish');
+    
+    console.log(`Found ${bullishPatterns.length} bullish patterns and ${bearishPatterns.length} bearish patterns`);
+    
+    const bullishPatternStrength = calculatePatternStrength(bullishPatterns);
+    const bearishPatternStrength = calculatePatternStrength(bearishPatterns);
+    
+    // Pattern completion data
+    const patternCompletion = patternData.map(p => ({
+      type: p.type || 'unknown',
+      completion: p.completion_percentage || 0,
+      confidence: p.confidence || 0,
+    }));
+    
+    // Trend encoding
+    const trendEncoding = {
+      strength: trendData.strength || 0,
+      direction: trendData.direction === 'up' ? 1 : (trendData.direction === 'down' ? -1 : 0),
+      duration: trendData.duration_days || 0,
+      deviation: trendData.average_deviation || 0,
+    };
+    
+    // Fibonacci extension targets
+    const fibExtensionTargets = encodeFibonacciTargets(fibData);
+    console.log(`Encoded ${Array.isArray(fibExtensionTargets) ? fibExtensionTargets.length : 0} Fibonacci targets`);
+    
+    // Support/resistance strength encoding
+    const srStrength = encodeSupportResistanceStrength(srLevels);
+    console.log(`Encoded support/resistance strength with ${srStrength.support.length} support and ${srStrength.resistance.length} resistance levels`);
+    
+    console.log(`Successfully generated pattern encodings for ${symbol}`);
+    
+    return {
+      bullishPatternStrength,
+      bearishPatternStrength,
+      patternCompletion,
+      trendEncoding,
+      fibExtensionTargets,
+      srStrength,
+    };
+  } catch (error) {
+    console.error(`Error generating pattern encodings for ${symbol}:`, error);
+    // Return default values in case of error
+    return {
+      bullishPatternStrength: 0,
+      bearishPatternStrength: 0,
+      patternCompletion: [],
+      trendEncoding: {
+        strength: 0,
+        direction: 0,
+        duration: 0,
+        deviation: 0,
+      },
+      fibExtensionTargets: [],
+      srStrength: {
+        support: [],
+        resistance: [],
+      },
+    };
+  }
 }
 
 /**

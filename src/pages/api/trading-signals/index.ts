@@ -9,7 +9,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     // Get the user from the request
-    const supabase = createClient(req);
+    const supabase = createClient(req, res);
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {

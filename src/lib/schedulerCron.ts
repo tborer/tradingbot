@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma';
 import { fetchAndStoreHourlyCryptoData, cleanupOldData } from '@/lib/dataSchedulingService';
 import { logScheduling } from '@/lib/schedulingLogger';
+import { runAnalysisProcess } from '@/lib/analysisUtils';
 
 /**
  * Checks if a scheduled task should run based on the current time and configured run time
@@ -83,6 +84,39 @@ export async function runScheduledTasks(): Promise<void> {
             success: fetchResult.success,
             error: fetchResult.error
           });
+          
+          // Run analysis after fetching data
+          if (settings.runTechnicalAnalysis) {
+            try {
+              await logScheduling({
+                processId,
+                userId: settings.userId,
+                operation: 'SCHEDULED_ANALYSIS_START',
+                message: 'Starting scheduled analysis'
+              });
+              
+              // Create a new analysis process ID
+              const analysisProcessId = `analysis-${Date.now()}`;
+              
+              // Start the analysis process
+              await runAnalysisProcess(analysisProcessId, settings.userId);
+              
+              await logScheduling({
+                processId,
+                userId: settings.userId,
+                operation: 'SCHEDULED_ANALYSIS_COMPLETE',
+                message: 'Scheduled analysis completed'
+              });
+            } catch (analysisError) {
+              await logScheduling({
+                processId,
+                userId: settings.userId,
+                operation: 'SCHEDULED_ANALYSIS_ERROR',
+                message: `Scheduled analysis error: ${analysisError instanceof Error ? analysisError.message : 'Unknown error'}`,
+                error: analysisError
+              });
+            }
+          }
           
           // Run cleanup if enabled
           if (settings.cleanupEnabled) {

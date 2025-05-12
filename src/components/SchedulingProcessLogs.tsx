@@ -203,7 +203,7 @@ const SchedulingProcessLogs: React.FC = () => {
                 </SelectTrigger>
                 <SelectContent>
                   {processIds.map((id) => (
-                    <SelectItem key={id} value={id || "unknown"}>
+                    <SelectItem key={id} value={id || "unknown-process"}>
                       {id || "Unknown Process"}
                     </SelectItem>
                   ))}

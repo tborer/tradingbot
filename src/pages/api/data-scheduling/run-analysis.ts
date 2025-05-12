@@ -1,479 +1,341 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
-import { logScheduling, logAnalysis } from '@/lib/schedulingLogger';
-import { 
-  calculateDerivedIndicators 
-} from '@/lib/derivedIndicatorsUtils';
-import { 
-  generateTemporalFeatures, 
-  saveTemporalFeatures 
-} from '@/lib/temporalFeaturesUtils';
-import { 
-  generatePatternEncodings, 
-  savePatternEncodings 
-} from '@/lib/patternEncodingsUtils';
-import { 
-  generateComprehensiveFeatureSet, 
-  saveComprehensiveFeatureSet 
-} from '@/lib/comprehensiveFeatureUtils';
-
-// Set a timeout for API requests to prevent function timeout errors
-const API_TIMEOUT = 50000; // 50 seconds
+import { runTechnicalAnalysis } from '@/lib/dataSchedulingService';
+import { generateComprehensiveFeatureSet } from '@/lib/comprehensiveFeatureUtils';
+import { runPredictionsForAllCryptos, updatePredictionOutcomes } from '@/lib/predictionModels/predictionRunner';
+import { schedulingLogger } from '@/lib/schedulingLogger';
+import { cleanupStaleProcessingStatuses } from '@/lib/dataSchedulingService';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Get the user from the session
-  const supabase = createClient(req, res);
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
   try {
-    // Clean up any stale processing statuses before starting a new operation
-    const { cleanupStaleProcessingStatuses } = require('@/lib/dataSchedulingService');
-    await cleanupStaleProcessingStatuses(user.id);
-    
-    // Get user's cryptos to use for analysis
-    const userCryptos = await prisma.crypto.findMany({
-      where: { userId: user.id },
-      select: { symbol: true },
-    });
+    // Get user from session
+    const supabase = createClient(req, res);
+    const { data: { user } } = await supabase.auth.getUser();
 
-    if (userCryptos.length === 0) {
-      return res.status(400).json({ 
-        error: 'No cryptocurrencies found in your portfolio. Please add some on the dashboard first.' 
-      });
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Create a processing status record
-    const processId = `analysis-run-${Date.now()}`;
+    // Clean up stale processing statuses
+    await cleanupStaleProcessingStatuses();
+
+    // Create a new processing status entry
+    const processId = `analysis-${Date.now()}`;
     await prisma.processingStatus.create({
       data: {
         processId,
         userId: user.id,
         status: 'RUNNING',
         type: 'ANALYSIS',
-        totalItems: userCryptos.length,
-        processedItems: 0,
-        details: {},
-        startedAt: new Date()
+        totalItems: 100, // Placeholder, will be updated
+        processedItems: 0
       }
     });
 
-    // Start the background processing without awaiting it
-    (async () => {
-      try {
-        await logScheduling({
-          processId,
-          userId: user.id,
-          operation: 'ANALYSIS_BACKGROUND_START',
-          message: 'Starting background processing of analysis operation'
-        });
-        
-        // Process all cryptos in batches
-        const cryptoSymbols = userCryptos.map(c => c.symbol);
-        const batchSize = 5;
-        
-        await logScheduling({
-          processId,
-          userId: user.id,
-          operation: 'ANALYSIS_BATCH_CONFIGURATION',
-          message: `Configured batch processing with batch size ${batchSize}`,
-          details: { 
-            totalCryptos: cryptoSymbols.length,
-            batchSize,
-            totalBatches: Math.ceil(cryptoSymbols.length / batchSize)
-          }
-        });
-        
-        for (let i = 0; i < cryptoSymbols.length; i += batchSize) {
-          const batchSymbols = cryptoSymbols.slice(i, i + batchSize);
-          const batchNumber = Math.floor(i / batchSize) + 1;
-          const totalBatches = Math.ceil(cryptoSymbols.length / batchSize);
-          
-          await logScheduling({
-            processId,
-            userId: user.id,
-            operation: 'ANALYSIS_BATCH_START',
-            message: `Starting batch ${batchNumber} of ${totalBatches}`,
-            details: { 
-              batchNumber,
-              totalBatches,
-              symbols: batchSymbols,
-              progress: `${Math.round((i / cryptoSymbols.length) * 100)}%`
-            }
-          });
-          
-          // Update processing status
-          await prisma.processingStatus.update({
-            where: { processId },
-            data: {
-              processedItems: i,
-              updatedAt: new Date()
-            }
-          });
-          
-          // Process each symbol in the batch
-          await Promise.all(batchSymbols.map(async (symbol) => {
-            try {
-              await runAnalysisForSymbol(symbol, processId, user.id);
-              
-              // Update the details in the processing status
-              await prisma.processingStatus.update({
-                where: { processId },
-                data: {
-                  details: {
-                    update: {
-                      [symbol]: {
-                        success: true,
-                        completedAt: new Date()
-                      }
-                    }
-                  }
-                }
-              });
-            } catch (error) {
-              console.error(`Error processing analysis for ${symbol}:`, error);
-              
-              await logAnalysis({
-                processId,
-                userId: user.id,
-                symbol,
-                operation: 'ANALYSIS_ERROR',
-                analysisType: 'ALL',
-                success: false,
-                error
-              });
-              
-              // Update the details in the processing status
-              await prisma.processingStatus.update({
-                where: { processId },
-                data: {
-                  details: {
-                    update: {
-                      [symbol]: {
-                        success: false,
-                        error: error instanceof Error ? error.message : String(error),
-                        completedAt: new Date()
-                      }
-                    }
-                  }
-                }
-              });
-            }
-          }));
-          
-          // Update processing status again after batch is complete
-          await prisma.processingStatus.update({
-            where: { processId },
-            data: {
-              processedItems: i + batchSymbols.length,
-              updatedAt: new Date()
-            }
-          });
-          
-          await logScheduling({
-            processId,
-            userId: user.id,
-            operation: 'ANALYSIS_BATCH_COMPLETE',
-            message: `Completed batch ${batchNumber} of ${totalBatches}`,
-            details: { 
-              batchNumber,
-              totalBatches,
-              progress: `${Math.round(((i + batchSize) / cryptoSymbols.length) * 100)}%`
-            }
-          });
-          
-          // Add a small delay between batches
-          if (i + batchSize < cryptoSymbols.length) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
+    // Log the start of the analysis process
+    await schedulingLogger.log({
+      processId,
+      userId: user.id,
+      level: 'INFO',
+      category: 'ANALYSIS',
+      operation: 'ANALYSIS_START',
+      message: 'Starting analysis process'
+    });
 
-        // Update process status to completed
-        await prisma.processingStatus.update({
-          where: { processId },
-          data: {
-            status: 'COMPLETED',
-            completedAt: new Date(),
-            processedItems: cryptoSymbols.length
-          }
-        });
-        
-        await logScheduling({
-          processId,
-          userId: user.id,
-          operation: 'ANALYSIS_BACKGROUND_COMPLETE',
-          message: 'Background analysis processing completed successfully',
-          details: { 
-            totalProcessed: cryptoSymbols.length,
-            duration: `${Math.round((Date.now() - new Date(processId.split('-')[2]).getTime()) / 1000)} seconds`
-          }
-        });
-      } catch (error) {
-        console.error('Background analysis processing error:', error);
-        
-        await logScheduling({
-          processId,
-          userId: user.id,
-          operation: 'ANALYSIS_BACKGROUND_ERROR',
-          message: 'Error in background analysis processing',
-          error
-        });
-        
-        // Update process status to failed
-        await prisma.processingStatus.update({
-          where: { processId },
-          data: {
-            status: 'FAILED',
-            error: error instanceof Error ? error.message : String(error),
-            completedAt: new Date()
-          }
-        });
-      }
-    })();
+    // Start the analysis process in the background
+    runAnalysisProcess(processId, user.id)
+      .then(() => {
+        console.log(`Analysis process ${processId} completed`);
+      })
+      .catch(error => {
+        console.error(`Error in analysis process ${processId}:`, error);
+      });
 
-    // Return immediately with a 202 Accepted status
-    return res.status(202).json({ 
+    // Return accepted status with process ID
+    return res.status(202).json({
       success: true,
-      message: 'Analysis operation started in the background. This may take several minutes to complete.',
-      inProgress: true,
+      message: 'Analysis process started',
       processId
     });
   } catch (error) {
-    console.error('Error starting analysis operation:', error);
-    return res.status(500).json({ 
-      error: 'Failed to start analysis operation',
+    console.error('Error starting analysis process:', error);
+    return res.status(500).json({
+      error: 'Failed to start analysis process',
       details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 }
 
 /**
- * Run all analysis steps for a single symbol
+ * Run the analysis process in the background
  */
-async function runAnalysisForSymbol(
-  symbol: string,
-  processId: string,
-  userId: string
-): Promise<void> {
-  // Get the most recent technical analysis for this symbol
-  const technicalAnalysis = await prisma.technicalAnalysisOutput.findFirst({
-    where: { symbol },
-    orderBy: { id: 'desc' }
-  });
-
-  if (!technicalAnalysis) {
-    throw new Error(`No technical analysis data found for ${symbol}`);
-  }
-
-  // Track which steps completed successfully
-  const completedSteps = {
-    derivedIndicators: false,
-    temporalFeatures: false,
-    patternEncodings: false,
-    comprehensiveFeatures: false
-  };
-
-  // Calculate and store derived indicators
+async function runAnalysisProcess(processId: string, userId: string): Promise<void> {
   try {
-    await logAnalysis({
-      processId,
-      userId,
-      symbol,
-      operation: 'DERIVED_INDICATORS_START',
-      analysisType: 'DERIVED',
-      details: { technicalAnalysisId: technicalAnalysis.id }
-    });
-    
-    const technicalAnalysisWithPrevious = {
-      ...technicalAnalysis,
-      rawData: {
-        ...technicalAnalysis.rawData,
-        previousEma12: technicalAnalysis.rawData.previousEma12,
-        previousEma26: technicalAnalysis.rawData.previousEma26
+    // Get user's cryptos
+    const cryptos = await prisma.crypto.findMany({
+      where: {
+        userId
       }
-    };
-    
-    const derivedIndicators = calculateDerivedIndicators(technicalAnalysisWithPrevious);
-    
-    await prisma.cryptoDerivedIndicators.create({
+    });
+
+    // Update total items
+    await prisma.processingStatus.update({
+      where: {
+        processId
+      },
       data: {
-        technicalAnalysisId: technicalAnalysis.id,
-        symbol,
-        timestamp: new Date(),
-        trendStrength: derivedIndicators.trendStrength,
-        volatilityRatio: derivedIndicators.volatilityRatio,
-        rsiWithTrendContext: derivedIndicators.rsiWithTrendContext,
-        maConvergence: derivedIndicators.maConvergence,
-        nearestSupportDistance: derivedIndicators.nearestSupportDistance,
-        nearestResistanceDistance: derivedIndicators.nearestResistanceDistance,
-        fibConfluenceStrength: derivedIndicators.fibConfluenceStrength,
-        bbPosition: derivedIndicators.bbPosition
+        totalItems: cryptos.length * 4 // 4 steps per crypto
       }
     });
-    
-    await logAnalysis({
+
+    let processedItems = 0;
+
+    // Step 1: Run technical analysis
+    await schedulingLogger.log({
       processId,
       userId,
-      symbol,
-      operation: 'DERIVED_INDICATORS_COMPLETE',
-      analysisType: 'DERIVED',
-      success: true
+      level: 'INFO',
+      category: 'ANALYSIS',
+      operation: 'TECHNICAL_ANALYSIS_START',
+      message: 'Starting technical analysis'
     });
-    
-    completedSteps.derivedIndicators = true;
+
+    try {
+      await runTechnicalAnalysis(userId, processId);
+      
+      // Update processed items
+      processedItems += cryptos.length;
+      await prisma.processingStatus.update({
+        where: {
+          processId
+        },
+        data: {
+          processedItems
+        }
+      });
+      
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'INFO',
+        category: 'ANALYSIS',
+        operation: 'TECHNICAL_ANALYSIS_COMPLETE',
+        message: 'Technical analysis completed'
+      });
+    } catch (error) {
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'ERROR',
+        category: 'ANALYSIS',
+        operation: 'TECHNICAL_ANALYSIS_ERROR',
+        message: `Technical analysis error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+      throw error;
+    }
+
+    // Step 2: Generate comprehensive features
+    await schedulingLogger.log({
+      processId,
+      userId,
+      level: 'INFO',
+      category: 'ANALYSIS',
+      operation: 'FEATURE_GENERATION_START',
+      message: 'Starting comprehensive feature generation'
+    });
+
+    try {
+      for (const crypto of cryptos) {
+        try {
+          await generateComprehensiveFeatureSet(crypto.symbol);
+          
+          // Update processed items
+          processedItems++;
+          await prisma.processingStatus.update({
+            where: {
+              processId
+            },
+            data: {
+              processedItems
+            }
+          });
+          
+          await schedulingLogger.log({
+            processId,
+            userId,
+            level: 'INFO',
+            category: 'ANALYSIS',
+            operation: 'FEATURE_GENERATION_PROGRESS',
+            symbol: crypto.symbol,
+            message: `Generated comprehensive features for ${crypto.symbol}`
+          });
+        } catch (cryptoError) {
+          await schedulingLogger.log({
+            processId,
+            userId,
+            level: 'ERROR',
+            category: 'ANALYSIS',
+            operation: 'FEATURE_GENERATION_ERROR',
+            symbol: crypto.symbol,
+            message: `Error generating features for ${crypto.symbol}: ${cryptoError instanceof Error ? cryptoError.message : 'Unknown error'}`
+          });
+        }
+      }
+      
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'INFO',
+        category: 'ANALYSIS',
+        operation: 'FEATURE_GENERATION_COMPLETE',
+        message: 'Comprehensive feature generation completed'
+      });
+    } catch (error) {
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'ERROR',
+        category: 'ANALYSIS',
+        operation: 'FEATURE_GENERATION_ERROR',
+        message: `Feature generation error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+      throw error;
+    }
+
+    // Step 3: Run prediction models
+    await schedulingLogger.log({
+      processId,
+      userId,
+      level: 'INFO',
+      category: 'ANALYSIS',
+      operation: 'PREDICTION_START',
+      message: 'Starting prediction model runs'
+    });
+
+    try {
+      const predictionResult = await runPredictionsForAllCryptos(userId);
+      
+      // Update processed items
+      processedItems += cryptos.length;
+      await prisma.processingStatus.update({
+        where: {
+          processId
+        },
+        data: {
+          processedItems
+        }
+      });
+      
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'INFO',
+        category: 'ANALYSIS',
+        operation: 'PREDICTION_COMPLETE',
+        message: `Prediction models completed: ${predictionResult.message}`
+      });
+    } catch (error) {
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'ERROR',
+        category: 'ANALYSIS',
+        operation: 'PREDICTION_ERROR',
+        message: `Prediction model error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+      throw error;
+    }
+
+    // Step 4: Update prediction outcomes
+    await schedulingLogger.log({
+      processId,
+      userId,
+      level: 'INFO',
+      category: 'ANALYSIS',
+      operation: 'OUTCOME_UPDATE_START',
+      message: 'Starting prediction outcome updates'
+    });
+
+    try {
+      const outcomeResult = await updatePredictionOutcomes();
+      
+      // Update processed items
+      processedItems += cryptos.length;
+      await prisma.processingStatus.update({
+        where: {
+          processId
+        },
+        data: {
+          processedItems
+        }
+      });
+      
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'INFO',
+        category: 'ANALYSIS',
+        operation: 'OUTCOME_UPDATE_COMPLETE',
+        message: `Prediction outcome updates completed: ${outcomeResult.message}`
+      });
+    } catch (error) {
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'ERROR',
+        category: 'ANALYSIS',
+        operation: 'OUTCOME_UPDATE_ERROR',
+        message: `Prediction outcome update error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+      throw error;
+    }
+
+    // Mark process as completed
+    await prisma.processingStatus.update({
+      where: {
+        processId
+      },
+      data: {
+        status: 'COMPLETED',
+        completedAt: new Date()
+      }
+    });
+
+    await schedulingLogger.log({
+      processId,
+      userId,
+      level: 'INFO',
+      category: 'ANALYSIS',
+      operation: 'ANALYSIS_COMPLETE',
+      message: 'Analysis process completed successfully'
+    });
   } catch (error) {
-    console.error(`Error calculating derived indicators for ${symbol}:`, error);
+    console.error(`Error in analysis process ${processId}:`, error);
     
-    await logAnalysis({
+    // Mark process as failed
+    await prisma.processingStatus.update({
+      where: {
+        processId
+      },
+      data: {
+        status: 'FAILED',
+        completedAt: new Date(),
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
+    });
+
+    await schedulingLogger.log({
       processId,
       userId,
-      symbol,
-      operation: 'DERIVED_INDICATORS_ERROR',
-      analysisType: 'DERIVED',
-      success: false,
-      error
+      level: 'ERROR',
+      category: 'ANALYSIS',
+      operation: 'ANALYSIS_FAILED',
+      message: `Analysis process failed: ${error instanceof Error ? error.message : 'Unknown error'}`
     });
-    // Continue with other steps even if this one fails
-  }
-  
-  // Generate and store temporal features
-  try {
-    await logAnalysis({
-      processId,
-      userId,
-      symbol,
-      operation: 'TEMPORAL_FEATURES_START',
-      analysisType: 'TEMPORAL'
-    });
-    
-    const now = new Date();
-    const temporalFeatures = await generateTemporalFeatures(symbol, now);
-    await saveTemporalFeatures(symbol, temporalFeatures);
-    
-    await logAnalysis({
-      processId,
-      userId,
-      symbol,
-      operation: 'TEMPORAL_FEATURES_COMPLETE',
-      analysisType: 'TEMPORAL',
-      success: true
-    });
-    
-    completedSteps.temporalFeatures = true;
-  } catch (error) {
-    console.error(`Error generating temporal features for ${symbol}:`, error);
-    
-    await logAnalysis({
-      processId,
-      userId,
-      symbol,
-      operation: 'TEMPORAL_FEATURES_ERROR',
-      analysisType: 'TEMPORAL',
-      success: false,
-      error
-    });
-    // Continue with other steps even if this one fails
-  }
-  
-  // Generate and store pattern encodings
-  try {
-    await logAnalysis({
-      processId,
-      userId,
-      symbol,
-      operation: 'PATTERN_ENCODINGS_START',
-      analysisType: 'PATTERN'
-    });
-    
-    const now = new Date();
-    const patternEncodings = await generatePatternEncodings(symbol, now);
-    await savePatternEncodings(symbol, patternEncodings);
-    
-    await logAnalysis({
-      processId,
-      userId,
-      symbol,
-      operation: 'PATTERN_ENCODINGS_COMPLETE',
-      analysisType: 'PATTERN',
-      success: true
-    });
-    
-    completedSteps.patternEncodings = true;
-  } catch (error) {
-    console.error(`Error generating pattern encodings for ${symbol}:`, error);
-    
-    await logAnalysis({
-      processId,
-      userId,
-      symbol,
-      operation: 'PATTERN_ENCODINGS_ERROR',
-      analysisType: 'PATTERN',
-      success: false,
-      error
-    });
-    // Continue with other steps even if this one fails
-  }
-  
-  // Generate and store comprehensive feature set
-  try {
-    await logAnalysis({
-      processId,
-      userId,
-      symbol,
-      operation: 'COMPREHENSIVE_FEATURES_START',
-      analysisType: 'COMPREHENSIVE'
-    });
-    
-    const now = new Date();
-    const comprehensiveFeatures = await generateComprehensiveFeatureSet(symbol, 'hourly', now);
-    await saveComprehensiveFeatureSet(symbol, comprehensiveFeatures);
-    
-    await logAnalysis({
-      processId,
-      userId,
-      symbol,
-      operation: 'COMPREHENSIVE_FEATURES_COMPLETE',
-      analysisType: 'COMPREHENSIVE',
-      success: true
-    });
-    
-    completedSteps.comprehensiveFeatures = true;
-  } catch (error) {
-    console.error(`Error generating comprehensive features for ${symbol}:`, error);
-    
-    await logAnalysis({
-      processId,
-      userId,
-      symbol,
-      operation: 'COMPREHENSIVE_FEATURES_ERROR',
-      analysisType: 'COMPREHENSIVE',
-      success: false,
-      error
-    });
-  }
-  
-  // Determine overall success based on completed steps
-  const allStepsCompleted = Object.values(completedSteps).every(step => step);
-  const someStepsCompleted = Object.values(completedSteps).some(step => step);
-  
-  if (!someStepsCompleted) {
-    throw new Error(`Failed to complete any analysis steps for ${symbol}`);
   }
 }
-
-// Configure the API route
-export const config = {
-  api: {
-    bodyParser: true,
-    responseLimit: false,
-  },
-};

@@ -1,0 +1,76 @@
+// New models to add to schema.prisma
+
+model CryptoPredictionModel {
+  id                String   @id @default(uuid())
+  name              String
+  type              String   // 'direction', 'volatility', 'keyLevels'
+  version           String
+  description       String?
+  configuration     Json
+  accuracy          Float?
+  lastTrainedAt     DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  directionPredictions CryptoPriceDirectionPrediction[]
+  volatilityPredictions CryptoVolatilityPrediction[]
+  keyLevelPredictions CryptoKeyLevelPrediction[]
+  
+  @@unique([name, version])
+}
+
+model CryptoPriceDirectionPrediction {
+  id                String   @id @default(uuid())
+  modelId           String
+  model             CryptoPredictionModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  symbol            String
+  timestamp         DateTime @default(now())
+  predictionTime    DateTime // Time for which prediction is made
+  probability       Float    // 0-1 probability of price increase
+  direction         String   // 'up' or 'down'
+  confidence        Float    // 0-1 confidence score
+  timeframe         String   // e.g., '1h', '4h', '1d'
+  actualOutcome     String?  // 'up', 'down', or null if not yet known
+  featureSnapshot   Json?    // Snapshot of features used for prediction
+  createdAt         DateTime @default(now())
+  
+  @@index([symbol, predictionTime])
+  @@index([modelId, timestamp])
+}
+
+model CryptoVolatilityPrediction {
+  id                String   @id @default(uuid())
+  modelId           String
+  model             CryptoPredictionModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  symbol            String
+  timestamp         DateTime @default(now())
+  predictionTime    DateTime // Time for which prediction is made
+  expectedVolatility Float    // Predicted volatility as percentage
+  volatilityMin     Float    // Lower bound of volatility range
+  volatilityMax     Float    // Upper bound of volatility range
+  confidence        Float    // 0-1 confidence score
+  timeframe         String   // e.g., '1h', '4h', '1d'
+  actualVolatility  Float?   // Actual volatility observed, if known
+  featureSnapshot   Json?    // Snapshot of features used for prediction
+  createdAt         DateTime @default(now())
+  
+  @@index([symbol, predictionTime])
+  @@index([modelId, timestamp])
+}
+
+model CryptoKeyLevelPrediction {
+  id                String   @id @default(uuid())
+  modelId           String
+  model             CryptoPredictionModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  symbol            String
+  timestamp         DateTime @default(now())
+  predictionTime    DateTime // Time for which prediction is made
+  levels            Json     // Array of predicted price levels with type and strength
+  confidence        Float    // 0-1 confidence score
+  timeframe         String   // e.g., '1h', '4h', '1d'
+  actualLevelsHit   Json?    // Levels that were actually hit
+  featureSnapshot   Json?    // Snapshot of features used for prediction
+  createdAt         DateTime @default(now())
+  
+  @@index([symbol, predictionTime])
+  @@index([modelId, timestamp])
+}

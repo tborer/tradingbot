@@ -17,6 +17,7 @@ model User {
   cryptos    Crypto[]
   settings   Settings?
   dataScheduling DataScheduling?
+  aiAgentSettings AIAgentSettings?
 }
 
 model DataScheduling {

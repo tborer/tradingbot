@@ -3,6 +3,7 @@ import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
 import { fetchCoinDeskHistoricalData, formatCoinDeskDataForAnalysis, extractPriceDataFromCoinDesk } from '@/lib/coinDesk';
 import { calculateDrawdownDrawup, DrawdownDrawupAnalysis } from '@/lib/trendAnalysis';
+import { AIAgentData } from '@/lib/aiAgentUtils';
 
 // Create a unique request ID for logging
 const generateRequestId = () => {
@@ -64,6 +65,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log(`[${requestId}] Processing trading recommendations request`);
     
     try {
+      // Fetch AI Agent data
+      console.log(`[${requestId}] Fetching AI Agent data for user ${user.id}`);
+      let aiAgentData: AIAgentData | null = null;
+      
+      try {
+        // Make an internal API call to get AI Agent data
+        const aiAgentDataResponse = await fetch(`${process.env.NEXT_PUBLIC_CO_DEV_ENV === 'development' ? 'http://localhost:3000' : ''}/api/ai-agent/data`, {
+          headers: {
+            'Authorization': `Bearer ${process.env.CRON_SECRET || 'internal-api-call'}`,
+            'X-User-ID': user.id
+          }
+        });
+        
+        if (!aiAgentDataResponse.ok) {
+          throw new Error(`Failed to fetch AI Agent data: ${aiAgentDataResponse.statusText}`);
+        }
+        
+        aiAgentData = await aiAgentDataResponse.json();
+        console.log(`[${requestId}] Successfully fetched AI Agent data`);
+      } catch (aiDataError) {
+        console.error(`[${requestId}] Error fetching AI Agent data:`, aiDataError);
+        // Continue without AI Agent data
+      }
+      
       // Get the CoinDesk API key from environment variables
       const coinDeskApiKey = process.env.NEXT_PUBLIC_COINDESK_API_KEY;
       
@@ -228,73 +253,199 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Sort analyses by buy probability (highest first)
       cryptoAnalyses.sort((a, b) => b.buyProbability - a.buyProbability);
       
-      // Generate the final recommendations
-      let recommendations = "# Weekly Cryptocurrency Analysis and Recommendations\n\n";
-      
-      // Add summary section
-      recommendations += "## Summary\n\n";
-      
-      if (cryptoAnalyses.length > 0) {
-        // Top opportunities
-        const topOpportunities = cryptoAnalyses
-          .filter(crypto => crypto.buyProbability > 0.5)
-          .slice(0, 3);
+      // Check if instructions contain the {input_data} placeholder
+      if (instructions.includes('{input_data}')) {
+        console.log(`[${requestId}] Found {input_data} placeholder in instructions, using Gemini API`);
         
-        if (topOpportunities.length > 0) {
-          recommendations += "### Top Opportunities\n";
-          topOpportunities.forEach((crypto, index) => {
-            recommendations += `${index + 1}. **${crypto.symbol}** - Buy Probability: ${(crypto.buyProbability * 100).toFixed(1)}%\n`;
-            recommendations += `   ${crypto.recommendation}\n\n`;
+        // Prepare the input data for the AI
+        const inputData = {
+          portfolio_analysis: {
+            cryptos: cryptoAnalyses.map(crypto => ({
+              symbol: crypto.symbol,
+              current_price: crypto.currentPrice,
+              percent_change: crypto.percentChange,
+              shares: crypto.shares,
+              buy_probability: crypto.buyProbability,
+              recommendation: crypto.recommendation,
+              technical_analysis: crypto.analysis ? {
+                avg_drawup: crypto.analysis.avgDrawup,
+                avg_drawdown: crypto.analysis.avgDrawdown,
+                std_dev_drawup: crypto.analysis.stdDevDrawup,
+                max_drawup: crypto.analysis.maxDrawup,
+                max_drawdown: crypto.analysis.maxDrawdown
+              } : null
+            })),
+            market_sentiment: {
+              positive_count: cryptoAnalyses.filter(c => (c.percentChange || 0) > 0).length,
+              total_count: cryptoAnalyses.length
+            }
+          },
+          ai_agent_data: aiAgentData || null
+        };
+        
+        // Replace {input_data} with the actual data
+        const promptWithData = instructions.replace('{input_data}', JSON.stringify(inputData, null, 2));
+        
+        // Call the Gemini API
+        try {
+          console.log(`[${requestId}] Calling Gemini API with user instructions and data`);
+          
+          const geminiResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': settings.googleApiKey
+            },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    {
+                      text: promptWithData
+                    }
+                  ]
+                }
+              ],
+              generationConfig: {
+                temperature: 0.7,
+                topK: 40,
+                topP: 0.95,
+                maxOutputTokens: 8192
+              }
+            })
           });
-        } else {
-          recommendations += "No strong buy opportunities identified in your current portfolio.\n\n";
+          
+          if (!geminiResponse.ok) {
+            const errorData = await geminiResponse.json();
+            throw new Error(`Gemini API error: ${JSON.stringify(errorData)}`);
+          }
+          
+          const geminiData = await geminiResponse.json();
+          
+          // Extract the response text
+          const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          
+          if (!responseText) {
+            throw new Error('Empty response from Gemini API');
+          }
+          
+          console.log(`[${requestId}] Successfully received response from Gemini API`);
+          return res.status(200).json({ recommendations: responseText });
+          
+        } catch (geminiError) {
+          console.error(`[${requestId}] Error calling Gemini API:`, geminiError);
+          
+          // Fall back to the traditional analysis if Gemini API fails
+          console.log(`[${requestId}] Falling back to traditional analysis`);
+          
+          // Generate the traditional recommendations (existing code)
+          let recommendations = "# Weekly Cryptocurrency Analysis and Recommendations\n\n";
+          recommendations += "## Summary\n\n";
+          recommendations += "**Note:** AI-powered analysis failed. Showing basic analysis instead.\n\n";
+          
+          if (cryptoAnalyses.length > 0) {
+            // Top opportunities
+            const topOpportunities = cryptoAnalyses
+              .filter(crypto => crypto.buyProbability > 0.5)
+              .slice(0, 3);
+            
+            if (topOpportunities.length > 0) {
+              recommendations += "### Top Opportunities\n";
+              topOpportunities.forEach((crypto, index) => {
+                recommendations += `${index + 1}. **${crypto.symbol}** - Buy Probability: ${(crypto.buyProbability * 100).toFixed(1)}%\n`;
+                recommendations += `   ${crypto.recommendation}\n\n`;
+              });
+            } else {
+              recommendations += "No strong buy opportunities identified in your current portfolio.\n\n";
+            }
+            
+            // Market overview
+            recommendations += "### Market Overview\n";
+            const positiveCount = cryptoAnalyses.filter(c => (c.percentChange || 0) > 0).length;
+            const totalCount = cryptoAnalyses.length;
+            const marketSentiment = positiveCount > totalCount * 0.7 
+              ? "Bullish" 
+              : positiveCount > totalCount * 0.4 
+                ? "Neutral" 
+                : "Bearish";
+            
+            recommendations += `Overall market sentiment: **${marketSentiment}** (${positiveCount} of ${totalCount} coins showing positive movement)\n\n`;
+          }
+          
+          return res.status(200).json({ recommendations });
+        }
+      } else {
+        // Traditional analysis (existing code)
+        console.log(`[${requestId}] No {input_data} placeholder found, using traditional analysis`);
+        
+        // Generate the final recommendations
+        let recommendations = "# Weekly Cryptocurrency Analysis and Recommendations\n\n";
+        
+        // Add summary section
+        recommendations += "## Summary\n\n";
+        
+        if (cryptoAnalyses.length > 0) {
+          // Top opportunities
+          const topOpportunities = cryptoAnalyses
+            .filter(crypto => crypto.buyProbability > 0.5)
+            .slice(0, 3);
+          
+          if (topOpportunities.length > 0) {
+            recommendations += "### Top Opportunities\n";
+            topOpportunities.forEach((crypto, index) => {
+              recommendations += `${index + 1}. **${crypto.symbol}** - Buy Probability: ${(crypto.buyProbability * 100).toFixed(1)}%\n`;
+              recommendations += `   ${crypto.recommendation}\n\n`;
+            });
+          } else {
+            recommendations += "No strong buy opportunities identified in your current portfolio.\n\n";
+          }
+          
+          // Market overview
+          recommendations += "### Market Overview\n";
+          const positiveCount = cryptoAnalyses.filter(c => (c.percentChange || 0) > 0).length;
+          const totalCount = cryptoAnalyses.length;
+          const marketSentiment = positiveCount > totalCount * 0.7 
+            ? "Bullish" 
+            : positiveCount > totalCount * 0.4 
+              ? "Neutral" 
+              : "Bearish";
+          
+          recommendations += `Overall market sentiment: **${marketSentiment}** (${positiveCount} of ${totalCount} coins showing positive movement)\n\n`;
         }
         
-        // Market overview
-        recommendations += "### Market Overview\n";
-        const positiveCount = cryptoAnalyses.filter(c => (c.percentChange || 0) > 0).length;
-        const totalCount = cryptoAnalyses.length;
-        const marketSentiment = positiveCount > totalCount * 0.7 
-          ? "Bullish" 
-          : positiveCount > totalCount * 0.4 
-            ? "Neutral" 
-            : "Bearish";
+        // Add detailed analysis for each crypto
+        recommendations += "## Detailed Analysis\n\n";
         
-        recommendations += `Overall market sentiment: **${marketSentiment}** (${positiveCount} of ${totalCount} coins showing positive movement)\n\n`;
+        cryptoAnalyses.forEach(crypto => {
+          recommendations += `### ${crypto.symbol}\n\n`;
+          
+          // Current stats
+          recommendations += "**Current Stats:**\n";
+          recommendations += `- Current Price: ${crypto.currentPrice ? `$${crypto.currentPrice}` : 'N/A'}\n`;
+          recommendations += `- 24h Change: ${crypto.percentChange ? `${crypto.percentChange}` : 'N/A'}\n`;
+          recommendations += `- Holdings: ${crypto.shares} shares\n\n`;
+          
+          // Analysis results
+          if (crypto.analysis) {
+            recommendations += "**Technical Analysis:**\n";
+            recommendations += `- Average Upward Movement: ${crypto.analysis.avgDrawup.toFixed(2)}%\n`;
+            recommendations += `- Average Downward Movement: ${crypto.analysis.avgDrawdown.toFixed(2)}%\n`;
+            recommendations += `- Volatility: ${crypto.analysis.stdDevDrawup ? crypto.analysis.stdDevDrawup.toFixed(2) : 'N/A'}%\n\n`;
+          }
+          
+          // Recommendation
+          recommendations += "**Recommendation:**\n";
+          recommendations += `${crypto.recommendation}\n`;
+          recommendations += `Buy Probability: ${(crypto.buyProbability * 100).toFixed(1)}%\n\n`;
+        });
+        
+        // Add disclaimer
+        recommendations += "---\n\n";
+        recommendations += "**Disclaimer:** These recommendations are generated by an AI assistant based on historical price data and technical analysis. They should not be considered financial advice. Always do your own research before making investment decisions.\n";
+        
+        console.log(`[${requestId}] Successfully generated recommendations for ${cryptoAnalyses.length} cryptocurrencies`);
+        return res.status(200).json({ recommendations });
       }
-      
-      // Add detailed analysis for each crypto
-      recommendations += "## Detailed Analysis\n\n";
-      
-      cryptoAnalyses.forEach(crypto => {
-        recommendations += `### ${crypto.symbol}\n\n`;
-        
-        // Current stats
-        recommendations += "**Current Stats:**\n";
-        recommendations += `- Current Price: ${crypto.currentPrice ? `$${crypto.currentPrice}` : 'N/A'}\n`;
-        recommendations += `- 24h Change: ${crypto.percentChange ? `${crypto.percentChange}` : 'N/A'}\n`;
-        recommendations += `- Holdings: ${crypto.shares} shares\n\n`;
-        
-        // Analysis results
-        if (crypto.analysis) {
-          recommendations += "**Technical Analysis:**\n";
-          recommendations += `- Average Upward Movement: ${crypto.analysis.avgDrawup.toFixed(2)}%\n`;
-          recommendations += `- Average Downward Movement: ${crypto.analysis.avgDrawdown.toFixed(2)}%\n`;
-          recommendations += `- Volatility: ${crypto.analysis.stdDevDrawup ? crypto.analysis.stdDevDrawup.toFixed(2) : 'N/A'}%\n\n`;
-        }
-        
-        // Recommendation
-        recommendations += "**Recommendation:**\n";
-        recommendations += `${crypto.recommendation}\n`;
-        recommendations += `Buy Probability: ${(crypto.buyProbability * 100).toFixed(1)}%\n\n`;
-      });
-      
-      // Add disclaimer
-      recommendations += "---\n\n";
-      recommendations += "**Disclaimer:** These recommendations are generated by an AI assistant based on historical price data and technical analysis. They should not be considered financial advice. Always do your own research before making investment decisions.\n";
-      
-      console.log(`[${requestId}] Successfully generated recommendations for ${cryptoAnalyses.length} cryptocurrencies`);
-      return res.status(200).json({ recommendations });
       
     } catch (aiError) {
       console.error(`[${requestId}] Error generating recommendations:`, aiError);

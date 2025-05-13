@@ -28,11 +28,15 @@ const AIAgent: React.FC = () => {
   
   // Trading tab state
   const [instructions, setInstructions] = useState<string>(
-    "Identify potential buy opportunities based on recent price surges and volume.\n" +
-    "Find coins that have shown a consistent upward trend over the past week.\n" +
-    "Highlight coins with significant percentage changes in the last 24 hours.\n" +
-    "Identify coins that have a high likelihood of price increase in the next week.\n" +
-    "Give percentage estimates of the likelihood of the above items."
+    "You are a cryptocurrency trading advisor. Analyze the following data and provide recommendations:\n\n" +
+    "1. Identify potential buy opportunities based on recent price surges and volume.\n" +
+    "2. Find coins that have shown a consistent upward trend over the past week.\n" +
+    "3. Highlight coins with significant percentage changes in the last 24 hours.\n" +
+    "4. Identify coins that have a high likelihood of price increase in the next week.\n" +
+    "5. Give percentage estimates of the likelihood of the above items.\n" +
+    "6. Consider the account balance and trading constraints when making recommendations.\n\n" +
+    "Use this data for your analysis: {input_data}\n\n" +
+    "Format your response in Markdown with clear sections and bullet points."
   );
   const [result, setResult] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
@@ -251,7 +255,7 @@ const AIAgent: React.FC = () => {
         shares: crypto.shares,
       }));
 
-      setAnalysisStage('Fetching historical data and analyzing trends...');
+      setAnalysisStage('Fetching historical data and AI Agent data...');
       
       // Call the AI agent API
       const response = await fetch('/api/ai/trading-recommendations', {
@@ -270,7 +274,7 @@ const AIAgent: React.FC = () => {
         throw new Error(errorData.error || 'Failed to generate recommendations');
       }
 
-      setAnalysisStage('Generating AI recommendations...');
+      setAnalysisStage('Generating AI recommendations with Gemini API...');
       
       const data = await response.json();
       setResult(data.recommendations);
@@ -353,6 +357,7 @@ const AIAgent: React.FC = () => {
               />
               <p className="text-sm text-muted-foreground">
                 Be specific about what you're looking for. The AI will analyze your portfolio data and provide recommendations.
+                Use the <code className="bg-muted px-1 py-0.5 rounded">{input_data}</code> placeholder to include your portfolio and AI agent data in your instructions.
               </p>
             </div>
             

@@ -1,11 +1,19 @@
-model AIAgentSettings {
-  id                String   @id @default(uuid())
-  userId            String   @unique @db.Uuid
-  maxTradeValue     Float    @default(100.00)
-  maxDailyTrades    Int      @default(5)
-  minRiskReward     Float    @default(2.0)
-  blacklistedAssets Json     @default("[]")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// Add the new TradingInstructions model
+model TradingInstructions {
+  id           String   @id @default(uuid())
+  userId       String   @unique @db.Uuid
+  instructions String   @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

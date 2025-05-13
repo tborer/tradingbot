@@ -26,7 +26,7 @@ const AIAgent: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   
-  // Weekly Picks tab state
+  // Trading tab state
   const [instructions, setInstructions] = useState<string>(
     "Identify potential buy opportunities based on recent price surges and volume.\n" +
     "Find coins that have shown a consistent upward trend over the past week.\n" +
@@ -36,6 +36,7 @@ const AIAgent: React.FC = () => {
   );
   const [result, setResult] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
+  const [savingInstructions, setSavingInstructions] = useState<boolean>(false);
   const [hasGoogleApiKey, setHasGoogleApiKey] = useState<boolean>(false);
   const [analysisStage, setAnalysisStage] = useState<string>('');
   
@@ -68,6 +69,19 @@ const AIAgent: React.FC = () => {
         setMaxTradeValue(aiSettingsData.maxTradeValue.toString());
         setMaxDailyTrades(aiSettingsData.maxDailyTrades.toString());
         setMinRiskReward(aiSettingsData.minRiskReward.toString());
+        
+        // Load trading instructions if available
+        try {
+          const instructionsResponse = await fetch('/api/ai-agent/trading-instructions');
+          if (instructionsResponse.ok) {
+            const instructionsData = await instructionsResponse.json();
+            if (instructionsData.instructions) {
+              setInstructions(instructionsData.instructions);
+            }
+          }
+        } catch (instructionsError) {
+          console.error('Error loading trading instructions:', instructionsError);
+        }
         
         // Load AI Agent data
         await fetchAIAgentData();
@@ -150,6 +164,42 @@ const AIAgent: React.FC = () => {
       });
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  // Save trading instructions
+  const saveInstructions = async () => {
+    if (!user) return;
+    
+    setSavingInstructions(true);
+    try {
+      const response = await fetch('/api/ai-agent/trading-instructions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instructions
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to save trading instructions');
+      }
+      
+      toast({
+        title: 'Success',
+        description: 'Trading instructions saved successfully',
+      });
+    } catch (error) {
+      console.error('Error saving trading instructions:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save trading instructions',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingInstructions(false);
     }
   };
 
@@ -287,7 +337,7 @@ const AIAgent: React.FC = () => {
       <CardContent>
         <Tabs defaultValue="weekly-picks" className="w-full">
           <TabsList className="mb-4">
-            <TabsTrigger value="weekly-picks">Weekly Picks</TabsTrigger>
+            <TabsTrigger value="weekly-picks">Trading</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
             <TabsTrigger value="agent-data">Agent Data</TabsTrigger>
           </TabsList>
@@ -306,11 +356,27 @@ const AIAgent: React.FC = () => {
               </p>
             </div>
             
-            <Button 
-              onClick={handleGenerateRecommendations} 
-              disabled={loading || !instructions.trim()}
-              className="w-full"
-            >
+            <div className="flex space-x-2">
+              <Button 
+                onClick={saveInstructions} 
+                disabled={loading || !instructions.trim() || savingInstructions}
+                variant="outline"
+              >
+                {savingInstructions ? (
+                  <>
+                    <Spinner className="mr-2 h-4 w-4" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Instructions'
+                )}
+              </Button>
+              
+              <Button 
+                onClick={handleGenerateRecommendations} 
+                disabled={loading || !instructions.trim()}
+                className="flex-1"
+              >
               {loading ? (
                 <>
                   <Spinner className="mr-2 h-4 w-4" />

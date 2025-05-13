@@ -347,3 +347,11 @@ model AIAgentSettings {
   updatedAt         DateTime @updatedAt
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+model TradingInstructions {
+  id           String   @id @default(uuid())
+  userId       String   @unique @db.Uuid
+  instructions String   @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

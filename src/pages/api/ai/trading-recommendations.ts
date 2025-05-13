@@ -5,6 +5,7 @@ import { fetchCoinDeskHistoricalData, formatCoinDeskDataForAnalysis, extractPric
 import { calculateDrawdownDrawup, DrawdownDrawupAnalysis } from '@/lib/trendAnalysis';
 import { AIAgentData } from '@/lib/aiAgentUtils';
 import { logAIProcessing } from '@/lib/aiProcessingLogger';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Create a unique request ID for logging
 const generateRequestId = () => {
@@ -72,7 +73,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       try {
         // Make an internal API call to get AI Agent data
-        const aiAgentDataResponse = await fetch(`${process.env.NEXT_PUBLIC_CO_DEV_ENV === 'development' ? 'http://localhost:3000' : ''}/api/ai-agent/data`, {
+        const baseUrl = process.env.NEXT_PUBLIC_CO_DEV_ENV === 'development' ? 'http://localhost:3000' : 'https://' + req.headers.host;
+        const aiAgentDataResponse = await fetch(`${baseUrl}/api/ai-agent/data`, {
           headers: {
             'Authorization': `Bearer ${process.env.CRON_SECRET || 'internal-api-call'}`,
             'X-User-ID': user.id
@@ -292,59 +294,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           console.log(`[${requestId}] Calling Gemini API with user instructions and data`);
           const startTime = Date.now();
           
-          const geminiRequestBody = JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: promptWithData
-                  }
-                ]
-              }
-            ],
-            generationConfig: {
-              temperature: 0.7,
-              topK: 40,
-              topP: 0.95,
-              maxOutputTokens: 8192
-            }
-          });
+          // Initialize the Google Generative AI client
+          const genAI = new GoogleGenerativeAI(settings.googleApiKey);
           
-          const geminiResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-goog-api-key': settings.googleApiKey
-            },
-            body: geminiRequestBody
-          });
+          // For text-only input, use the gemini-2.0-flash model
+          const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+          
+          // Generate content
+          const result = await model.generateContent(promptWithData);
+          const response = await result.response;
+          const responseText = response.text();
           
           const processingTimeMs = Date.now() - startTime;
-          
-          if (!geminiResponse.ok) {
-            const errorData = await geminiResponse.json();
-            const errorMessage = `Gemini API error: ${JSON.stringify(errorData)}`;
-            
-            // Log the error
-            await logAIProcessing({
-              userId: user.id,
-              requestType: 'TRADING_RECOMMENDATION',
-              inputData: inputData,
-              fullPrompt: promptWithData,
-              aiResponse: JSON.stringify(errorData),
-              modelUsed: 'GEMINI',
-              processingTimeMs,
-              status: 'ERROR',
-              errorMessage
-            });
-            
-            throw new Error(errorMessage);
-          }
-          
-          const geminiData = await geminiResponse.json();
-          
-          // Extract the response text
-          const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
           
           if (!responseText) {
             const errorMessage = 'Empty response from Gemini API';
@@ -355,7 +316,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               requestType: 'TRADING_RECOMMENDATION',
               inputData: inputData,
               fullPrompt: promptWithData,
-              aiResponse: JSON.stringify(geminiData),
+              aiResponse: "Empty response",
               modelUsed: 'GEMINI',
               processingTimeMs,
               status: 'ERROR',

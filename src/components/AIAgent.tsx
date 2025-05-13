@@ -257,6 +257,10 @@ const AIAgent: React.FC = () => {
 
       setAnalysisStage('Fetching historical data and AI Agent data...');
       
+      // Fetch AI Agent data first
+      setAnalysisStage('Fetching AI Agent data...');
+      await fetchAIAgentData();
+      
       // Call the AI agent API
       const response = await fetch('/api/ai/trading-recommendations', {
         method: 'POST',

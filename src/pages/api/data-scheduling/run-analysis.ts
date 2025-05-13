@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@/util/supabase/api';
 import prisma from '@/lib/prisma';
-import { logScheduling } from '@/lib/schedulingLogger';
+import { schedulingLogger } from '@/lib/schedulingLogger';
 import { cleanupStaleProcessingStatuses } from '@/lib/dataSchedulingService';
 import { runAnalysisProcess } from '@/lib/analysisUtils';
 
@@ -36,9 +36,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     // Log the start of the analysis process
-    await logScheduling({
+    await schedulingLogger.log({
       processId,
       userId: user.id,
+      level: 'INFO',
+      category: 'SCHEDULING',
       operation: 'ANALYSIS_START',
       message: 'Starting analysis process'
     });

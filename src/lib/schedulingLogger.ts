@@ -3,6 +3,15 @@ import prisma from '@/lib/prisma';
 export type LogLevel = 'INFO' | 'WARNING' | 'ERROR' | 'DEBUG';
 export type LogCategory = 'SCHEDULING' | 'API_CALL' | 'DATA_PROCESSING' | 'ANALYSIS';
 
+/**
+ * Scheduling logger object for consistent logging interface
+ */
+export const schedulingLogger = {
+  log: async (params: LogEntryParams): Promise<void> => {
+    await logSchedulingProcess(params);
+  }
+};
+
 interface LogEntryParams {
   processId: string;
   userId: string;

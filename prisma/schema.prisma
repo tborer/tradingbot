@@ -75,6 +75,24 @@ model SchedulingProcessLog {
   @@index([symbol, operation])
 }
 
+model AIProcessingLog {
+  id                String   @id @default(uuid())
+  userId            String   @db.Uuid
+  timestamp         DateTime @default(now())
+  requestType       String   // TRADING_RECOMMENDATION, etc.
+  inputData         Json     // The input data used in the prompt
+  fullPrompt        String   @db.Text // The complete prompt sent to the AI
+  aiResponse        String   @db.Text // The response received from the AI
+  modelUsed         String   // GEMINI, GPT, etc.
+  processingTimeMs  Int?     // Processing time in milliseconds
+  status            String   // SUCCESS, ERROR
+  errorMessage      String?  // Error message if status is ERROR
+  
+  @@index([userId, timestamp])
+  @@index([requestType])
+  @@index([status])
+}
+
 model TechnicalAnalysisOutput {
   id                String   @id @default(uuid())
   symbol            String

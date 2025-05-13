@@ -357,7 +357,7 @@ const AIAgent: React.FC = () => {
               />
               <p className="text-sm text-muted-foreground">
                 Be specific about what you're looking for. The AI will analyze your portfolio data and provide recommendations.
-                Use the <code className="bg-muted px-1 py-0.5 rounded">{input_data}</code> placeholder to include your portfolio and AI agent data in your instructions.
+                Use the <code className="bg-muted px-1 py-0.5 rounded">{"{"+"input_data"+"}"}</code> placeholder to include your portfolio and AI agent data in your instructions.
               </p>
             </div>
             

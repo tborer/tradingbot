@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { fetchCoinDeskHistoricalData, formatCoinDeskDataForAnalysis, extractPriceDataFromCoinDesk } from '@/lib/coinDesk';
 import { calculateDrawdownDrawup, DrawdownDrawupAnalysis } from '@/lib/trendAnalysis';
 import { AIAgentData } from '@/lib/aiAgentUtils';
+import { logAIProcessing } from '@/lib/aiProcessingLogger';
 
 // Create a unique request ID for logging
 const generateRequestId = () => {
@@ -289,6 +290,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Call the Gemini API
         try {
           console.log(`[${requestId}] Calling Gemini API with user instructions and data`);
+          const startTime = Date.now();
+          
+          const geminiRequestBody = JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: promptWithData
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.7,
+              topK: 40,
+              topP: 0.95,
+              maxOutputTokens: 8192
+            }
+          });
           
           const geminiResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent', {
             method: 'POST',
@@ -296,28 +316,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               'Content-Type': 'application/json',
               'x-goog-api-key': settings.googleApiKey
             },
-            body: JSON.stringify({
-              contents: [
-                {
-                  parts: [
-                    {
-                      text: promptWithData
-                    }
-                  ]
-                }
-              ],
-              generationConfig: {
-                temperature: 0.7,
-                topK: 40,
-                topP: 0.95,
-                maxOutputTokens: 8192
-              }
-            })
+            body: geminiRequestBody
           });
+          
+          const processingTimeMs = Date.now() - startTime;
           
           if (!geminiResponse.ok) {
             const errorData = await geminiResponse.json();
-            throw new Error(`Gemini API error: ${JSON.stringify(errorData)}`);
+            const errorMessage = `Gemini API error: ${JSON.stringify(errorData)}`;
+            
+            // Log the error
+            await logAIProcessing({
+              userId: user.id,
+              requestType: 'TRADING_RECOMMENDATION',
+              inputData: inputData,
+              fullPrompt: promptWithData,
+              aiResponse: JSON.stringify(errorData),
+              modelUsed: 'GEMINI',
+              processingTimeMs,
+              status: 'ERROR',
+              errorMessage
+            });
+            
+            throw new Error(errorMessage);
           }
           
           const geminiData = await geminiResponse.json();
@@ -326,8 +347,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
           
           if (!responseText) {
-            throw new Error('Empty response from Gemini API');
+            const errorMessage = 'Empty response from Gemini API';
+            
+            // Log the empty response error
+            await logAIProcessing({
+              userId: user.id,
+              requestType: 'TRADING_RECOMMENDATION',
+              inputData: inputData,
+              fullPrompt: promptWithData,
+              aiResponse: JSON.stringify(geminiData),
+              modelUsed: 'GEMINI',
+              processingTimeMs,
+              status: 'ERROR',
+              errorMessage
+            });
+            
+            throw new Error(errorMessage);
           }
+          
+          // Log successful AI processing
+          await logAIProcessing({
+            userId: user.id,
+            requestType: 'TRADING_RECOMMENDATION',
+            inputData: inputData,
+            fullPrompt: promptWithData,
+            aiResponse: responseText,
+            modelUsed: 'GEMINI',
+            processingTimeMs,
+            status: 'SUCCESS'
+          });
           
           console.log(`[${requestId}] Successfully received response from Gemini API`);
           return res.status(200).json({ recommendations: responseText });
@@ -377,6 +425,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       } else {
         // Traditional analysis (existing code)
         console.log(`[${requestId}] No {input_data} placeholder found, using traditional analysis`);
+        const startTime = Date.now();
         
         // Generate the final recommendations
         let recommendations = "# Weekly Cryptocurrency Analysis and Recommendations\n\n";
@@ -442,6 +491,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Add disclaimer
         recommendations += "---\n\n";
         recommendations += "**Disclaimer:** These recommendations are generated by an AI assistant based on historical price data and technical analysis. They should not be considered financial advice. Always do your own research before making investment decisions.\n";
+        
+        // Log the traditional analysis
+        const processingTimeMs = Date.now() - startTime;
+        
+        // Create a simplified input data object for logging
+        const inputData = {
+          portfolio_analysis: {
+            cryptos: cryptoAnalyses.map(crypto => ({
+              symbol: crypto.symbol,
+              current_price: crypto.currentPrice,
+              percent_change: crypto.percentChange,
+              shares: crypto.shares,
+              buy_probability: crypto.buyProbability
+            })),
+            market_sentiment: {
+              positive_count: cryptoAnalyses.filter(c => (c.percentChange || 0) > 0).length,
+              total_count: cryptoAnalyses.length
+            }
+          }
+        };
+        
+        // Log the traditional analysis processing
+        await logAIProcessing({
+          userId: user.id,
+          requestType: 'TRADING_RECOMMENDATION_TRADITIONAL',
+          inputData: inputData,
+          fullPrompt: 'Traditional analysis without AI prompt',
+          aiResponse: recommendations,
+          modelUsed: 'INTERNAL',
+          processingTimeMs,
+          status: 'SUCCESS'
+        });
         
         console.log(`[${requestId}] Successfully generated recommendations for ${cryptoAnalyses.length} cryptocurrencies`);
         return res.status(200).json({ recommendations });

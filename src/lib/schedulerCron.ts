@@ -33,6 +33,8 @@ export function shouldRunScheduledTask(configuredTime: string, timeZone: string)
       .split(':')
       .map(part => parseInt(part.trim(), 10));
     
+    console.log(`Checking scheduled task: Configured time ${configHours}:${configMinutes} vs Current time ${currentHours}:${currentMinutes} (${timeZone})`);
+    
     // Check if the current time matches the configured time
     return currentHours === configHours && currentMinutes === configMinutes;
   } catch (error) {
@@ -52,7 +54,8 @@ export async function runScheduledTasks(): Promise<void> {
         userId: true,
         dailyRunTime: true,
         timeZone: true,
-        cleanupEnabled: true
+        cleanupEnabled: true,
+        runTechnicalAnalysis: true
       }
     });
     

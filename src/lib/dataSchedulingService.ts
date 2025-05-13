@@ -1222,19 +1222,26 @@ export { processCryptoBatch };
 /**
  * Cleans up stale processing statuses that have been "RUNNING" for too long
  */
-export async function cleanupStaleProcessingStatuses(userId: string): Promise<void> {
+export async function cleanupStaleProcessingStatuses(userId?: string): Promise<void> {
   try {
     // Find all statuses that have been "RUNNING" for more than 30 minutes
     const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
     
+    // Build the where clause based on whether userId is provided
+    const whereClause: any = {
+      status: 'RUNNING',
+      updatedAt: {
+        lt: thirtyMinutesAgo
+      }
+    };
+    
+    // Add userId filter if provided
+    if (userId) {
+      whereClause.userId = userId;
+    }
+    
     const staleStatuses = await prisma.processingStatus.updateMany({
-      where: {
-        userId,
-        status: 'RUNNING',
-        updatedAt: {
-          lt: thirtyMinutesAgo
-        }
-      },
+      where: whereClause,
       data: {
         status: 'FAILED',
         error: 'Process timed out or was interrupted',

@@ -1,8 +1,19 @@
 {
   "crons": [
     {
-      "path": "/api/data-scheduling/cron",
+      "path": "/api/data-scheduling/cron-trigger",
       "schedule": "* * * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/data-scheduling/cron-trigger",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
     }
   ]
 }

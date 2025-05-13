@@ -377,15 +377,16 @@ const AIAgent: React.FC = () => {
                 disabled={loading || !instructions.trim()}
                 className="flex-1"
               >
-              {loading ? (
-                <>
-                  <Spinner className="mr-2 h-4 w-4" />
-                  Generating...
-                </>
-              ) : (
-                'Generate Recommendations'
-              )}
-            </Button>
+                {loading ? (
+                  <>
+                    <Spinner className="mr-2 h-4 w-4" />
+                    Generating...
+                  </>
+                ) : (
+                  'Generate Recommendations'
+                )}
+              </Button>
+            </div>
             
             {loading && analysisStage && (
               <div className="mt-2 text-sm text-muted-foreground flex items-center">

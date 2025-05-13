@@ -1216,8 +1216,8 @@ export async function cleanupOldData(userId: string): Promise<{
   }
 }
 
-// Export the processCryptoBatch function for use in the API route
-export { processCryptoBatch };
+// Export the processCryptoBatch and runTechnicalAnalysis functions for use in other modules
+export { processCryptoBatch, runTechnicalAnalysis };
 
 /**
  * Cleans up stale processing statuses that have been "RUNNING" for too long

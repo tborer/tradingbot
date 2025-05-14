@@ -1,4 +1,5 @@
 import prisma from '@/lib/prisma';
+import { schedulingLogger } from '@/lib/schedulingLogger';
 
 /**
  * Calculate the strength of patterns based on confidence and completion
@@ -355,7 +356,9 @@ export async function getSupportResistanceLevels(
  */
 export async function generatePatternEncodings(
   symbol: string,
-  date: Date
+  date: Date,
+  processId?: string,
+  userId?: string
 ): Promise<{
   bullishPatternStrength: number;
   bearishPatternStrength: number;
@@ -367,18 +370,106 @@ export async function generatePatternEncodings(
   try {
     console.log(`Generating pattern encodings for ${symbol} at ${date.toISOString()}`);
     
-    // Get pattern data
-    const patternData = await getBreakoutPatterns(symbol, date);
-    console.log(`Retrieved ${patternData.length} breakout patterns`);
+    if (processId && userId) {
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'INFO',
+        category: 'ANALYSIS',
+        operation: 'PATTERN_ENCODINGS_START',
+        symbol,
+        message: `Starting pattern encodings generation for ${symbol}`
+      });
+    }
     
-    const trendData = await getTrendLines(symbol, date);
-    console.log(`Retrieved trend data with direction: ${trendData.direction}`);
+    // Get pattern data with error handling
+    let patternData = [];
+    try {
+      patternData = await getBreakoutPatterns(symbol, date);
+      console.log(`Retrieved ${patternData.length} breakout patterns`);
+    } catch (error) {
+      console.error(`Error getting breakout patterns for ${symbol}:`, error);
+      if (processId && userId) {
+        await schedulingLogger.log({
+          processId,
+          userId,
+          level: 'ERROR',
+          category: 'ANALYSIS',
+          operation: 'PATTERN_DATA_ERROR',
+          symbol,
+          message: `Error getting breakout patterns: ${error instanceof Error ? error.message : 'Unknown error'}`
+        });
+      }
+      patternData = [];
+    }
     
-    const fibData = await getFibonacciLevels(symbol, date);
-    console.log(`Retrieved Fibonacci data: ${typeof fibData === 'string' ? fibData.substring(0, 50) : JSON.stringify(fibData).substring(0, 50)}...`);
+    // Get trend data with error handling
+    let trendData;
+    try {
+      trendData = await getTrendLines(symbol, date);
+      console.log(`Retrieved trend data with direction: ${trendData.direction}`);
+    } catch (error) {
+      console.error(`Error getting trend lines for ${symbol}:`, error);
+      if (processId && userId) {
+        await schedulingLogger.log({
+          processId,
+          userId,
+          level: 'ERROR',
+          category: 'ANALYSIS',
+          operation: 'TREND_DATA_ERROR',
+          symbol,
+          message: `Error getting trend lines: ${error instanceof Error ? error.message : 'Unknown error'}`
+        });
+      }
+      trendData = {
+        strength: 0,
+        direction: 'neutral',
+        duration_days: 0,
+        average_deviation: 0,
+      };
+    }
     
-    const srLevels = await getSupportResistanceLevels(symbol, date);
-    console.log(`Retrieved ${srLevels.length} support/resistance levels`);
+    // Get Fibonacci data with error handling
+    let fibData = [];
+    try {
+      fibData = await getFibonacciLevels(symbol, date);
+      console.log(`Retrieved Fibonacci data: ${typeof fibData === 'string' ? fibData.substring(0, 50) : JSON.stringify(fibData).substring(0, 50)}...`);
+    } catch (error) {
+      console.error(`Error getting Fibonacci levels for ${symbol}:`, error);
+      if (processId && userId) {
+        await schedulingLogger.log({
+          processId,
+          userId,
+          level: 'ERROR',
+          category: 'ANALYSIS',
+          operation: 'FIBONACCI_DATA_ERROR',
+          symbol,
+          message: `Error getting Fibonacci levels: ${error instanceof Error ? error.message : 'Unknown error'}`
+        });
+      }
+      fibData = [];
+    }
+    
+    // Get support/resistance levels with error handling
+    let srLevels = [];
+    try {
+      srLevels = await getSupportResistanceLevels(symbol, date);
+      console.log(`Retrieved ${srLevels.length} support/resistance levels`);
+    } catch (error) {
+      console.error(`Error getting support/resistance levels for ${symbol}:`, error);
+      if (processId && userId) {
+        await schedulingLogger.log({
+          processId,
+          userId,
+          level: 'ERROR',
+          category: 'ANALYSIS',
+          operation: 'SR_LEVELS_ERROR',
+          symbol,
+          message: `Error getting support/resistance levels: ${error instanceof Error ? error.message : 'Unknown error'}`
+        });
+      }
+      srLevels = [];
+    }
     
     // Calculate bullish and bearish pattern strengths
     const bullishPatterns = patternData.filter(p => p.direction === 'bullish');

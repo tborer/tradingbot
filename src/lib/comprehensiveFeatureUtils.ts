@@ -13,7 +13,9 @@ import { generatePatternEncodings } from '@/lib/patternEncodingsUtils';
 export async function generateComprehensiveFeatureSet(
   symbol: string,
   timeframe: string = 'hourly',
-  date: Date = new Date()
+  date: Date = new Date(),
+  processId?: string,
+  userId?: string
 ): Promise<any> {
   try {
     console.log(`Generating comprehensive feature set for ${symbol} (${timeframe}) at ${date.toISOString()}`);
@@ -162,7 +164,7 @@ export async function generateComprehensiveFeatureSet(
     let patternEncodings;
     try {
       console.log(`Generating pattern encodings`);
-      patternEncodings = await generatePatternEncodings(symbol, date);
+      patternEncodings = await generatePatternEncodings(symbol, date, processId, userId);
       console.log(`Successfully generated pattern encodings`);
     } catch (error) {
       console.error(`Error generating pattern encodings:`, error);

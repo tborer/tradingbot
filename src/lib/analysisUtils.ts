@@ -277,15 +277,34 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
     try {
       for (const crypto of cryptos) {
         try {
+          console.log(`Generating comprehensive features for ${crypto.symbol}`);
+          
           // Check if technical analysis data exists for this symbol
-          const technicalAnalysis = await prisma.technicalAnalysisOutput.findFirst({
-            where: {
-              symbol: crypto.symbol
-            },
-            orderBy: {
-              timestamp: 'desc'
-            }
-          });
+          let technicalAnalysis;
+          try {
+            technicalAnalysis = await prisma.technicalAnalysisOutput.findFirst({
+              where: {
+                symbol: crypto.symbol
+              },
+              orderBy: {
+                timestamp: 'desc'
+              }
+            });
+            
+            console.log(`Technical analysis data found for ${crypto.symbol}: ${!!technicalAnalysis}`);
+          } catch (dbError) {
+            console.error(`Database error when fetching technical analysis for ${crypto.symbol}:`, dbError);
+            await schedulingLogger.log({
+              processId,
+              userId,
+              level: 'ERROR',
+              category: 'ANALYSIS',
+              operation: 'DB_ERROR',
+              symbol: crypto.symbol,
+              message: `Database error when fetching technical analysis: ${dbError instanceof Error ? dbError.message : 'Unknown error'}`
+            });
+            continue;
+          }
 
           if (!technicalAnalysis) {
             await schedulingLogger.log({
@@ -300,29 +319,43 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
             continue;
           }
 
-          await generateComprehensiveFeatureSet(crypto.symbol);
-          
-          // Update processed items
-          processedItems++;
-          await prisma.processingStatus.update({
-            where: {
-              processId
-            },
-            data: {
-              processedItems
-            }
-          });
-          
-          await schedulingLogger.log({
-            processId,
-            userId,
-            level: 'INFO',
-            category: 'ANALYSIS',
-            operation: 'FEATURE_GENERATION_PROGRESS',
-            symbol: crypto.symbol,
-            message: `Generated comprehensive features for ${crypto.symbol}`
-          });
+          try {
+            await generateComprehensiveFeatureSet(crypto.symbol, 'hourly', new Date(), processId, userId);
+            
+            // Update processed items
+            processedItems++;
+            await prisma.processingStatus.update({
+              where: {
+                processId
+              },
+              data: {
+                processedItems
+              }
+            });
+            
+            await schedulingLogger.log({
+              processId,
+              userId,
+              level: 'INFO',
+              category: 'ANALYSIS',
+              operation: 'FEATURE_GENERATION_PROGRESS',
+              symbol: crypto.symbol,
+              message: `Generated comprehensive features for ${crypto.symbol}`
+            });
+          } catch (featureError) {
+            console.error(`Error generating comprehensive features for ${crypto.symbol}:`, featureError);
+            await schedulingLogger.log({
+              processId,
+              userId,
+              level: 'ERROR',
+              category: 'ANALYSIS',
+              operation: 'FEATURE_GENERATION_ERROR',
+              symbol: crypto.symbol,
+              message: `Error generating features for ${crypto.symbol}: ${featureError instanceof Error ? featureError.message : 'Unknown error'}`
+            });
+          }
         } catch (cryptoError) {
+          console.error(`Unexpected error processing ${crypto.symbol}:`, cryptoError);
           await schedulingLogger.log({
             processId,
             userId,
@@ -568,7 +601,7 @@ export async function runAnalysisForSymbol(symbol: string, userId: string, proce
   }
 
   // Generate comprehensive features
-  await generateComprehensiveFeatureSet(symbol);
+  await generateComprehensiveFeatureSet(symbol, 'hourly', new Date(), processId, userId);
   
   // Log success
   await schedulingLogger.log({

@@ -1,4 +1,5 @@
 import prisma from '@/lib/prisma';
+import { schedulingLogger } from '@/lib/schedulingLogger';
 import { TechnicalAnalysisOutput } from '@prisma/client';
 
 /**

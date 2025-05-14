@@ -222,24 +222,35 @@ export async function getIndicatorSequence(
   date: Date,
   lookbackDays: number = 10
 ): Promise<TechnicalAnalysisOutput[]> {
-  const startDate = new Date(date);
-  startDate.setDate(startDate.getDate() - lookbackDays);
-  
-  // Fetch technical analysis data for the period
-  const indicators = await prisma.technicalAnalysisOutput.findMany({
-    where: {
-      symbol,
-      timestamp: {
-        gte: startDate,
-        lte: date,
+  try {
+    // Check if prisma is defined
+    if (!prisma) {
+      console.error("Prisma client is undefined in getIndicatorSequence");
+      return [];
+    }
+    
+    const startDate = new Date(date);
+    startDate.setDate(startDate.getDate() - lookbackDays);
+    
+    // Fetch technical analysis data for the period
+    const indicators = await prisma.technicalAnalysisOutput.findMany({
+      where: {
+        symbol,
+        timestamp: {
+          gte: startDate,
+          lte: date,
+        },
       },
-    },
-    orderBy: {
-      timestamp: 'asc',
-    },
-  });
-  
-  return indicators;
+      orderBy: {
+        timestamp: 'asc',
+      },
+    });
+    
+    return indicators;
+  } catch (error) {
+    console.error(`Error in getIndicatorSequence for ${symbol}:`, error);
+    return [];
+  }
 }
 
 /**
@@ -404,18 +415,29 @@ export async function saveTemporalFeatures(
   features: any,
   lookbackDays: number = 10
 ): Promise<any> {
-  return prisma.cryptoTemporalFeatures.create({
-    data: {
-      symbol,
-      lookbackDays,
-      priceVelocity: features.priceVelocity,
-      priceAcceleration: features.priceAcceleration,
-      rsiVelocity: features.rsiVelocity,
-      trendConsistency: features.trendConsistency,
-      patternMaturity: features.patternMaturity,
-      srTestFrequency: features.srTestFrequency,
-      bbSqueezeStrength: features.bbSqueezeStrength,
-      maCrossoverRecent: features.maCrossoverRecent,
-    },
-  });
+  try {
+    // Check if prisma is defined
+    if (!prisma) {
+      console.error("Prisma client is undefined in saveTemporalFeatures");
+      throw new Error("Prisma client is undefined");
+    }
+    
+    return prisma.cryptoTemporalFeatures.create({
+      data: {
+        symbol,
+        lookbackDays,
+        priceVelocity: features.priceVelocity,
+        priceAcceleration: features.priceAcceleration,
+        rsiVelocity: features.rsiVelocity,
+        trendConsistency: features.trendConsistency,
+        patternMaturity: features.patternMaturity,
+        srTestFrequency: features.srTestFrequency,
+        bbSqueezeStrength: features.bbSqueezeStrength,
+        maCrossoverRecent: features.maCrossoverRecent,
+      },
+    });
+  } catch (error) {
+    console.error(`Error in saveTemporalFeatures for ${symbol}:`, error);
+    throw error;
+  }
 }

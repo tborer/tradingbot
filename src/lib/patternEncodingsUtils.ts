@@ -148,43 +148,54 @@ export async function getBreakoutPatterns(
   symbol: string,
   date: Date
 ): Promise<any[]> {
-  const analysis = await prisma.technicalAnalysisOutput.findFirst({
-    where: {
-      symbol,
-      timestamp: {
-        lte: date,
-      },
-      breakoutDetected: true,
-    },
-    orderBy: {
-      timestamp: 'desc',
-    },
-  });
-  
-  if (!analysis || !analysis.breakoutType) {
-    return [];
-  }
-  
   try {
-    // If breakoutType is a string, parse it
-    if (typeof analysis.breakoutType === 'string') {
-      const pattern = {
+    // Check if prisma is defined
+    if (!prisma) {
+      console.error("Prisma client is undefined in getBreakoutPatterns");
+      return [];
+    }
+    
+    const analysis = await prisma.technicalAnalysisOutput.findFirst({
+      where: {
+        symbol,
+        timestamp: {
+          lte: date,
+        },
+        breakoutDetected: true,
+      },
+      orderBy: {
+        timestamp: 'desc',
+      },
+    });
+    
+    if (!analysis || !analysis.breakoutType) {
+      return [];
+    }
+    
+    try {
+      // If breakoutType is a string, parse it
+      if (typeof analysis.breakoutType === 'string') {
+        const pattern = {
+          type: analysis.breakoutType,
+          direction: analysis.recommendation === 'buy' ? 'bullish' : 'bearish',
+          confidence: analysis.confidenceScore || 0.5,
+          completion_percentage: 100, // Assume complete if detected
+        };
+        return [pattern];
+      }
+      
+      return [{
         type: analysis.breakoutType,
         direction: analysis.recommendation === 'buy' ? 'bullish' : 'bearish',
         confidence: analysis.confidenceScore || 0.5,
-        completion_percentage: 100, // Assume complete if detected
-      };
-      return [pattern];
+        completion_percentage: 100,
+      }];
+    } catch (error) {
+      console.error("Error getting breakout patterns:", error);
+      return [];
     }
-    
-    return [{
-      type: analysis.breakoutType,
-      direction: analysis.recommendation === 'buy' ? 'bullish' : 'bearish',
-      confidence: analysis.confidenceScore || 0.5,
-      completion_percentage: 100,
-    }];
   } catch (error) {
-    console.error("Error getting breakout patterns:", error);
+    console.error(`Error in getBreakoutPatterns for ${symbol}:`, error);
     return [];
   }
 }
@@ -196,66 +207,87 @@ export async function getTrendLines(
   symbol: string,
   date: Date
 ): Promise<any> {
-  const analysis = await prisma.technicalAnalysisOutput.findFirst({
-    where: {
-      symbol,
-      timestamp: {
-        lte: date,
-      },
-      rawData: {
-        not: null,
-      },
-    },
-    orderBy: {
-      timestamp: 'desc',
-    },
-  });
-  
-  if (!analysis || !analysis.rawData) {
-    return {
-      strength: 0,
-      direction: 'neutral',
-      duration_days: 0,
-      average_deviation: 0,
-    };
-  }
-  
   try {
-    const rawData = typeof analysis.rawData === 'string' 
-      ? JSON.parse(analysis.rawData) 
-      : analysis.rawData;
-    
-    // Check if rawData has trend information
-    if (rawData.trend) {
+    // Check if prisma is defined
+    if (!prisma) {
+      console.error("Prisma client is undefined in getTrendLines");
       return {
-        strength: rawData.trend.strength || 0,
-        direction: rawData.trend.direction || 'neutral',
-        duration_days: rawData.trend.duration || 0,
-        average_deviation: rawData.trend.deviation || 0,
+        strength: 0,
+        direction: 'neutral',
+        duration_days: 0,
+        average_deviation: 0,
       };
     }
     
-    // If no explicit trend data, infer from EMAs
-    if (analysis.ema12 && analysis.ema26) {
-      const direction = analysis.ema12 > analysis.ema26 ? 'up' : 'down';
-      const strength = Math.abs((analysis.ema12 - analysis.ema26) / analysis.ema26);
+    const analysis = await prisma.technicalAnalysisOutput.findFirst({
+      where: {
+        symbol,
+        timestamp: {
+          lte: date,
+        },
+        rawData: {
+          not: null,
+        },
+      },
+      orderBy: {
+        timestamp: 'desc',
+      },
+    });
+    
+    if (!analysis || !analysis.rawData) {
+      return {
+        strength: 0,
+        direction: 'neutral',
+        duration_days: 0,
+        average_deviation: 0,
+      };
+    }
+    
+    try {
+      const rawData = typeof analysis.rawData === 'string' 
+        ? JSON.parse(analysis.rawData) 
+        : analysis.rawData;
+      
+      // Check if rawData has trend information
+      if (rawData.trend) {
+        return {
+          strength: rawData.trend.strength || 0,
+          direction: rawData.trend.direction || 'neutral',
+          duration_days: rawData.trend.duration || 0,
+          average_deviation: rawData.trend.deviation || 0,
+        };
+      }
+      
+      // If no explicit trend data, infer from EMAs
+      if (analysis.ema12 && analysis.ema26) {
+        const direction = analysis.ema12 > analysis.ema26 ? 'up' : 'down';
+        const strength = Math.abs((analysis.ema12 - analysis.ema26) / analysis.ema26);
+        
+        return {
+          strength,
+          direction,
+          duration_days: 1, // Default
+          average_deviation: 0, // Default
+        };
+      }
       
       return {
-        strength,
-        direction,
-        duration_days: 1, // Default
-        average_deviation: 0, // Default
+        strength: 0,
+        direction: 'neutral',
+        duration_days: 0,
+        average_deviation: 0,
+      };
+    } catch (error) {
+      console.error("Error getting trend lines:", error);
+      return {
+        strength: 0,
+        direction: 'neutral',
+        duration_days: 0,
+        average_deviation: 0,
       };
     }
-    
-    return {
-      strength: 0,
-      direction: 'neutral',
-      duration_days: 0,
-      average_deviation: 0,
-    };
   } catch (error) {
-    console.error("Error getting trend lines:", error);
+    console.error(`Error in getTrendLines for ${symbol}:`, error);
     return {
       strength: 0,
       direction: 'neutral',
@@ -272,31 +304,42 @@ export async function getFibonacciLevels(
   symbol: string,
   date: Date
 ): Promise<any> {
-  const analysis = await prisma.technicalAnalysisOutput.findFirst({
-    where: {
-      symbol,
-      timestamp: {
-        lte: date,
-      },
-      fibonacciLevels: {
-        not: null,
-      },
-    },
-    orderBy: {
-      timestamp: 'desc',
-    },
-  });
-  
-  if (!analysis || !analysis.fibonacciLevels) {
-    return [];
-  }
-  
   try {
-    return typeof analysis.fibonacciLevels === 'string'
-      ? JSON.parse(analysis.fibonacciLevels)
-      : analysis.fibonacciLevels;
+    // Check if prisma is defined
+    if (!prisma) {
+      console.error("Prisma client is undefined in getFibonacciLevels");
+      return [];
+    }
+    
+    const analysis = await prisma.technicalAnalysisOutput.findFirst({
+      where: {
+        symbol,
+        timestamp: {
+          lte: date,
+        },
+        fibonacciLevels: {
+          not: null,
+        },
+      },
+      orderBy: {
+        timestamp: 'desc',
+      },
+    });
+    
+    if (!analysis || !analysis.fibonacciLevels) {
+      return [];
+    }
+    
+    try {
+      return typeof analysis.fibonacciLevels === 'string'
+        ? JSON.parse(analysis.fibonacciLevels)
+        : analysis.fibonacciLevels;
+    } catch (error) {
+      console.error("Error getting Fibonacci levels:", error);
+      return [];
+    }
   } catch (error) {
-    console.error("Error getting Fibonacci levels:", error);
+    console.error(`Error in getFibonacciLevels for ${symbol}:`, error);
     return [];
   }
 }
@@ -308,47 +351,58 @@ export async function getSupportResistanceLevels(
   symbol: string,
   date: Date
 ): Promise<any> {
-  const analysis = await prisma.technicalAnalysisOutput.findFirst({
-    where: {
-      symbol,
-      timestamp: {
-        lte: date,
+  try {
+    // Check if prisma is defined
+    if (!prisma) {
+      console.error("Prisma client is undefined in getSupportResistanceLevels");
+      return [];
+    }
+    
+    const analysis = await prisma.technicalAnalysisOutput.findFirst({
+      where: {
+        symbol,
+        timestamp: {
+          lte: date,
+        },
+        OR: [
+          { supportLevel: { not: null } },
+          { resistanceLevel: { not: null } },
+        ],
       },
-      OR: [
-        { supportLevel: { not: null } },
-        { resistanceLevel: { not: null } },
-      ],
-    },
-    orderBy: {
-      timestamp: 'desc',
-    },
-  });
-  
-  if (!analysis) {
+      orderBy: {
+        timestamp: 'desc',
+      },
+    });
+    
+    if (!analysis) {
+      return [];
+    }
+    
+    const levels = [];
+    
+    if (analysis.supportLevel) {
+      levels.push({
+        type: 'support',
+        price: analysis.supportLevel,
+        strength: 1,
+        touches: 1,
+      });
+    }
+    
+    if (analysis.resistanceLevel) {
+      levels.push({
+        type: 'resistance',
+        price: analysis.resistanceLevel,
+        strength: 1,
+        touches: 1,
+      });
+    }
+    
+    return levels;
+  } catch (error) {
+    console.error(`Error in getSupportResistanceLevels for ${symbol}:`, error);
     return [];
   }
-  
-  const levels = [];
-  
-  if (analysis.supportLevel) {
-    levels.push({
-      type: 'support',
-      price: analysis.supportLevel,
-      strength: 1,
-      touches: 1,
-    });
-  }
-  
-  if (analysis.resistanceLevel) {
-    levels.push({
-      type: 'resistance',
-      price: analysis.resistanceLevel,
-      strength: 1,
-      touches: 1,
-    });
-  }
-  
-  return levels;
 }
 
 /**
@@ -542,15 +596,26 @@ export async function savePatternEncodings(
   symbol: string,
   encodings: any
 ): Promise<any> {
-  return prisma.cryptoTechnicalPatternEncodings.create({
-    data: {
-      symbol,
-      bullishPatternStrength: encodings.bullishPatternStrength,
-      bearishPatternStrength: encodings.bearishPatternStrength,
-      patternCompletion: encodings.patternCompletion,
-      trendEncoding: encodings.trendEncoding,
-      fibExtensionTargets: encodings.fibExtensionTargets,
-      srStrength: encodings.srStrength,
-    },
-  });
+  try {
+    // Check if prisma is defined
+    if (!prisma) {
+      console.error("Prisma client is undefined in savePatternEncodings");
+      throw new Error("Prisma client is undefined");
+    }
+    
+    return prisma.cryptoTechnicalPatternEncodings.create({
+      data: {
+        symbol,
+        bullishPatternStrength: encodings.bullishPatternStrength,
+        bearishPatternStrength: encodings.bearishPatternStrength,
+        patternCompletion: encodings.patternCompletion,
+        trendEncoding: encodings.trendEncoding,
+        fibExtensionTargets: encodings.fibExtensionTargets,
+        srStrength: encodings.srStrength,
+      },
+    });
+  } catch (error) {
+    console.error(`Error saving pattern encodings for ${symbol}:`, error);
+    throw error;
+  }
 }

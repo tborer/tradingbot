@@ -20,6 +20,12 @@ export async function generateComprehensiveFeatureSet(
   try {
     console.log(`Generating comprehensive feature set for ${symbol} (${timeframe}) at ${date.toISOString()}`);
     
+    // Check if prisma is defined
+    if (!prisma) {
+      console.error("Prisma client is undefined in generateComprehensiveFeatureSet");
+      throw new Error("Prisma client is undefined");
+    }
+    
     // Get the most recent technical analysis data
     const technicalAnalysis = await prisma.technicalAnalysisOutput.findFirst({
       where: {
@@ -495,13 +501,24 @@ export async function saveComprehensiveFeatureSet(
   symbol: string,
   featureSet: any
 ): Promise<any> {
-  // Create a record in a new table to store the comprehensive feature set
-  return prisma.cryptoComprehensiveFeatures.create({
-    data: {
-      symbol,
-      timestamp: new Date(),
-      featureSet: featureSet as any,
-      modelReadyFeatures: prepareFeatureVectorForModel(featureSet) as any,
-    },
-  });
+  try {
+    // Check if prisma is defined
+    if (!prisma) {
+      console.error("Prisma client is undefined in saveComprehensiveFeatureSet");
+      throw new Error("Prisma client is undefined");
+    }
+    
+    // Create a record in a new table to store the comprehensive feature set
+    return prisma.cryptoComprehensiveFeatures.create({
+      data: {
+        symbol,
+        timestamp: new Date(),
+        featureSet: featureSet as any,
+        modelReadyFeatures: prepareFeatureVectorForModel(featureSet) as any,
+      },
+    });
+  } catch (error) {
+    console.error(`Error in saveComprehensiveFeatureSet for ${symbol}:`, error);
+    throw error;
+  }
 }

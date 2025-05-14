@@ -30,15 +30,31 @@ export async function runTechnicalAnalysis(userId: string, processId: string): P
   // Process each crypto
   for (const crypto of cryptos) {
     try {
-      // Get the most recent hourly data for this crypto
+      // Get only the current day's hourly data for this crypto
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayTimestamp = BigInt(Math.floor(today.getTime() / 1000));
+      
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'INFO',
+        category: 'ANALYSIS',
+        operation: 'DATA_FETCH',
+        symbol: crypto.symbol,
+        message: `Fetching current day's data for ${crypto.symbol} (since timestamp ${todayTimestamp})`
+      });
+      
       const hourlyData = await prisma.hourlyCryptoHistoricalData.findMany({
         where: {
-          instrument: `${crypto.symbol}-USD`
+          instrument: `${crypto.symbol}-USD`,
+          timestamp: {
+            gte: todayTimestamp
+          }
         },
         orderBy: {
           timestamp: 'desc'
-        },
-        take: 100 // Get enough data for analysis
+        }
       });
 
       if (hourlyData.length === 0) {

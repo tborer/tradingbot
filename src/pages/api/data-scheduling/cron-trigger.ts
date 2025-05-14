@@ -6,11 +6,13 @@ import { runScheduledTasks } from '@/lib/schedulerCron';
  * to check if any scheduled tasks need to be run.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Verify the request is authorized (in production, add proper authentication)
+  // For Vercel cron jobs, we don't need to verify authorization as they're triggered internally
+  // But we'll keep a simple check for when the endpoint is called from elsewhere
   const authHeader = req.headers.authorization;
+  const isVercelCron = req.headers['x-vercel-cron'] === 'true';
   
-  // Simple check for demo purposes - in production use a proper secret
-  if (!authHeader || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Skip auth check if it's a Vercel cron job
+  if (!isVercelCron && (!authHeader || authHeader !== `Bearer ${process.env.CRON_SECRET}`)) {
     console.log('Unauthorized cron trigger attempt');
     return res.status(401).json({ error: 'Unauthorized' });
   }

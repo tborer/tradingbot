@@ -11,6 +11,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    console.log('Starting analysis process via API endpoint');
+    
     // Get user from session
     const supabase = createClient(req, res);
     const { data: { user } } = await supabase.auth.getUser();
@@ -22,6 +24,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Clean up stale processing statuses
     await cleanupStaleProcessingStatuses();
 
+    // Get user's cryptos to determine total items
+    const userCryptos = await prisma.crypto.findMany({
+      where: {
+        userId: user.id
+      },
+      select: {
+        symbol: true
+      }
+    });
+
+    const totalItems = userCryptos.length * 5; // 5 steps per crypto
+    
     // Create a new processing status entry
     const processId = `analysis-${Date.now()}`;
     await prisma.processingStatus.create({
@@ -30,10 +44,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         userId: user.id,
         status: 'RUNNING',
         type: 'ANALYSIS',
-        totalItems: 100, // Placeholder, will be updated
-        processedItems: 0
+        totalItems: totalItems > 0 ? totalItems : 100, // Use actual count or placeholder
+        processedItems: 0,
+        startedAt: new Date()
       }
     });
+
+    console.log(`Created processing status for analysis process ${processId}`);
 
     // Log the start of the analysis process
     await schedulingLogger.log({
@@ -42,16 +59,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       level: 'INFO',
       category: 'SCHEDULING',
       operation: 'ANALYSIS_START',
-      message: 'Starting analysis process'
+      message: 'Starting analysis process via API endpoint'
     });
 
     // Start the analysis process in the background
     runAnalysisProcess(processId, user.id)
       .then(() => {
-        console.log(`Analysis process ${processId} completed`);
+        console.log(`Analysis process ${processId} completed successfully`);
       })
       .catch(error => {
         console.error(`Error in analysis process ${processId}:`, error);
+        
+        // Update processing status to failed if there's an error
+        prisma.processingStatus.update({
+          where: { processId },
+          data: {
+            status: 'FAILED',
+            error: error instanceof Error ? error.message : String(error),
+            completedAt: new Date()
+          }
+        }).catch(statusError => {
+          console.error(`Error updating processing status for ${processId}:`, statusError);
+        });
       });
 
     // Return accepted status with process ID
@@ -68,4 +97,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 }
-

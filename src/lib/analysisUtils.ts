@@ -10,6 +10,8 @@ import { runTechnicalAnalysis as runTechnicalAnalysisFromData } from '@/lib/data
  * This function is used by the runAnalysisProcess function
  */
 export async function runTechnicalAnalysis(userId: string, processId: string): Promise<void> {
+  console.log(`Starting technical analysis for user ${userId}, process ${processId}`);
+  
   // Get user's cryptos
   const cryptos = await prisma.crypto.findMany({
     where: {
@@ -27,9 +29,15 @@ export async function runTechnicalAnalysis(userId: string, processId: string): P
     message: `Starting technical analysis for ${cryptos.length} cryptocurrencies`
   });
 
+  let successCount = 0;
+  let skipCount = 0;
+  let errorCount = 0;
+
   // Process each crypto
   for (const crypto of cryptos) {
     try {
+      console.log(`Processing technical analysis for ${crypto.symbol}`);
+      
       // Get only the current day's hourly data for this crypto
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -57,7 +65,10 @@ export async function runTechnicalAnalysis(userId: string, processId: string): P
         }
       });
 
+      console.log(`Found ${hourlyData.length} hourly data records for ${crypto.symbol}`);
+
       if (hourlyData.length === 0) {
+        skipCount++;
         await schedulingLogger.log({
           processId,
           userId,
@@ -89,9 +100,11 @@ export async function runTechnicalAnalysis(userId: string, processId: string): P
         category: 'ANALYSIS',
         operation: 'TECHNICAL_ANALYSIS_PROCESSING',
         symbol: crypto.symbol,
-        message: `Processing technical analysis for ${crypto.symbol}`
+        message: `Processing technical analysis for ${crypto.symbol} with ${formattedData.length} data points`
       });
 
+      console.log(`Running technical analysis for ${crypto.symbol} with ${formattedData.length} data points`);
+      
       const result = await runTechnicalAnalysisFromData(
         formattedData,
         crypto.symbol,
@@ -101,6 +114,9 @@ export async function runTechnicalAnalysis(userId: string, processId: string): P
       );
 
       if (result.success) {
+        successCount++;
+        console.log(`Technical analysis completed successfully for ${crypto.symbol}`);
+        
         await schedulingLogger.log({
           processId,
           userId,
@@ -108,9 +124,13 @@ export async function runTechnicalAnalysis(userId: string, processId: string): P
           category: 'ANALYSIS',
           operation: 'TECHNICAL_ANALYSIS_SUCCESS',
           symbol: crypto.symbol,
-          message: `Technical analysis completed successfully for ${crypto.symbol}`
+          message: `Technical analysis completed successfully for ${crypto.symbol}`,
+          details: { steps: result.steps }
         });
       } else {
+        errorCount++;
+        console.error(`Technical analysis failed for ${crypto.symbol}:`, result.message || 'Unknown error');
+        
         await schedulingLogger.log({
           processId,
           userId,
@@ -118,10 +138,14 @@ export async function runTechnicalAnalysis(userId: string, processId: string): P
           category: 'ANALYSIS',
           operation: 'TECHNICAL_ANALYSIS_ERROR',
           symbol: crypto.symbol,
-          message: `Technical analysis failed for ${crypto.symbol}: ${result.message || 'Unknown error'}`
+          message: `Technical analysis failed for ${crypto.symbol}: ${result.message || 'Unknown error'}`,
+          details: { error: result.error }
         });
       }
     } catch (error) {
+      errorCount++;
+      console.error(`Error in technical analysis for ${crypto.symbol}:`, error);
+      
       await schedulingLogger.log({
         processId,
         userId,
@@ -135,13 +159,15 @@ export async function runTechnicalAnalysis(userId: string, processId: string): P
   }
 
   // Log completion
+  console.log(`Technical analysis completed for all cryptocurrencies: ${successCount} successful, ${skipCount} skipped, ${errorCount} errors`);
+  
   await schedulingLogger.log({
     processId,
     userId,
     level: 'INFO',
     category: 'ANALYSIS',
     operation: 'TECHNICAL_ANALYSIS_COMPLETE',
-    message: `Technical analysis completed for all cryptocurrencies`
+    message: `Technical analysis completed for all cryptocurrencies: ${successCount} successful, ${skipCount} skipped, ${errorCount} errors`
   });
 }
 
@@ -462,24 +488,40 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
     }
 
     // Mark process as completed
-    await prisma.processingStatus.update({
-      where: {
-        processId
-      },
-      data: {
-        status: 'COMPLETED',
-        completedAt: new Date()
-      }
-    });
+    try {
+      await prisma.processingStatus.update({
+        where: {
+          processId
+        },
+        data: {
+          status: 'COMPLETED',
+          processedItems: cryptos.length * 5, // Ensure 100% completion
+          completedAt: new Date()
+        }
+      });
 
-    await schedulingLogger.log({
-      processId,
-      userId,
-      level: 'INFO',
-      category: 'ANALYSIS',
-      operation: 'ANALYSIS_COMPLETE',
-      message: 'Analysis process completed successfully'
-    });
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'INFO',
+        category: 'ANALYSIS',
+        operation: 'ANALYSIS_COMPLETE',
+        message: 'Analysis process completed successfully'
+      });
+      
+      console.log(`Analysis process ${processId} marked as COMPLETED`);
+    } catch (statusError) {
+      console.error(`Error updating final status for process ${processId}:`, statusError);
+      
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'ERROR',
+        category: 'ANALYSIS',
+        operation: 'STATUS_UPDATE_ERROR',
+        message: `Error updating final status: ${statusError instanceof Error ? statusError.message : 'Unknown error'}`
+      });
+    }
   } catch (error) {
     console.error(`Error in analysis process ${processId}:`, error);
     

@@ -24,6 +24,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Process ID is required' });
     }
 
+    console.log(`Fetching status for process ${processId}`);
+
     // Get the processing status with retry logic for database connectivity issues
     let processingStatus = null;
     let retryCount = 0;
@@ -40,7 +42,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       } catch (dbError) {
         // Check if it's a database connectivity error
         if (dbError instanceof Error && 
-            dbError.message.includes("Can't reach database server")) {
+            (dbError.message.includes("Can't reach database server") || 
+             dbError.message.includes("Connection") || 
+             dbError.message.includes("timeout"))) {
           retryCount++;
           if (retryCount < maxRetries) {
             // Exponential backoff: 500ms, 1s, 2s
@@ -56,13 +60,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (!processingStatus) {
+      console.log(`Processing status not found for process ${processId}`);
       return res.status(404).json({ error: 'Processing status not found' });
     }
 
     // Check if the processing status belongs to the user
     if (processingStatus.userId !== user.id) {
+      console.log(`User ${user.id} attempted to access process ${processId} belonging to user ${processingStatus.userId}`);
       return res.status(403).json({ error: 'Forbidden' });
     }
+
+    // Calculate progress percentage
+    const progress = processingStatus.totalItems > 0 
+      ? Math.round((processingStatus.processedItems / processingStatus.totalItems) * 100) 
+      : 0;
+
+    console.log(`Status for process ${processId}: ${processingStatus.status}, progress: ${processingStatus.processedItems}/${processingStatus.totalItems} (${progress}%)`);
 
     // Return the processing status
     return res.status(200).json({
@@ -75,9 +88,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         completedAt: processingStatus.completedAt,
         totalItems: processingStatus.totalItems,
         processedItems: processingStatus.processedItems,
-        progress: processingStatus.totalItems > 0 
-          ? Math.round((processingStatus.processedItems / processingStatus.totalItems) * 100) 
-          : 0,
+        progress,
         error: processingStatus.error,
         details: processingStatus.details
       }

@@ -271,7 +271,10 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
     // Clear any existing polling interval
     if (statusPollingInterval) {
       clearInterval(statusPollingInterval);
+      setStatusPollingInterval(null);
     }
+    
+    console.log(`Starting status polling for process ${processId}`);
     
     // Set up polling every 2 seconds for more responsive updates
     const interval = setInterval(async () => {
@@ -292,6 +295,8 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
               const { status, processedItems, totalItems, error } = result.data;
               const progress = totalItems > 0 ? Math.round((processedItems / totalItems) * 100) : 0;
               
+              console.log(`Status update for ${processId}: ${status}, progress: ${processedItems}/${totalItems} (${progress}%)`);
+              
               setProcessingStatus({
                 status,
                 progress,
@@ -300,6 +305,8 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
               
               // If the process is completed or failed, stop polling
               if (status === 'COMPLETED' || status === 'FAILED') {
+                console.log(`Process ${processId} ${status.toLowerCase()}, stopping polling`);
+                
                 if (statusPollingInterval) {
                   clearInterval(statusPollingInterval);
                   setStatusPollingInterval(null);
@@ -308,6 +315,7 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
                 // If completed, update the operation result
                 if (status === 'COMPLETED') {
                   setInProgress(false);
+                  setIsRunningAnalysis(false);
                   toast({
                     title: "Processing Complete",
                     description: "The data processing operation has completed successfully.",
@@ -317,6 +325,7 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
                 // If failed, show an error
                 if (status === 'FAILED') {
                   setInProgress(false);
+                  setIsRunningAnalysis(false);
                   toast({
                     title: "Processing Failed",
                     description: error || "The data processing operation failed.",
@@ -330,10 +339,15 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
             
             // If we get a 404, the process might have been deleted or doesn't exist
             if (response.status === 404) {
+              console.log(`Process ${processId} not found (404), stopping polling`);
+              
               if (statusPollingInterval) {
                 clearInterval(statusPollingInterval);
                 setStatusPollingInterval(null);
               }
+              
+              setInProgress(false);
+              setIsRunningAnalysis(false);
               success = true; // Exit the retry loop
             } 
             // If we get a 5xx error, retry
@@ -366,13 +380,6 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
     }, 2000); // Changed from 3000 to 2000 for more responsive updates
     
     setStatusPollingInterval(interval);
-    
-    // Clean up the interval when the component unmounts
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
   };
   
   // Clean up the polling interval when the component unmounts

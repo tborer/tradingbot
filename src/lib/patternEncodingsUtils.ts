@@ -155,18 +155,24 @@ export async function getBreakoutPatterns(
       return [];
     }
     
-    const analysis = await prisma.technicalAnalysisOutput.findFirst({
-      where: {
-        symbol,
-        timestamp: {
-          lte: date,
+    let analysis;
+    try {
+      analysis = await prisma.technicalAnalysisOutput.findFirst({
+        where: {
+          symbol,
+          timestamp: {
+            lte: date,
+          },
+          breakoutDetected: true,
         },
-        breakoutDetected: true,
-      },
-      orderBy: {
-        timestamp: 'desc',
-      },
-    });
+        orderBy: {
+          timestamp: 'desc',
+        },
+      });
+    } catch (dbError) {
+      console.error(`Database error in getBreakoutPatterns for ${symbol}:`, dbError);
+      return [];
+    }
     
     if (!analysis || !analysis.breakoutType) {
       return [];
@@ -219,20 +225,31 @@ export async function getTrendLines(
       };
     }
     
-    const analysis = await prisma.technicalAnalysisOutput.findFirst({
-      where: {
-        symbol,
-        timestamp: {
-          lte: date,
+    let analysis;
+    try {
+      analysis = await prisma.technicalAnalysisOutput.findFirst({
+        where: {
+          symbol,
+          timestamp: {
+            lte: date,
+          },
+          rawData: {
+            not: null,
+          },
         },
-        rawData: {
-          not: null,
+        orderBy: {
+          timestamp: 'desc',
         },
-      },
-      orderBy: {
-        timestamp: 'desc',
-      },
-    });
+      });
+    } catch (dbError) {
+      console.error(`Database error in getTrendLines for ${symbol}:`, dbError);
+      return {
+        strength: 0,
+        direction: 'neutral',
+        duration_days: 0,
+        average_deviation: 0,
+      };
+    }
     
     if (!analysis || !analysis.rawData) {
       return {
@@ -311,20 +328,26 @@ export async function getFibonacciLevels(
       return [];
     }
     
-    const analysis = await prisma.technicalAnalysisOutput.findFirst({
-      where: {
-        symbol,
-        timestamp: {
-          lte: date,
+    let analysis;
+    try {
+      analysis = await prisma.technicalAnalysisOutput.findFirst({
+        where: {
+          symbol,
+          timestamp: {
+            lte: date,
+          },
+          fibonacciLevels: {
+            not: null,
+          },
         },
-        fibonacciLevels: {
-          not: null,
+        orderBy: {
+          timestamp: 'desc',
         },
-      },
-      orderBy: {
-        timestamp: 'desc',
-      },
-    });
+      });
+    } catch (dbError) {
+      console.error(`Database error in getFibonacciLevels for ${symbol}:`, dbError);
+      return [];
+    }
     
     if (!analysis || !analysis.fibonacciLevels) {
       return [];
@@ -358,21 +381,27 @@ export async function getSupportResistanceLevels(
       return [];
     }
     
-    const analysis = await prisma.technicalAnalysisOutput.findFirst({
-      where: {
-        symbol,
-        timestamp: {
-          lte: date,
+    let analysis;
+    try {
+      analysis = await prisma.technicalAnalysisOutput.findFirst({
+        where: {
+          symbol,
+          timestamp: {
+            lte: date,
+          },
+          OR: [
+            { supportLevel: { not: null } },
+            { resistanceLevel: { not: null } },
+          ],
         },
-        OR: [
-          { supportLevel: { not: null } },
-          { resistanceLevel: { not: null } },
-        ],
-      },
-      orderBy: {
-        timestamp: 'desc',
-      },
-    });
+        orderBy: {
+          timestamp: 'desc',
+        },
+      });
+    } catch (dbError) {
+      console.error(`Database error in getSupportResistanceLevels for ${symbol}:`, dbError);
+      return [];
+    }
     
     if (!analysis) {
       return [];

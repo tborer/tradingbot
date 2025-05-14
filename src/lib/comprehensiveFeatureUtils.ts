@@ -27,20 +27,104 @@ export async function generateComprehensiveFeatureSet(
     }
     
     // Get the most recent technical analysis data
-    const technicalAnalysis = await prisma.technicalAnalysisOutput.findFirst({
-      where: {
-        symbol,
-        timestamp: {
-          lte: date,
+    let technicalAnalysis;
+    try {
+      technicalAnalysis = await prisma.technicalAnalysisOutput.findFirst({
+        where: {
+          symbol,
+          timestamp: {
+            lte: date,
+          },
         },
-      },
-      orderBy: {
-        timestamp: 'desc',
-      },
-      include: {
-        derivedIndicators: true,
-      },
-    });
+        orderBy: {
+          timestamp: 'desc',
+        },
+        include: {
+          derivedIndicators: true,
+        },
+      });
+    } catch (dbError) {
+      console.error(`Database error when fetching technical analysis for ${symbol}:`, dbError);
+      console.error(`Error details:`, dbError instanceof Error ? dbError.message : String(dbError));
+      console.error(`Stack trace:`, dbError instanceof Error ? dbError.stack : 'No stack trace available');
+      
+      if (processId && userId) {
+        try {
+          await schedulingLogger.log({
+            processId,
+            userId,
+            level: 'ERROR',
+            category: 'ANALYSIS',
+            operation: 'DB_ERROR',
+            symbol,
+            message: `Database error when fetching technical analysis: ${dbError instanceof Error ? dbError.message : 'Unknown error'}`
+          });
+        } catch (logError) {
+          console.error(`Error logging database error:`, logError);
+        }
+      }
+      
+      // Return default data structure instead of throwing
+      return {
+        crypto: symbol,
+        timeframe,
+        date,
+        price: 0,
+        original_indicators: {
+          sma20: null,
+          sma50: null,
+          ema12: null,
+          ema26: null,
+          rsi14: null,
+          bollingerUpper: null,
+          bollingerMiddle: null,
+          bollingerLower: null,
+          supportLevel: null,
+          resistanceLevel: null,
+          breakoutDetected: false,
+          breakoutType: 'none',
+          recommendation: 'hold',
+          confidenceScore: 0,
+        },
+        derived_indicators: {
+          trendStrength: null,
+          volatilityRatio: null,
+          rsiWithTrendContext: null,
+          maConvergence: null,
+          nearestSupportDistance: null,
+          nearestResistanceDistance: null,
+          fibConfluenceStrength: null,
+          bbPosition: null,
+        },
+        temporal_features: {
+          priceVelocity: 0,
+          priceAcceleration: 0,
+          rsiVelocity: 0,
+          trendConsistency: 0,
+          patternMaturity: 0,
+          srTestFrequency: 0,
+          bbSqueezeStrength: 0,
+          maCrossoverRecent: false,
+        },
+        pattern_encodings: {
+          bullishPatternStrength: 0,
+          bearishPatternStrength: 0,
+          patternCompletion: [],
+          trendEncoding: {
+            strength: 0,
+            direction: 0,
+            duration: 0,
+            deviation: 0,
+          },
+          fibExtensionTargets: [],
+          srStrength: {
+            support: [],
+            resistance: [],
+          },
+        },
+        generated_at: new Date()
+      };
+    }
 
     if (!technicalAnalysis) {
       console.error(`No technical analysis data found for ${symbol}`);
@@ -509,14 +593,21 @@ export async function saveComprehensiveFeatureSet(
     }
     
     // Create a record in a new table to store the comprehensive feature set
-    return prisma.cryptoComprehensiveFeatures.create({
-      data: {
-        symbol,
-        timestamp: new Date(),
-        featureSet: featureSet as any,
-        modelReadyFeatures: prepareFeatureVectorForModel(featureSet) as any,
-      },
-    });
+    try {
+      return await prisma.cryptoComprehensiveFeatures.create({
+        data: {
+          symbol,
+          timestamp: new Date(),
+          featureSet: featureSet as any,
+          modelReadyFeatures: prepareFeatureVectorForModel(featureSet) as any,
+        },
+      });
+    } catch (dbError) {
+      console.error(`Database error in saveComprehensiveFeatureSet for ${symbol}:`, dbError);
+      console.error(`Error details:`, dbError instanceof Error ? dbError.message : String(dbError));
+      console.error(`Stack trace:`, dbError instanceof Error ? dbError.stack : 'No stack trace available');
+      throw dbError;
+    }
   } catch (error) {
     console.error(`Error in saveComprehensiveFeatureSet for ${symbol}:`, error);
     throw error;

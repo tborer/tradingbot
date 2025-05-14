@@ -233,20 +233,25 @@ export async function getIndicatorSequence(
     startDate.setDate(startDate.getDate() - lookbackDays);
     
     // Fetch technical analysis data for the period
-    const indicators = await prisma.technicalAnalysisOutput.findMany({
-      where: {
-        symbol,
-        timestamp: {
-          gte: startDate,
-          lte: date,
+    try {
+      const indicators = await prisma.technicalAnalysisOutput.findMany({
+        where: {
+          symbol,
+          timestamp: {
+            gte: startDate,
+            lte: date,
+          },
         },
-      },
-      orderBy: {
-        timestamp: 'asc',
-      },
-    });
-    
-    return indicators;
+        orderBy: {
+          timestamp: 'asc',
+        },
+      });
+      
+      return indicators;
+    } catch (dbError) {
+      console.error(`Database error in getIndicatorSequence for ${symbol}:`, dbError);
+      return [];
+    }
   } catch (error) {
     console.error(`Error in getIndicatorSequence for ${symbol}:`, error);
     return [];
@@ -422,20 +427,25 @@ export async function saveTemporalFeatures(
       throw new Error("Prisma client is undefined");
     }
     
-    return prisma.cryptoTemporalFeatures.create({
-      data: {
-        symbol,
-        lookbackDays,
-        priceVelocity: features.priceVelocity,
-        priceAcceleration: features.priceAcceleration,
-        rsiVelocity: features.rsiVelocity,
-        trendConsistency: features.trendConsistency,
-        patternMaturity: features.patternMaturity,
-        srTestFrequency: features.srTestFrequency,
-        bbSqueezeStrength: features.bbSqueezeStrength,
-        maCrossoverRecent: features.maCrossoverRecent,
-      },
-    });
+    try {
+      return await prisma.cryptoTemporalFeatures.create({
+        data: {
+          symbol,
+          lookbackDays,
+          priceVelocity: features.priceVelocity,
+          priceAcceleration: features.priceAcceleration,
+          rsiVelocity: features.rsiVelocity,
+          trendConsistency: features.trendConsistency,
+          patternMaturity: features.patternMaturity,
+          srTestFrequency: features.srTestFrequency,
+          bbSqueezeStrength: features.bbSqueezeStrength,
+          maCrossoverRecent: features.maCrossoverRecent,
+        },
+      });
+    } catch (dbError) {
+      console.error(`Database error in saveTemporalFeatures for ${symbol}:`, dbError);
+      throw dbError;
+    }
   } catch (error) {
     console.error(`Error in saveTemporalFeatures for ${symbol}:`, error);
     throw error;

@@ -282,6 +282,21 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
           // Check if technical analysis data exists for this symbol
           let technicalAnalysis;
           try {
+            // Check if prisma is defined before using it
+            if (!prisma) {
+              console.error(`Prisma client is undefined when fetching technical analysis for ${crypto.symbol}`);
+              await schedulingLogger.log({
+                processId,
+                userId,
+                level: 'ERROR',
+                category: 'ANALYSIS',
+                operation: 'DB_ERROR',
+                symbol: crypto.symbol,
+                message: `Prisma client is undefined when fetching technical analysis`
+              });
+              continue;
+            }
+            
             technicalAnalysis = await prisma.technicalAnalysisOutput.findFirst({
               where: {
                 symbol: crypto.symbol
@@ -294,6 +309,9 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
             console.log(`Technical analysis data found for ${crypto.symbol}: ${!!technicalAnalysis}`);
           } catch (dbError) {
             console.error(`Database error when fetching technical analysis for ${crypto.symbol}:`, dbError);
+            console.error(`Error details:`, dbError instanceof Error ? dbError.message : String(dbError));
+            console.error(`Stack trace:`, dbError instanceof Error ? dbError.stack : 'No stack trace available');
+            
             await schedulingLogger.log({
               processId,
               userId,
@@ -320,7 +338,27 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
           }
 
           try {
-            await generateComprehensiveFeatureSet(crypto.symbol, 'hourly', new Date(), processId, userId);
+            // Wrap the feature generation in a try-catch block with detailed error handling
+            try {
+              await generateComprehensiveFeatureSet(crypto.symbol, 'hourly', new Date(), processId, userId);
+            } catch (featureGenError) {
+              console.error(`Error in generateComprehensiveFeatureSet for ${crypto.symbol}:`, featureGenError);
+              console.error(`Error details:`, featureGenError instanceof Error ? featureGenError.message : String(featureGenError));
+              console.error(`Stack trace:`, featureGenError instanceof Error ? featureGenError.stack : 'No stack trace available');
+              
+              await schedulingLogger.log({
+                processId,
+                userId,
+                level: 'ERROR',
+                category: 'ANALYSIS',
+                operation: 'FEATURE_GENERATION_ERROR',
+                symbol: crypto.symbol,
+                message: `Error in generateComprehensiveFeatureSet: ${featureGenError instanceof Error ? featureGenError.message : 'Unknown error'}`
+              });
+              
+              // Continue with the next crypto instead of failing the entire process
+              continue;
+            }
             
             // Update processed items
             processedItems++;

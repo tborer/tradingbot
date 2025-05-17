@@ -2,6 +2,7 @@ import prisma from '@/lib/prisma';
 import { calculateDerivedIndicators } from '@/lib/derivedIndicatorsUtils';
 import { generateTemporalFeatures } from '@/lib/temporalFeaturesUtils';
 import { generatePatternEncodings } from '@/lib/patternEncodingsUtils';
+import { schedulingLogger } from '@/lib/schedulingLogger';
 
 /**
  * Generate a comprehensive set of features for a cryptocurrency

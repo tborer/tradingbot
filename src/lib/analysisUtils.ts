@@ -1,6 +1,6 @@
 import prisma from '@/lib/prisma';
 import { schedulingLogger } from '@/lib/schedulingLogger';
-import { generateComprehensiveFeatureSet } from '@/lib/comprehensiveFeatureUtils';
+import { generateComprehensiveFeatureSet, saveComprehensiveFeatureSet } from '@/lib/comprehensiveFeatureUtils';
 import { runPredictionsForAllCryptos, updatePredictionOutcomes } from '@/lib/predictionModels/predictionRunner';
 import { generateTradingSignalsForAllCryptos } from '@/lib/tradingSignals/signalGenerator';
 import { runTechnicalAnalysis as runTechnicalAnalysisFromData } from '@/lib/dataSchedulingService';
@@ -453,11 +453,42 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
               continue;
             }
 
-            // Generate comprehensive features
-            const featureSet = await generateComprehensiveFeatureSet(crypto.symbol, 'hourly', new Date(), processId, userId);
+            // Generate comprehensive features with error handling
+            let featureSet;
+            try {
+              featureSet = await generateComprehensiveFeatureSet(crypto.symbol, 'hourly', new Date(), processId, userId);
+              console.log(`Successfully generated comprehensive feature set for ${crypto.symbol}`);
+            } catch (genError) {
+              console.error(`Error generating comprehensive feature set for ${crypto.symbol}:`, genError);
+              await schedulingLogger.log({
+                processId,
+                userId,
+                level: 'ERROR',
+                category: 'ANALYSIS',
+                operation: 'FEATURE_GENERATION_ERROR',
+                symbol: crypto.symbol,
+                message: `Error generating comprehensive features: ${genError instanceof Error ? genError.message : 'Unknown error'}`
+              });
+              continue; // Skip to the next step if feature generation fails
+            }
             
-            // Save the feature set
-            await saveComprehensiveFeatureSet(crypto.symbol, featureSet);
+            // Save the feature set with error handling
+            try {
+              await saveComprehensiveFeatureSet(crypto.symbol, featureSet);
+              console.log(`Successfully saved comprehensive feature set for ${crypto.symbol}`);
+            } catch (saveError) {
+              console.error(`Error saving comprehensive feature set for ${crypto.symbol}:`, saveError);
+              await schedulingLogger.log({
+                processId,
+                userId,
+                level: 'ERROR',
+                category: 'ANALYSIS',
+                operation: 'FEATURE_SAVE_ERROR',
+                symbol: crypto.symbol,
+                message: `Error saving comprehensive features: ${saveError instanceof Error ? saveError.message : 'Unknown error'}`
+              });
+              // Continue despite save error - we've already generated the features
+            }
             
             featuresSuccess = true;
             
@@ -871,19 +902,52 @@ export async function runAnalysisForSymbol(symbol: string, userId: string, proce
     throw new Error(`No technical analysis data found for ${symbol}`);
   }
 
-  // Generate comprehensive features
-  await generateComprehensiveFeatureSet(symbol, 'hourly', new Date(), processId, userId);
-  
-  // Log success
-  await schedulingLogger.log({
-    processId,
-    userId,
-    level: 'INFO',
-    category: 'ANALYSIS',
-    operation: 'SYMBOL_ANALYSIS_COMPLETE',
-    symbol,
-    message: `Analysis completed for ${symbol}`
-  });
+  // Generate comprehensive features with error handling
+  try {
+    const featureSet = await generateComprehensiveFeatureSet(symbol, 'hourly', new Date(), processId, userId);
+    console.log(`Successfully generated comprehensive feature set for ${symbol}`);
+    
+    // Save the feature set
+    try {
+      await saveComprehensiveFeatureSet(symbol, featureSet);
+      console.log(`Successfully saved comprehensive feature set for ${symbol}`);
+      
+      // Log success
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'INFO',
+        category: 'ANALYSIS',
+        operation: 'SYMBOL_ANALYSIS_COMPLETE',
+        symbol,
+        message: `Analysis completed for ${symbol}`
+      });
+    } catch (saveError) {
+      console.error(`Error saving comprehensive feature set for ${symbol}:`, saveError);
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'ERROR',
+        category: 'ANALYSIS',
+        operation: 'FEATURE_SAVE_ERROR',
+        symbol,
+        message: `Error saving comprehensive features: ${saveError instanceof Error ? saveError.message : 'Unknown error'}`
+      });
+      throw new Error(`Failed to save comprehensive features for ${symbol}: ${saveError instanceof Error ? saveError.message : 'Unknown error'}`);
+    }
+  } catch (genError) {
+    console.error(`Error generating comprehensive feature set for ${symbol}:`, genError);
+    await schedulingLogger.log({
+      processId,
+      userId,
+      level: 'ERROR',
+      category: 'ANALYSIS',
+      operation: 'FEATURE_GENERATION_ERROR',
+      symbol,
+      message: `Error generating comprehensive features: ${genError instanceof Error ? genError.message : 'Unknown error'}`
+    });
+    throw new Error(`Failed to generate comprehensive features for ${symbol}: ${genError instanceof Error ? genError.message : 'Unknown error'}`);
+  }
 }
 
 // Export technical analysis calculation functions

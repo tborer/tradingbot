@@ -38,7 +38,8 @@ export async function runTechnicalAnalysis(userId: string, processId: string): P
     try {
       console.log(`Processing technical analysis for ${crypto.symbol}`);
       
-      // Get only the current day's hourly data for this crypto
+      // Get the most recent hourly data for this crypto (not limited to current day)
+      // First try to get the current day's data
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const todayTimestamp = BigInt(Math.floor(today.getTime() / 1000));
@@ -50,10 +51,11 @@ export async function runTechnicalAnalysis(userId: string, processId: string): P
         category: 'ANALYSIS',
         operation: 'DATA_FETCH',
         symbol: crypto.symbol,
-        message: `Fetching current day's data for ${crypto.symbol} (since timestamp ${todayTimestamp})`
+        message: `Attempting to fetch data for ${crypto.symbol}, starting with current day`
       });
       
-      const hourlyData = await prisma.hourlyCryptoHistoricalData.findMany({
+      // First try to get current day's data
+      let hourlyData = await prisma.hourlyCryptoHistoricalData.findMany({
         where: {
           instrument: `${crypto.symbol}-USD`,
           timestamp: {
@@ -62,8 +64,32 @@ export async function runTechnicalAnalysis(userId: string, processId: string): P
         },
         orderBy: {
           timestamp: 'desc'
-        }
+        },
+        take: 48 // Limit to 48 hours of data (2 days worth)
       });
+      
+      // If no data found for current day, get the most recent data available
+      if (hourlyData.length === 0) {
+        await schedulingLogger.log({
+          processId,
+          userId,
+          level: 'INFO',
+          category: 'ANALYSIS',
+          operation: 'DATA_FETCH',
+          symbol: crypto.symbol,
+          message: `No current day data found for ${crypto.symbol}, fetching most recent available data`
+        });
+        
+        hourlyData = await prisma.hourlyCryptoHistoricalData.findMany({
+          where: {
+            instrument: `${crypto.symbol}-USD`
+          },
+          orderBy: {
+            timestamp: 'desc'
+          },
+          take: 48 // Limit to 48 hours of data (2 days worth)
+        });
+      }
 
       console.log(`Found ${hourlyData.length} hourly data records for ${crypto.symbol}`);
 
@@ -176,8 +202,85 @@ export async function runTechnicalAnalysis(userId: string, processId: string): P
  * This function is used by both the API endpoint and the scheduler
  * Implements a sequential approach to ensure each step completes before moving to the next
  */
+// Helper function to check if we have data and fetch it if needed
+async function ensureHourlyCryptoData(userId: string, processId: string): Promise<boolean> {
+  try {
+    // Check if we have any hourly data
+    const dataCount = await prisma.hourlyCryptoHistoricalData.count();
+    
+    if (dataCount === 0) {
+      console.log('No hourly crypto data found, attempting to fetch data first');
+      
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'INFO',
+        category: 'ANALYSIS',
+        operation: 'DATA_CHECK',
+        message: 'No hourly crypto data found, attempting to fetch data first'
+      });
+      
+      // Import the data fetching function
+      const { fetchAndStoreHourlyCryptoData } = await import('@/lib/dataSchedulingService');
+      
+      // Fetch data
+      const result = await fetchAndStoreHourlyCryptoData(userId);
+      
+      if (!result.success) {
+        console.error('Failed to fetch hourly crypto data:', result.message);
+        
+        await schedulingLogger.log({
+          processId,
+          userId,
+          level: 'ERROR',
+          category: 'ANALYSIS',
+          operation: 'DATA_FETCH_ERROR',
+          message: `Failed to fetch hourly crypto data: ${result.message}`
+        });
+        
+        return false;
+      }
+      
+      console.log('Successfully fetched hourly crypto data');
+      
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'INFO',
+        category: 'ANALYSIS',
+        operation: 'DATA_FETCH_SUCCESS',
+        message: 'Successfully fetched hourly crypto data'
+      });
+      
+      return true;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error checking/fetching hourly crypto data:', error);
+    
+    await schedulingLogger.log({
+      processId,
+      userId,
+      level: 'ERROR',
+      category: 'ANALYSIS',
+      operation: 'DATA_CHECK_ERROR',
+      message: `Error checking/fetching hourly crypto data: ${error instanceof Error ? error.message : 'Unknown error'}`
+    });
+    
+    return false;
+  }
+}
+
 export async function runAnalysisProcess(processId: string, userId: string): Promise<void> {
   try {
+    // First, ensure we have hourly crypto data
+    const dataAvailable = await ensureHourlyCryptoData(userId, processId);
+    
+    if (!dataAvailable) {
+      throw new Error('No hourly crypto data available and failed to fetch data');
+    }
+    
     // Get user's cryptos
     const cryptos = await prisma.crypto.findMany({
       where: {
@@ -241,7 +344,8 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
         try {
           console.log(`Running technical analysis for ${crypto.symbol}`);
           
-          // Get only the current day's hourly data for this crypto
+          // Get the most recent hourly data for this crypto (not limited to current day)
+          // First try to get the current day's data
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           const todayTimestamp = BigInt(Math.floor(today.getTime() / 1000));
@@ -253,10 +357,11 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
             category: 'ANALYSIS',
             operation: 'DATA_FETCH',
             symbol: crypto.symbol,
-            message: `Fetching current day's data for ${crypto.symbol} (since timestamp ${todayTimestamp})`
+            message: `Attempting to fetch data for ${crypto.symbol}, starting with current day`
           });
           
-          const hourlyData = await prisma.hourlyCryptoHistoricalData.findMany({
+          // First try to get current day's data
+          let hourlyData = await prisma.hourlyCryptoHistoricalData.findMany({
             where: {
               instrument: `${crypto.symbol}-USD`,
               timestamp: {
@@ -265,8 +370,32 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
             },
             orderBy: {
               timestamp: 'desc'
-            }
+            },
+            take: 48 // Limit to 48 hours of data (2 days worth)
           });
+          
+          // If no data found for current day, get the most recent data available
+          if (hourlyData.length === 0) {
+            await schedulingLogger.log({
+              processId,
+              userId,
+              level: 'INFO',
+              category: 'ANALYSIS',
+              operation: 'DATA_FETCH',
+              symbol: crypto.symbol,
+              message: `No current day data found for ${crypto.symbol}, fetching most recent available data`
+            });
+            
+            hourlyData = await prisma.hourlyCryptoHistoricalData.findMany({
+              where: {
+                instrument: `${crypto.symbol}-USD`
+              },
+              orderBy: {
+                timestamp: 'desc'
+              },
+              take: 48 // Limit to 48 hours of data (2 days worth)
+            });
+          }
 
           console.log(`Found ${hourlyData.length} hourly data records for ${crypto.symbol}`);
 

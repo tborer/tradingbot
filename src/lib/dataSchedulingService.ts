@@ -745,12 +745,16 @@ async function runTechnicalAnalysis(
         });
       }
       
+      console.error(`Technical analysis for ${symbol} failed: Invalid or empty data array provided`);
+      
       return {
         success: false,
         message: 'Invalid or empty data array provided',
         steps: completedSteps
       };
     }
+    
+    console.log(`Technical analysis for ${symbol} starting with ${data.length} data points`);
     
     // Extract prices for analysis (most recent first)
     const prices = data
@@ -871,36 +875,58 @@ async function runTechnicalAnalysis(
         });
       }
       
-      technicalAnalysis = await prisma.technicalAnalysisOutput.create({
-        data: {
-          symbol,
-          instrument,
-          sma20,
-          sma50,
-          ema12,
-          ema26,
-          rsi14,
-          bollingerUpper: bollingerBands.upper,
-          bollingerMiddle: bollingerBands.middle,
-          bollingerLower: bollingerBands.lower,
-          supportLevel: trendLines.support,
-          resistanceLevel: trendLines.resistance,
-          fibonacciLevels: fibonacciLevels as any,
-          breakoutDetected: breakoutAnalysis.breakoutDetected,
-          breakoutType: breakoutAnalysis.breakoutType,
-          breakoutStrength: breakoutAnalysis.breakoutStrength,
-          recommendation: decision.decision,
-          confidenceScore: decision.confidence,
-          rawData: {
-            prices,
-            currentPrice,
-            previousEma12,
-            previousEma26,
-            timestamp: new Date(),
-            explanation: decision.explanation
+      console.log(`Saving technical analysis results for ${symbol} to database`);
+      
+      try {
+        technicalAnalysis = await prisma.technicalAnalysisOutput.create({
+          data: {
+            symbol,
+            instrument,
+            sma20,
+            sma50,
+            ema12,
+            ema26,
+            rsi14,
+            bollingerUpper: bollingerBands.upper,
+            bollingerMiddle: bollingerBands.middle,
+            bollingerLower: bollingerBands.lower,
+            supportLevel: trendLines.support,
+            resistanceLevel: trendLines.resistance,
+            fibonacciLevels: fibonacciLevels as any,
+            breakoutDetected: breakoutAnalysis.breakoutDetected,
+            breakoutType: breakoutAnalysis.breakoutType,
+            breakoutStrength: breakoutAnalysis.breakoutStrength,
+            recommendation: decision.decision,
+            confidenceScore: decision.confidence,
+            rawData: {
+              prices,
+              currentPrice,
+              previousEma12,
+              previousEma26,
+              timestamp: new Date(),
+              explanation: decision.explanation
+            }
           }
+        });
+        
+        console.log(`Successfully saved technical analysis for ${symbol} with ID: ${technicalAnalysis.id}`);
+      } catch (dbError) {
+        console.error(`Error saving technical analysis for ${symbol} to database:`, dbError);
+        
+        if (processId && userId) {
+          await logAnalysis({
+            processId,
+            userId,
+            symbol,
+            operation: 'BASIC_INDICATORS_STORAGE_ERROR',
+            analysisType: 'TECHNICAL',
+            success: false,
+            error: dbError
+          });
         }
-      });
+        
+        throw dbError; // Re-throw to be caught by the outer catch block
+      }
       
       if (processId && userId) {
         await logAnalysis({

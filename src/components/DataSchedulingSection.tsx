@@ -391,7 +391,13 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
     };
   }, [statusPollingInterval]);
   
-  const runOperation = async (operation: 'fetch' | 'analysis' | 'cleanup' | 'both') => {
+  const runOperation = async (operation: 'fetch' | 'analysis' | 'cleanup' | 'both', e?: React.MouseEvent) => {
+    // Prevent default behavior to avoid page navigation
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
     if (!user) {
       toast({
         title: "Authentication Required",
@@ -609,7 +615,8 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
+        {/* Wrap the content in a form with onSubmit that prevents default */}
+        <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="apiUrl">API URL</Label>
@@ -724,31 +731,34 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
             </Button>
             
             <Button 
-              onClick={() => runOperation('fetch')} 
+              onClick={(e) => runOperation('fetch', e)} 
               disabled={isRunningFetch || !apiUrl || !apiToken}
               variant="outline"
               className="w-full md:w-auto"
               title="Fetch data from API and store it in the database"
+              type="button" // Explicitly set type to button to prevent form submission
             >
               {isRunningFetch ? "Fetching Data..." : "Fetch Data Now"}
             </Button>
             
             <Button 
-              onClick={() => runOperation('analysis')} 
+              onClick={(e) => runOperation('analysis', e)} 
               disabled={isRunningAnalysis}
               variant="outline"
               className="w-full md:w-auto"
               title="Run technical analysis on the stored data"
+              type="button" // Explicitly set type to button to prevent form submission
             >
               {isRunningAnalysis ? "Running Analysis..." : "Run Analysis"}
             </Button>
             
             <Button 
-              onClick={() => runOperation('cleanup')} 
+              onClick={(e) => runOperation('cleanup', e)} 
               disabled={isRunningCleanup || !cleanupEnabled}
               variant="outline"
               className="w-full md:w-auto"
               title="Clean up old data based on the configured retention period"
+              type="button" // Explicitly set type to button to prevent form submission
             >
               {isRunningCleanup ? "Cleaning Up..." : "Clean Up Old Data"}
             </Button>
@@ -787,7 +797,7 @@ const DataSchedulingSection: React.FC<DataSchedulingProps> = ({ initialData }) =
               )}
             </div>
           )}
-        </div>
+        </form>
       </CardContent>
     </Card>
   );

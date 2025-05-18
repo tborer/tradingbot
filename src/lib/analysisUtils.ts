@@ -538,16 +538,7 @@ export async function runTechnicalAnalysis(userId: string, processId: string): P
   }
 }
 
-/**
- * Create a safe logging function that won't block the flow
- */
-async function safeLog(params: any): Promise<void> {
-  try {
-    await schedulingLogger.log(params);
-  } catch (e) {
-    console.error('Log operation failed:', e);
-  }
-}
+// This function is already defined above, so this duplicate definition is removed
 
 /**
  * Run the analysis process for a user

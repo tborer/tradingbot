@@ -642,7 +642,11 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
           totalItems: 0,
           processedItems: 0,
           completedAt: new Date(),
-          message: 'No cryptocurrencies found to analyze'
+          details: {
+            lastMessage: 'No cryptocurrencies found to analyze',
+            lastOperation: 'ANALYSIS_SKIP',
+            lastTimestamp: new Date().toISOString()
+          }
         },
         create: {
           processId,
@@ -653,7 +657,11 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
           processedItems: 0,
           startedAt: new Date(),
           completedAt: new Date(),
-          message: 'No cryptocurrencies found to analyze'
+          details: {
+            lastMessage: 'No cryptocurrencies found to analyze',
+            lastOperation: 'ANALYSIS_SKIP',
+            lastTimestamp: new Date().toISOString()
+          }
         }
       });
       
@@ -675,7 +683,6 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
             totalItems: cryptos.length * 5, // 5 steps per crypto
             processedItems: 0,
             startedAt: new Date(),
-            message: `Starting analysis process for ${cryptos.length} cryptocurrencies`,
             details: {
               cryptoCount: cryptos.length,
               cryptoSymbols: cryptos.map(c => c.symbol),
@@ -694,7 +701,6 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
             totalItems: cryptos.length * 5, // 5 steps per crypto
             processedItems: 0,
             startedAt: new Date(),
-            message: `Starting analysis process for ${cryptos.length} cryptocurrencies`,
             details: {
               cryptoCount: cryptos.length,
               cryptoSymbols: cryptos.map(c => c.symbol),
@@ -753,7 +759,6 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
           data: {
             processedItems,
             updatedAt: new Date(),
-            message: `Processing analysis: ${processedItems} of ${cryptos.length * 5} steps completed (${percentComplete}%)`,
             details: {
               update: {
                 currentProgress: {

@@ -17,7 +17,6 @@ export async function enhancedLog(params: any): Promise<void> {
         await prisma.processingStatus.update({
           where: { processId: params.processId },
           data: {
-            message: params.message,
             details: {
               update: {
                 lastOperation: params.operation,
@@ -115,7 +114,6 @@ export async function logStepCompletion(
       where: { processId },
       data: {
         processedItems,
-        message: `Completed ${step} for ${symbol} (${processedItems}/${totalItems}, ${percentComplete}%)`,
         details: {
           update: {
             [`${symbol}_${step}`]: {
@@ -161,7 +159,6 @@ export async function logProcessCompletion(
         status: 'COMPLETED',
         processedItems,
         completedAt: new Date(),
-        message: `Analysis process completed with ${successCount} successful and ${errorCount} failed cryptocurrencies`,
         details: {
           update: {
             finalStatus: {
@@ -198,7 +195,6 @@ export async function logProcessFailure(
         status: 'FAILED',
         completedAt: new Date(),
         error: error instanceof Error ? error.message : 'Unknown error',
-        message: `Analysis process failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         details: {
           update: {
             errorDetails: {

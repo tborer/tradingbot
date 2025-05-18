@@ -6,6 +6,184 @@ import { generateTradingSignalsForAllCryptos } from '@/lib/tradingSignals/signal
 import { runTechnicalAnalysis as runTechnicalAnalysisFromData } from '@/lib/dataSchedulingService';
 
 /**
+ * Extract historical prices from formatted data
+ * @param data Formatted historical data
+ * @returns Array of closing prices (newest to oldest)
+ */
+export function extractHistoricalPrices(data: any): number[] {
+  console.log('Extracting historical prices from formatted data');
+  
+  if (!data) {
+    console.error('No data provided to extractHistoricalPrices');
+    return [];
+  }
+  
+  // Handle AlphaVantage or formatted CoinDesk data
+  if (data['Time Series (Digital Currency Daily)']) {
+    const timeSeries = data['Time Series (Digital Currency Daily)'];
+    console.log(`Found ${Object.keys(timeSeries).length} time series entries`);
+    
+    // Convert the time series object to an array of [date, price] pairs
+    const priceArray = Object.entries(timeSeries).map(([date, values]: [string, any]) => {
+      // Handle different possible formats for close price
+      let closePrice: number | null = null;
+      
+      if (values['4. close']) {
+        closePrice = parseFloat(values['4. close']);
+      } else if (values['close'] || values['CLOSE']) {
+        closePrice = parseFloat(values['close'] || values['CLOSE']);
+      } else if (typeof values === 'number') {
+        closePrice = values;
+      } else if (typeof values === 'string' && !isNaN(parseFloat(values))) {
+        closePrice = parseFloat(values);
+      }
+      
+      // If we couldn't find a close price, log the values for debugging
+      if (closePrice === null || isNaN(closePrice)) {
+        console.warn(`Could not extract close price for date ${date}:`, values);
+        return { date, price: null };
+      }
+      
+      return { date, price: closePrice };
+    });
+
+    // Filter out null prices
+    const validPriceArray = priceArray.filter(item => item.price !== null);
+    
+    if (validPriceArray.length < priceArray.length) {
+      console.warn(`Filtered out ${priceArray.length - validPriceArray.length} invalid price entries`);
+    }
+    
+    // Sort by date (newest first)
+    validPriceArray.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    // Extract just the prices
+    const prices = validPriceArray.map(item => item.price as number);
+    
+    // Log sample of the extracted prices
+    if (prices.length > 0) {
+      const sampleStart = prices.slice(0, Math.min(3, prices.length));
+      const sampleEnd = prices.slice(Math.max(0, prices.length - 3));
+      console.log(`Extracted ${prices.length} prices - Sample Start: ${JSON.stringify(sampleStart)}, Sample End: ${JSON.stringify(sampleEnd)}`);
+    } else {
+      console.warn('No valid prices extracted from time series data');
+    }
+    
+    return prices;
+  }
+  
+  // Handle CoinDesk API direct response with Data array
+  if (data.Data && Array.isArray(data.Data) && data.Data.length > 0) {
+    console.log('Extracting prices from CoinDesk Data array');
+    
+    // Sort by timestamp (newest first)
+    const sortedData = [...data.Data].sort((a, b) => b.TIMESTAMP - a.TIMESTAMP);
+    
+    // Extract close prices
+    const prices = sortedData.map(entry => entry.CLOSE);
+    
+    console.log(`Extracted ${prices.length} prices from CoinDesk Data array`);
+    return prices;
+  }
+  
+  // Handle nested data.Data array
+  if (data.data && data.data.Data && Array.isArray(data.data.Data) && data.data.Data.length > 0) {
+    console.log('Extracting prices from nested data.Data array');
+    
+    // Sort by timestamp (newest first)
+    const sortedData = [...data.data.Data].sort((a, b) => b.TIMESTAMP - a.TIMESTAMP);
+    
+    // Extract close prices
+    const prices = sortedData.map(entry => entry.CLOSE);
+    
+    console.log(`Extracted ${prices.length} prices from nested data.Data array`);
+    return prices;
+  }
+  
+  // Handle original format with entries array
+  if (data.data && data.data.entries && Array.isArray(data.data.entries) && data.data.entries.length > 0) {
+    console.log('Extracting prices from data.entries array');
+    
+    // Sort by date (newest first)
+    const sortedEntries = [...data.data.entries].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+    
+    // Extract values
+    const prices = sortedEntries.map(entry => entry.value);
+    
+    console.log(`Extracted ${prices.length} prices from data.entries array`);
+    return prices;
+  }
+  
+  // If we couldn't extract prices using any of the known formats, try a more generic approach
+  console.warn('Unknown data format, attempting to extract any price data');
+  
+  // Function to recursively search for price data in the object
+  const extractPriceData = (obj: any): number[] => {
+    const prices: number[] = [];
+    
+    const findPriceData = (obj: any) => {
+      if (!obj || typeof obj !== 'object') return;
+      
+      // If this is an array of objects that might contain price data
+      if (Array.isArray(obj)) {
+        // Check if this array contains price-like objects
+        const hasPriceObjects = obj.some(item => 
+          (item && typeof item === 'object') && 
+          ((item.close && !isNaN(item.close)) || 
+           (item.CLOSE && !isNaN(item.CLOSE)) || 
+           (item.value && !isNaN(item.value)) || 
+           (item.price && !isNaN(item.price)))
+        );
+        
+        if (hasPriceObjects) {
+          // Extract prices from each item
+          obj.forEach(item => {
+            if (item && typeof item === 'object') {
+              let price = null;
+              
+              // Try to find price
+              if (item.close && !isNaN(item.close)) price = item.close;
+              else if (item.CLOSE && !isNaN(item.CLOSE)) price = item.CLOSE;
+              else if (item.value && !isNaN(item.value)) price = item.value;
+              else if (item.price && !isNaN(item.price)) price = item.price;
+              
+              if (price !== null) {
+                prices.push(price);
+              }
+            }
+          });
+        } else {
+          // Recursively search each item
+          obj.forEach(item => findPriceData(item));
+        }
+      } else {
+        // Regular object, check each property
+        Object.entries(obj).forEach(([key, value]) => {
+          if (typeof value === 'object' && value !== null) {
+            findPriceData(value);
+          }
+        });
+      }
+    };
+    
+    findPriceData(obj);
+    return prices;
+  };
+  
+  const prices = extractPriceData(data);
+  
+  if (prices.length > 0) {
+    console.log(`Extracted ${prices.length} prices using generic extraction`);
+    return prices;
+  }
+  
+  console.error('Failed to extract any prices from the provided data');
+  return [];
+}
+
+/**
  * Run technical analysis for a user's cryptocurrencies
  * This function is used by the runAnalysisProcess function
  */

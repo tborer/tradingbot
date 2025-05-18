@@ -1230,7 +1230,7 @@ async function runTechnicalAnalysis(
                 fibonacciLevels: fibonacciLevels as any,
                 breakoutDetected: breakoutAnalysis.breakoutDetected,
                 breakoutType: breakoutAnalysis.breakoutType,
-                breakoutStrength: breakoutAnalysis.breakoutStrength,
+                breakoutStrength: String(breakoutAnalysis.breakoutStrength),
                 recommendation: decision.decision,
                 confidenceScore: decision.confidence,
                 rawData: {

@@ -109,7 +109,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           totalItems: totalItems > 0 ? totalItems : 100, // Use actual count or placeholder
           processedItems: 0,
           startedAt: new Date(),
-          message: 'Initializing analysis process',
           details: {
             cryptoSymbols: userCryptos.map(c => c.symbol),
             cryptoCount: userCryptos.length,
@@ -160,7 +159,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await prisma.processingStatus.update({
       where: { processId },
       data: {
-        message: 'Starting analysis process in background',
         details: {
           update: {
             lastOperation: 'BACKGROUND_PROCESS_START',
@@ -203,7 +201,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             status: 'FAILED',
             error: error instanceof Error ? error.message : String(error),
             completedAt: new Date(),
-            message: `Analysis process failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
             details: {
               update: {
                 errorDetails: {

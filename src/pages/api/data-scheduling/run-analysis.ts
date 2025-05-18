@@ -9,18 +9,22 @@ import { runAnalysisProcess } from '@/lib/analysisUtils';
 async function logApiEvent(level: string, message: string, details?: any) {
   const timestamp = new Date().toISOString();
   console.log(`[RUN-ANALYSIS][${timestamp}][${level}] ${message}`, details || '');
-  try {
-    await schedulingLogger.log({
-      processId: `api-run-analysis-${Date.now()}`,
-      userId: details?.userId || 'system',
-      level: level as any,
-      category: 'API',
-      operation: 'RUN_ANALYSIS_API',
-      message: message,
-      details: details
-    });
-  } catch (error) {
-    console.error('Failed to log API event:', error);
+  
+  // Only log to database if we have a valid userId
+  if (details?.userId) {
+    try {
+      await schedulingLogger.log({
+        processId: `api-run-analysis-${Date.now()}`,
+        userId: details.userId,
+        level: level as any,
+        category: 'API',
+        operation: 'RUN_ANALYSIS_API',
+        message: message,
+        details: details
+      });
+    } catch (error) {
+      console.error('Failed to log API event:', error);
+    }
   }
 }
 
@@ -75,38 +79,49 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const totalItems = userCryptos.length * 5; // 5 steps per crypto
     
-    // Create a new processing status entry
+    // Create a new processing status entry with a UUID
     const processId = `analysis-${Date.now()}`;
     await logApiEvent('INFO', 'Creating processing status entry', { processId, userId: user.id });
-    await prisma.processingStatus.create({
-      data: {
+    
+    try {
+      // Create the processing status first
+      await prisma.processingStatus.create({
+        data: {
+          processId,
+          userId: user.id,
+          status: 'RUNNING',
+          type: 'ANALYSIS',
+          totalItems: totalItems > 0 ? totalItems : 100, // Use actual count or placeholder
+          processedItems: 0,
+          startedAt: new Date()
+        }
+      });
+
+      await logApiEvent('INFO', 'Created processing status for analysis process', { 
         processId,
         userId: user.id,
-        status: 'RUNNING',
-        type: 'ANALYSIS',
-        totalItems: totalItems > 0 ? totalItems : 100, // Use actual count or placeholder
-        processedItems: 0,
-        startedAt: new Date()
-      }
-    });
+        totalItems: totalItems > 0 ? totalItems : 100
+      });
 
-    await logApiEvent('INFO', 'Created processing status for analysis process', { 
-      processId,
-      userId: user.id,
-      totalItems: totalItems > 0 ? totalItems : 100
-    });
-
-    // Log the start of the analysis process
-    await logApiEvent('INFO', 'Logging analysis process start to scheduling logger', { processId, userId: user.id });
-    await schedulingLogger.log({
-      processId,
-      userId: user.id,
-      level: 'INFO',
-      category: 'SCHEDULING',
-      operation: 'ANALYSIS_START',
-      message: 'Starting analysis process via API endpoint'
-    });
-    await logApiEvent('INFO', 'Analysis process logged to scheduling logger');
+      // Now that the process exists in the database, we can log to it
+      await logApiEvent('INFO', 'Logging analysis process start to scheduling logger', { processId, userId: user.id });
+      await schedulingLogger.log({
+        processId,
+        userId: user.id,
+        level: 'INFO',
+        category: 'SCHEDULING',
+        operation: 'ANALYSIS_START',
+        message: 'Starting analysis process via API endpoint'
+      });
+      await logApiEvent('INFO', 'Analysis process logged to scheduling logger');
+    } catch (error) {
+      console.error('Error creating processing status:', error);
+      await logApiEvent('ERROR', 'Failed to create processing status', { 
+        error: error instanceof Error ? error.message : String(error),
+        userId: user.id
+      });
+      throw error;
+    }
 
     // Start the analysis process in the background
     await logApiEvent('INFO', 'Starting analysis process in background', { processId, userId: user.id });

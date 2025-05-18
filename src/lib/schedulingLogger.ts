@@ -39,19 +39,30 @@ export async function logSchedulingProcess({
   duration
 }: LogEntryParams): Promise<void> {
   try {
-    await prisma.schedulingProcessLog.create({
-      data: {
-        processId,
-        userId,
-        level,
-        category,
-        operation,
-        symbol,
-        message,
-        details: details ? details : undefined,
-        duration
-      }
+    // Check if processId exists in ProcessingStatus table first
+    const existingProcess = await prisma.processingStatus.findUnique({
+      where: { processId }
     });
+
+    if (existingProcess) {
+      // If process exists, create the log
+      await prisma.schedulingProcessLog.create({
+        data: {
+          processId,
+          userId,
+          level,
+          category,
+          operation,
+          symbol,
+          message,
+          details: details ? details : undefined,
+          duration
+        }
+      });
+    } else {
+      // If process doesn't exist, log to console only
+      console.log(`[LOG][${level}][${category}][${operation}] ${message} (processId: ${processId} not found in database)`);
+    }
   } catch (error) {
     // Don't let logging errors disrupt the main process
     console.error('Error creating scheduling process log:', error);

@@ -577,6 +577,17 @@ export function prepareFeatureVectorForModel(featureSet: any): Record<string, an
 }
 
 /**
+ * Create a safe logging function that won't block the flow
+ */
+async function safeLog(params: any): Promise<void> {
+  try {
+    await schedulingLogger.log(params);
+  } catch (e) {
+    console.error('Log operation failed:', e);
+  }
+}
+
+/**
  * Save comprehensive feature set to the database
  * @param symbol The cryptocurrency symbol
  * @param featureSet The comprehensive feature set
@@ -588,22 +599,61 @@ export async function saveComprehensiveFeatureSet(
   processId?: string,
   userId?: string
 ): Promise<any> {
+  console.log(`Starting saveComprehensiveFeatureSet for ${symbol} at ${new Date().toISOString()}`);
+  
   try {
     // Check if prisma is defined
     if (!prisma) {
       console.error("Prisma client is undefined in saveComprehensiveFeatureSet");
+      if (processId && userId) {
+        await safeLog({
+          processId,
+          userId,
+          level: 'ERROR',
+          category: 'ANALYSIS',
+          operation: 'FEATURE_SAVE_ERROR',
+          symbol,
+          message: `Prisma client is undefined in saveComprehensiveFeatureSet`
+        });
+      }
       throw new Error("Prisma client is undefined");
     }
     
     // Validate feature set before saving
     if (!featureSet || typeof featureSet !== 'object') {
       console.error(`Invalid feature set for ${symbol}:`, featureSet);
-      throw new Error(`Invalid feature set for ${symbol}`);
+      if (processId && userId) {
+        await safeLog({
+          processId,
+          userId,
+          level: 'ERROR',
+          category: 'ANALYSIS',
+          operation: 'FEATURE_VALIDATION_ERROR',
+          symbol,
+          message: `Invalid feature set for ${symbol}: ${featureSet === null ? 'null' : typeof featureSet}`
+        });
+      }
+      throw new Error(`Invalid feature set for ${symbol}: ${featureSet === null ? 'null' : typeof featureSet}`);
     }
     
     // Ensure required properties exist
     if (!featureSet.crypto || !featureSet.original_indicators) {
-      console.error(`Missing required properties in feature set for ${symbol}`);
+      console.warn(`Missing required properties in feature set for ${symbol}, adding defaults`);
+      if (processId && userId) {
+        await safeLog({
+          processId,
+          userId,
+          level: 'WARNING',
+          category: 'ANALYSIS',
+          operation: 'FEATURE_VALIDATION_WARNING',
+          symbol,
+          message: `Missing required properties in feature set for ${symbol}, adding defaults`,
+          details: {
+            hasCrypto: !!featureSet.crypto,
+            hasOriginalIndicators: !!featureSet.original_indicators
+          }
+        });
+      }
       
       // Add missing properties with default values if needed
       if (!featureSet.crypto) featureSet.crypto = symbol;
@@ -630,10 +680,26 @@ export async function saveComprehensiveFeatureSet(
     // Prepare model-ready features with error handling
     let modelReadyFeatures;
     try {
+      console.log(`Preparing feature vector for ${symbol}`);
       modelReadyFeatures = prepareFeatureVectorForModel(featureSet);
+      console.log(`Successfully prepared feature vector for ${symbol}`);
     } catch (prepError) {
       console.error(`Error preparing feature vector for ${symbol}:`, prepError);
+      if (processId && userId) {
+        await safeLog({
+          processId,
+          userId,
+          level: 'ERROR',
+          category: 'ANALYSIS',
+          operation: 'FEATURE_PREPARATION_ERROR',
+          symbol,
+          message: `Error preparing feature vector: ${prepError instanceof Error ? prepError.message : 'Unknown error'}`,
+          details: { stack: prepError instanceof Error ? prepError.stack : undefined }
+        });
+      }
+      
       // Create a minimal valid feature vector
+      console.log(`Creating minimal valid feature vector for ${symbol}`);
       modelReadyFeatures = {
         crypto: symbol,
         price: featureSet.price || 0,
@@ -642,43 +708,79 @@ export async function saveComprehensiveFeatureSet(
       };
     }
     
-    // Create a record in a new table to store the comprehensive feature set
-    try {
-      // Log the attempt to save
-      console.log(`Saving comprehensive feature set for ${symbol} to database`);
-      
-      // Safely log if process ID and user ID are provided
-      if (processId && userId) {
-        try {
-          await schedulingLogger.log({
+    // Create a record in a new table to store the comprehensive feature set with retry logic
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount < maxRetries) {
+      try {
+        // Log the attempt to save
+        console.log(`Saving comprehensive feature set for ${symbol} to database (attempt ${retryCount + 1})`);
+        
+        // Safely log if process ID and user ID are provided
+        if (processId && userId) {
+          await safeLog({
             processId,
             userId,
             level: 'INFO',
             category: 'ANALYSIS',
             operation: 'FEATURE_SAVE_START',
             symbol,
-            message: `Saving comprehensive features for ${symbol}`
+            message: `Saving comprehensive features for ${symbol} (attempt ${retryCount + 1})`
           });
-        } catch (logError) {
-          console.error(`Error logging feature save start:`, logError);
         }
-      }
-      
-      const result = await prisma.cryptoComprehensiveFeatures.create({
-        data: {
-          symbol,
-          timestamp: new Date(),
-          featureSet: featureSet as any,
-          modelReadyFeatures: modelReadyFeatures as any,
-        },
-      });
-      
-      console.log(`Successfully saved comprehensive feature set for ${symbol} with ID: ${result.id}`);
-      
-      // Safely log success if process ID and user ID are provided
-      if (processId && userId) {
-        try {
-          await schedulingLogger.log({
+        
+        // Check if a record already exists for this symbol and timestamp (within the last minute)
+        const oneMinuteAgo = new Date();
+        oneMinuteAgo.setMinutes(oneMinuteAgo.getMinutes() - 1);
+        
+        const existingRecord = await prisma.cryptoComprehensiveFeatures.findFirst({
+          where: {
+            symbol,
+            timestamp: {
+              gte: oneMinuteAgo
+            }
+          },
+          orderBy: {
+            timestamp: 'desc'
+          }
+        });
+        
+        let result;
+        
+        if (existingRecord) {
+          console.log(`Found existing record for ${symbol} from ${existingRecord.timestamp}, updating instead of creating new`);
+          
+          // Update the existing record
+          result = await prisma.cryptoComprehensiveFeatures.update({
+            where: {
+              id: existingRecord.id
+            },
+            data: {
+              featureSet: featureSet as any,
+              modelReadyFeatures: modelReadyFeatures as any,
+              timestamp: new Date() // Update timestamp to current time
+            }
+          });
+          
+          console.log(`Successfully updated comprehensive feature set for ${symbol} with ID: ${result.id}`);
+        } else {
+          // Create a new record
+          result = await prisma.cryptoComprehensiveFeatures.create({
+            data: {
+              symbol,
+              timestamp: new Date(),
+              featureSet: featureSet as any,
+              modelReadyFeatures: modelReadyFeatures as any,
+            },
+          });
+          
+          console.log(`Successfully created comprehensive feature set for ${symbol} with ID: ${result.id}`);
+        }
+        
+        // Safely log success if process ID and user ID are provided
+        if (processId && userId) {
+          await safeLog({
             processId,
             userId,
             level: 'INFO',
@@ -686,42 +788,62 @@ export async function saveComprehensiveFeatureSet(
             operation: 'FEATURE_SAVE_SUCCESS',
             symbol,
             message: `Successfully saved comprehensive features for ${symbol}`,
-            details: { featureId: result.id }
+            details: { 
+              featureId: result.id,
+              wasUpdate: !!existingRecord
+            }
           });
-        } catch (logError) {
-          console.error(`Error logging feature save success:`, logError);
         }
-      }
-      
-      return result;
-    } catch (dbError) {
-      console.error(`Database error in saveComprehensiveFeatureSet for ${symbol}:`, dbError);
-      console.error(`Error details:`, dbError instanceof Error ? dbError.message : String(dbError));
-      console.error(`Stack trace:`, dbError instanceof Error ? dbError.stack : 'No stack trace available');
-      console.error('DB Save Error', JSON.stringify(dbError, null, 2));
-      
-      // Safely log error if process ID and user ID are provided
-      if (processId && userId) {
-        try {
-          await schedulingLogger.log({
+        
+        return result;
+      } catch (dbError) {
+        retryCount++;
+        console.error(`Database error in saveComprehensiveFeatureSet for ${symbol} (attempt ${retryCount}):`, dbError);
+        console.error(`Error details:`, dbError instanceof Error ? dbError.message : String(dbError));
+        console.error(`Stack trace:`, dbError instanceof Error ? dbError.stack : 'No stack trace available');
+        
+        // Safely log error if process ID and user ID are provided
+        if (processId && userId) {
+          await safeLog({
             processId,
             userId,
             level: 'ERROR',
             category: 'ANALYSIS',
             operation: 'FEATURE_SAVE_ERROR',
             symbol,
-            message: `Database error saving comprehensive features: ${dbError instanceof Error ? dbError.message : 'Unknown error'}`,
+            message: `Database error saving comprehensive features (attempt ${retryCount}): ${dbError instanceof Error ? dbError.message : 'Unknown error'}`,
             details: { error: dbError instanceof Error ? dbError.stack : String(dbError) }
           });
-        } catch (logError) {
-          console.error(`Error logging feature save error:`, logError);
         }
+        
+        if (retryCount >= maxRetries) {
+          console.error(`Failed to save comprehensive feature set for ${symbol} after ${maxRetries} attempts`);
+          throw dbError; // Re-throw after max retries
+        }
+        
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = 1000 * Math.pow(2, retryCount - 1);
+        console.log(`Retrying feature save for ${symbol} after ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
-      
-      throw dbError;
     }
+    
+    // This should never be reached due to the throw in the loop, but TypeScript doesn't know that
+    throw new Error(`Failed to save comprehensive feature set for ${symbol} after ${maxRetries} attempts`);
   } catch (error) {
     console.error(`Error in saveComprehensiveFeatureSet for ${symbol}:`, error);
+    if (processId && userId) {
+      await safeLog({
+        processId,
+        userId,
+        level: 'ERROR',
+        category: 'ANALYSIS',
+        operation: 'FEATURE_SAVE_UNEXPECTED_ERROR',
+        symbol,
+        message: `Unexpected error in saveComprehensiveFeatureSet: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        details: { stack: error instanceof Error ? error.stack : undefined }
+      });
+    }
     throw error;
   }
 }

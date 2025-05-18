@@ -419,9 +419,9 @@ async function processCryptoBatch(
         // Update processing status if process ID is provided
         if (processId) {
           try {
-            await prisma.processingStatus.update({
+            await prisma.processingStatus.upsert({
               where: { processId },
-              data: {
+              update: {
                 processedItems: {
                   increment: 1
                 },
@@ -435,6 +435,22 @@ async function processCryptoBatch(
                   }
                 },
                 updatedAt: new Date()
+              },
+              create: {
+                processId,
+                userId,
+                status: 'RUNNING',
+                type: 'DATA_SCHEDULING',
+                totalItems: 0,
+                processedItems: 1,
+                details: {
+                  [crypto.symbol]: {
+                    success: true,
+                    dataCount: savedData.length,
+                    analysisSuccess: analysisResult?.success || false
+                  }
+                },
+                startedAt: new Date()
               }
             });
           } catch (statusError) {
@@ -482,9 +498,9 @@ async function processCryptoBatch(
         // Update processing status with error if process ID is provided
         if (processId) {
           try {
-            await prisma.processingStatus.update({
+            await prisma.processingStatus.upsert({
               where: { processId },
-              data: {
+              update: {
                 processedItems: {
                   increment: 1
                 },
@@ -497,6 +513,21 @@ async function processCryptoBatch(
                   }
                 },
                 updatedAt: new Date()
+              },
+              create: {
+                processId,
+                userId,
+                status: 'RUNNING',
+                type: 'DATA_SCHEDULING',
+                totalItems: 0,
+                processedItems: 1,
+                details: {
+                  [crypto.symbol]: {
+                    success: false,
+                    error: error instanceof Error ? error.message : String(error)
+                  }
+                },
+                startedAt: new Date()
               }
             });
           } catch (statusError) {
@@ -635,11 +666,21 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
       console.log(`Processing batch ${Math.floor(i/BATCH_SIZE) + 1} of ${Math.ceil(userCryptos.length/BATCH_SIZE)}`);
       
       // Update processing status
-      await prisma.processingStatus.update({
+      await prisma.processingStatus.upsert({
         where: { processId },
-        data: {
+        update: {
           processedItems: i,
           updatedAt: new Date()
+        },
+        create: {
+          processId,
+          userId,
+          status: 'RUNNING',
+          type: 'DATA_SCHEDULING',
+          totalItems: 0,
+          processedItems: i,
+          details: {},
+          startedAt: new Date()
         }
       });
       
@@ -665,11 +706,22 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
     const totalCount = results.length;
 
     // Update processing status to completed
-    await prisma.processingStatus.update({
+    await prisma.processingStatus.upsert({
       where: { processId },
-      data: {
+      update: {
         status: 'COMPLETED',
         processedItems: totalCount,
+        completedAt: new Date()
+      },
+      create: {
+        processId,
+        userId,
+        status: 'COMPLETED',
+        type: 'DATA_SCHEDULING',
+        totalItems: totalCount,
+        processedItems: totalCount,
+        details: {},
+        startedAt: new Date(),
         completedAt: new Date()
       }
     });
@@ -686,12 +738,24 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
     // Update processing status to failed
     const processId = `data-fetch-${Date.now()}`;
     try {
-      await prisma.processingStatus.update({
+      await prisma.processingStatus.upsert({
         where: { processId },
-        data: {
+        update: {
           status: 'FAILED',
           error: error instanceof Error ? error.message : String(error),
           completedAt: new Date()
+        },
+        create: {
+          processId,
+          userId,
+          status: 'FAILED',
+          type: 'DATA_SCHEDULING',
+          totalItems: 0,
+          processedItems: 0,
+          details: {},
+          startedAt: new Date(),
+          completedAt: new Date(),
+          error: error instanceof Error ? error.message : String(error)
         }
       });
     } catch (statusError) {

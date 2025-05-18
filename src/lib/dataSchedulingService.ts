@@ -1100,38 +1100,148 @@ async function runTechnicalAnalysis(
       console.log(`Saving technical analysis results for ${symbol} to database`);
       
       try {
-        technicalAnalysis = await prisma.technicalAnalysisOutput.create({
-          data: {
-            symbol,
-            instrument,
-            sma20,
-            sma50,
-            ema12,
-            ema26,
-            rsi14,
-            bollingerUpper: bollingerBands.upper,
-            bollingerMiddle: bollingerBands.middle,
-            bollingerLower: bollingerBands.lower,
-            supportLevel: trendLines.support,
-            resistanceLevel: trendLines.resistance,
-            fibonacciLevels: fibonacciLevels as any,
-            breakoutDetected: breakoutAnalysis.breakoutDetected,
-            breakoutType: breakoutAnalysis.breakoutType,
-            breakoutStrength: breakoutAnalysis.breakoutStrength,
-            recommendation: decision.decision,
-            confidenceScore: decision.confidence,
-            rawData: {
-              prices,
-              currentPrice,
-              previousEma12,
-              previousEma26,
-              timestamp: new Date(),
-              explanation: decision.explanation
-            }
-          }
+        // Log the data we're about to save
+        console.log(`Saving technical analysis for ${symbol} with data:`, {
+          symbol,
+          instrument,
+          sma20,
+          sma50,
+          ema12,
+          ema26,
+          rsi14,
+          bollingerUpper: bollingerBands.upper,
+          bollingerMiddle: bollingerBands.middle,
+          bollingerLower: bollingerBands.lower,
+          supportLevel: trendLines.support,
+          resistanceLevel: trendLines.resistance,
+          breakoutDetected: breakoutAnalysis.breakoutDetected,
+          breakoutType: breakoutAnalysis.breakoutType,
+          recommendation: decision.decision,
+          confidenceScore: decision.confidence
         });
         
-        console.log(`Successfully saved technical analysis for ${symbol} with ID: ${technicalAnalysis.id}`);
+        // Log to the scheduling logger if process ID and user ID are provided
+        if (processId && userId) {
+          await safeLog({
+            processId,
+            userId,
+            symbol,
+            operation: 'TECHNICAL_ANALYSIS_SAVE_START',
+            analysisType: 'TECHNICAL',
+            details: {
+              symbol,
+              instrument,
+              indicators: {
+                sma20,
+                sma50,
+                ema12,
+                ema26,
+                rsi14,
+                bollingerBands,
+                trendLines,
+                recommendation: decision.decision,
+                confidenceScore: decision.confidence
+              }
+            }
+          });
+        }
+        
+        // Add retry logic for database operations
+        let dbRetryCount = 0;
+        const maxDbRetries = 3;
+        let saveSuccess = false;
+        
+        while (dbRetryCount < maxDbRetries && !saveSuccess) {
+          try {
+            technicalAnalysis = await prisma.technicalAnalysisOutput.create({
+              data: {
+                symbol,
+                instrument,
+                sma20,
+                sma50,
+                ema12,
+                ema26,
+                rsi14,
+                bollingerUpper: bollingerBands.upper,
+                bollingerMiddle: bollingerBands.middle,
+                bollingerLower: bollingerBands.lower,
+                supportLevel: trendLines.support,
+                resistanceLevel: trendLines.resistance,
+                fibonacciLevels: fibonacciLevels as any,
+                breakoutDetected: breakoutAnalysis.breakoutDetected,
+                breakoutType: breakoutAnalysis.breakoutType,
+                breakoutStrength: breakoutAnalysis.breakoutStrength,
+                recommendation: decision.decision,
+                confidenceScore: decision.confidence,
+                rawData: {
+                  prices,
+                  currentPrice,
+                  previousEma12,
+                  previousEma26,
+                  timestamp: new Date(),
+                  explanation: decision.explanation
+                }
+              }
+            });
+            
+            // Verify the data was saved by fetching it back
+            const savedAnalysis = await prisma.technicalAnalysisOutput.findUnique({
+              where: { id: technicalAnalysis.id }
+            });
+            
+            if (savedAnalysis) {
+              console.log(`Successfully saved and verified technical analysis for ${symbol} with ID: ${technicalAnalysis.id}`);
+              
+              // Log successful verification
+              if (processId && userId) {
+                await safeLog({
+                  processId,
+                  userId,
+                  symbol,
+                  operation: 'TECHNICAL_ANALYSIS_SAVE_VERIFIED',
+                  analysisType: 'TECHNICAL',
+                  success: true,
+                  details: { 
+                    id: technicalAnalysis.id,
+                    timestamp: savedAnalysis.timestamp
+                  }
+                });
+              }
+              
+              saveSuccess = true;
+            } else {
+              const errorMessage = `Data was saved but could not be verified for ${symbol}`;
+              console.error(errorMessage);
+              
+              // Log verification failure
+              if (processId && userId) {
+                await safeLog({
+                  processId,
+                  userId,
+                  symbol,
+                  operation: 'TECHNICAL_ANALYSIS_SAVE_VERIFICATION_ERROR',
+                  analysisType: 'TECHNICAL',
+                  success: false,
+                  error: new Error(errorMessage)
+                });
+              }
+              
+              throw new Error(errorMessage);
+            }
+          } catch (saveError) {
+            dbRetryCount++;
+            console.error(`Database save error (attempt ${dbRetryCount}):`, saveError);
+            
+            if (dbRetryCount >= maxDbRetries) {
+              throw saveError; // Re-throw after max retries
+            }
+            
+            // Exponential backoff: 1s, 2s, 4s
+            const delay = 1000 * Math.pow(2, dbRetryCount - 1);
+            console.log(`Retrying database save after ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
       } catch (dbError) {
         console.error(`Error saving technical analysis for ${symbol} to database:`, dbError);
         console.error('DB Save Error', JSON.stringify(dbError, null, 2));

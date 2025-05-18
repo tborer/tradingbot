@@ -19,6 +19,7 @@ import DataSchedulingSection from './DataSchedulingSection';
 import SchedulingProcessLogs from './SchedulingProcessLogs';
 import TradingSignals from './TradingSignals';
 import AIDecisionData from './AIDecisionData';
+import AnalysisDataCheck from './AnalysisDataCheck';
 
 const Research: React.FC = () => {
   const [symbol, setSymbol] = useState('');
@@ -796,11 +797,12 @@ const Research: React.FC = () => {
       {/* Tabs for different sections */}
       <div className="w-full">
         <Tabs defaultValue="scheduling" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="scheduling">Data Scheduling</TabsTrigger>
             <TabsTrigger value="logs">Process Logs</TabsTrigger>
             <TabsTrigger value="signals">Trading Signals</TabsTrigger>
             <TabsTrigger value="ai-decision">AI Decision Data</TabsTrigger>
+            <TabsTrigger value="data-check">Data Check</TabsTrigger>
           </TabsList>
           <TabsContent value="scheduling">
             <DataSchedulingSection />
@@ -813,6 +815,9 @@ const Research: React.FC = () => {
           </TabsContent>
           <TabsContent value="ai-decision">
             <AIDecisionData />
+          </TabsContent>
+          <TabsContent value="data-check">
+            <AnalysisDataCheck />
           </TabsContent>
         </Tabs>
       </div>

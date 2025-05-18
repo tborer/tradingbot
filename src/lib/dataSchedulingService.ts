@@ -707,6 +707,17 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
 }
 
 /**
+ * Create a safe logging function that won't block the flow
+ */
+async function safeLog(params: any): Promise<void> {
+  try {
+    await logAnalysis(params);
+  } catch (e) {
+    console.error('Log operation failed:', e);
+  }
+}
+
+/**
  * Run basic technical analysis on the data and store the results
  * This only calculates and stores the basic indicators, not the derived ones
  * Returns a result object with success/error information
@@ -734,7 +745,7 @@ async function runTechnicalAnalysis(
     // Validate input data
     if (!data || !Array.isArray(data) || data.length === 0) {
       if (processId && userId) {
-        await logAnalysis({
+        await safeLog({
           processId,
           userId,
           symbol,
@@ -756,14 +767,22 @@ async function runTechnicalAnalysis(
     
     console.log(`Technical analysis for ${symbol} starting with ${data.length} data points`);
     
-    // Extract prices for analysis (most recent first)
+    // Extract prices for analysis (most recent first) with validation
     const prices = data
       .sort((a, b) => b.TIMESTAMP - a.TIMESTAMP)
+      .filter(entry => {
+        // Validate each entry has required fields
+        if (!entry || typeof entry.CLOSE !== 'number') {
+          console.warn(`Invalid entry in data array for ${symbol}:`, entry);
+          return false;
+        }
+        return true;
+      })
       .map(entry => entry.CLOSE);
     
-    if (prices.length === 0 || prices.some(p => p === undefined || p === null)) {
+    if (prices.length === 0) {
       if (processId && userId) {
-        await logAnalysis({
+        await safeLog({
           processId,
           userId,
           symbol,
@@ -781,13 +800,14 @@ async function runTechnicalAnalysis(
       };
     }
     
-    // Create price points for support/resistance analysis
+    // Create price points for support/resistance analysis with validation
     const pricePoints = data
       .sort((a, b) => b.TIMESTAMP - a.TIMESTAMP)
+      .filter(entry => entry && typeof entry.TIMESTAMP === 'number')
       .map(entry => ({
-        high: entry.HIGH || entry.CLOSE,
-        low: entry.LOW || entry.CLOSE,
-        open: entry.OPEN || entry.CLOSE,
+        high: typeof entry.HIGH === 'number' ? entry.HIGH : entry.CLOSE,
+        low: typeof entry.LOW === 'number' ? entry.LOW : entry.CLOSE,
+        open: typeof entry.OPEN === 'number' ? entry.OPEN : entry.CLOSE,
         close: entry.CLOSE,
         timestamp: new Date(entry.TIMESTAMP * 1000)
       }));
@@ -796,7 +816,7 @@ async function runTechnicalAnalysis(
     let technicalAnalysis;
     try {
       if (processId && userId) {
-        await logAnalysis({
+        await safeLog({
           processId,
           userId,
           symbol,
@@ -806,42 +826,226 @@ async function runTechnicalAnalysis(
         });
       }
       
-      const sma20 = calculateSMA(prices, 20);
-      const sma50 = calculateSMA(prices, 50);
-      const ema12 = calculateEMA(prices, 12);
-      const ema26 = calculateEMA(prices, 26);
-      const rsi14 = calculateRSI(prices, 14);
-      const bollingerBands = calculateBollingerBands(prices, 20, 2);
-      const trendLines = identifyTrendLines(prices);
+      // Calculate indicators with safe defaults if calculation fails
+      let sma20, sma50, ema12, ema26, rsi14, bollingerBands, trendLines;
       
-      // Calculate Fibonacci retracements
+      try {
+        sma20 = calculateSMA(prices, 20);
+        if (typeof sma20 !== 'number' || isNaN(sma20)) {
+          console.warn(`Invalid SMA20 value for ${symbol}: ${sma20}`);
+          sma20 = prices[0]; // Default to current price
+        }
+      } catch (e) {
+        console.error(`Error calculating SMA20 for ${symbol}:`, e);
+        sma20 = prices[0]; // Default to current price
+      }
+      
+      try {
+        sma50 = calculateSMA(prices, 50);
+        if (typeof sma50 !== 'number' || isNaN(sma50)) {
+          console.warn(`Invalid SMA50 value for ${symbol}: ${sma50}`);
+          sma50 = prices[0]; // Default to current price
+        }
+      } catch (e) {
+        console.error(`Error calculating SMA50 for ${symbol}:`, e);
+        sma50 = prices[0]; // Default to current price
+      }
+      
+      try {
+        ema12 = calculateEMA(prices, 12);
+        if (typeof ema12 !== 'number' || isNaN(ema12)) {
+          console.warn(`Invalid EMA12 value for ${symbol}: ${ema12}`);
+          ema12 = prices[0]; // Default to current price
+        }
+      } catch (e) {
+        console.error(`Error calculating EMA12 for ${symbol}:`, e);
+        ema12 = prices[0]; // Default to current price
+      }
+      
+      try {
+        ema26 = calculateEMA(prices, 26);
+        if (typeof ema26 !== 'number' || isNaN(ema26)) {
+          console.warn(`Invalid EMA26 value for ${symbol}: ${ema26}`);
+          ema26 = prices[0]; // Default to current price
+        }
+      } catch (e) {
+        console.error(`Error calculating EMA26 for ${symbol}:`, e);
+        ema26 = prices[0]; // Default to current price
+      }
+      
+      try {
+        rsi14 = calculateRSI(prices, 14);
+        if (typeof rsi14 !== 'number' || isNaN(rsi14)) {
+          console.warn(`Invalid RSI14 value for ${symbol}: ${rsi14}`);
+          rsi14 = 50; // Default to neutral RSI
+        }
+      } catch (e) {
+        console.error(`Error calculating RSI14 for ${symbol}:`, e);
+        rsi14 = 50; // Default to neutral RSI
+      }
+      
+      try {
+        bollingerBands = calculateBollingerBands(prices, 20, 2);
+        if (!bollingerBands || 
+            typeof bollingerBands.upper !== 'number' || isNaN(bollingerBands.upper) ||
+            typeof bollingerBands.middle !== 'number' || isNaN(bollingerBands.middle) ||
+            typeof bollingerBands.lower !== 'number' || isNaN(bollingerBands.lower)) {
+          console.warn(`Invalid Bollinger Bands values for ${symbol}:`, bollingerBands);
+          bollingerBands = {
+            upper: prices[0] * 1.05,
+            middle: prices[0],
+            lower: prices[0] * 0.95
+          };
+        }
+      } catch (e) {
+        console.error(`Error calculating Bollinger Bands for ${symbol}:`, e);
+        bollingerBands = {
+          upper: prices[0] * 1.05,
+          middle: prices[0],
+          lower: prices[0] * 0.95
+        };
+      }
+      
+      try {
+        trendLines = identifyTrendLines(prices);
+        if (!trendLines || 
+            typeof trendLines.support !== 'number' || isNaN(trendLines.support) ||
+            typeof trendLines.resistance !== 'number' || isNaN(trendLines.resistance)) {
+          console.warn(`Invalid Trend Lines values for ${symbol}:`, trendLines);
+          trendLines = {
+            support: prices[0] * 0.95,
+            resistance: prices[0] * 1.05
+          };
+        }
+      } catch (e) {
+        console.error(`Error identifying Trend Lines for ${symbol}:`, e);
+        trendLines = {
+          support: prices[0] * 0.95,
+          resistance: prices[0] * 1.05
+        };
+      }
+      
+      // Calculate Fibonacci retracements with validation
       const highPrice = Math.max(...prices);
       const lowPrice = Math.min(...prices);
-      const fibonacciLevels = calculateFibonacciRetracements(highPrice, lowPrice);
+      let fibonacciLevels;
       
-      // Detect breakout patterns
-      const breakoutAnalysis = detectBreakoutPatterns(prices, trendLines, bollingerBands);
+      try {
+        fibonacciLevels = calculateFibonacciRetracements(highPrice, lowPrice);
+        // Validate fibonacci levels
+        if (!fibonacciLevels || 
+            typeof fibonacciLevels.level0 !== 'number' || isNaN(fibonacciLevels.level0) ||
+            typeof fibonacciLevels.level100 !== 'number' || isNaN(fibonacciLevels.level100)) {
+          console.warn(`Invalid Fibonacci Levels for ${symbol}:`, fibonacciLevels);
+          fibonacciLevels = {
+            level0: highPrice,
+            level23_6: highPrice - (highPrice - lowPrice) * 0.236,
+            level38_2: highPrice - (highPrice - lowPrice) * 0.382,
+            level50: highPrice - (highPrice - lowPrice) * 0.5,
+            level61_8: highPrice - (highPrice - lowPrice) * 0.618,
+            level100: lowPrice
+          };
+        }
+      } catch (e) {
+        console.error(`Error calculating Fibonacci Retracements for ${symbol}:`, e);
+        fibonacciLevels = {
+          level0: highPrice,
+          level23_6: highPrice - (highPrice - lowPrice) * 0.236,
+          level38_2: highPrice - (highPrice - lowPrice) * 0.382,
+          level50: highPrice - (highPrice - lowPrice) * 0.5,
+          level61_8: highPrice - (highPrice - lowPrice) * 0.618,
+          level100: lowPrice
+        };
+      }
       
-      // Calculate weighted decision
+      // Detect breakout patterns with validation
+      let breakoutAnalysis;
+      
+      try {
+        breakoutAnalysis = detectBreakoutPatterns(prices, trendLines, bollingerBands);
+        if (!breakoutAnalysis || 
+            typeof breakoutAnalysis.breakoutDetected !== 'boolean' ||
+            typeof breakoutAnalysis.breakoutStrength !== 'number' || isNaN(breakoutAnalysis.breakoutStrength)) {
+          console.warn(`Invalid Breakout Analysis for ${symbol}:`, breakoutAnalysis);
+          breakoutAnalysis = {
+            breakoutDetected: false,
+            breakoutType: 'NONE',
+            breakoutStrength: 0
+          };
+        }
+      } catch (e) {
+        console.error(`Error detecting Breakout Patterns for ${symbol}:`, e);
+        breakoutAnalysis = {
+          breakoutDetected: false,
+          breakoutType: 'NONE',
+          breakoutStrength: 0
+        };
+      }
+      
+      // Calculate weighted decision with validation
       const currentPrice = prices[0];
-      const decision = calculateWeightedDecision(
-        currentPrice,
-        ema12,
-        ema26,
-        rsi14,
-        bollingerBands,
-        trendLines,
-        sma20,
-        fibonacciLevels,
-        breakoutAnalysis
-      );
+      let decision;
+      
+      try {
+        decision = calculateWeightedDecision(
+          currentPrice,
+          ema12,
+          ema26,
+          rsi14,
+          bollingerBands,
+          trendLines,
+          sma20,
+          fibonacciLevels,
+          breakoutAnalysis
+        );
+        
+        if (!decision || 
+            !decision.decision ||
+            typeof decision.confidence !== 'number' || isNaN(decision.confidence)) {
+          console.warn(`Invalid Decision for ${symbol}:`, decision);
+          decision = {
+            decision: 'HOLD',
+            confidence: 50,
+            explanation: 'Default decision due to calculation error'
+          };
+        }
+      } catch (e) {
+        console.error(`Error calculating Weighted Decision for ${symbol}:`, e);
+        decision = {
+          decision: 'HOLD',
+          confidence: 50,
+          explanation: 'Default decision due to calculation error'
+        };
+      }
       
       // Calculate previous indicators for comparison (if available)
-      const previousEma12 = prices.length > 1 ? calculateEMA(prices.slice(1), 12) : null;
-      const previousEma26 = prices.length > 1 ? calculateEMA(prices.slice(1), 26) : null;
+      let previousEma12 = null;
+      let previousEma26 = null;
+      
+      if (prices.length > 1) {
+        try {
+          previousEma12 = calculateEMA(prices.slice(1), 12);
+          if (typeof previousEma12 !== 'number' || isNaN(previousEma12)) {
+            previousEma12 = null;
+          }
+        } catch (e) {
+          console.error(`Error calculating previous EMA12 for ${symbol}:`, e);
+          previousEma12 = null;
+        }
+        
+        try {
+          previousEma26 = calculateEMA(prices.slice(1), 26);
+          if (typeof previousEma26 !== 'number' || isNaN(previousEma26)) {
+            previousEma26 = null;
+          }
+        } catch (e) {
+          console.error(`Error calculating previous EMA26 for ${symbol}:`, e);
+          previousEma26 = null;
+        }
+      }
       
       if (processId && userId) {
-        await logAnalysis({
+        await safeLog({
           processId,
           userId,
           symbol,
@@ -864,9 +1068,27 @@ async function runTechnicalAnalysis(
         });
       }
       
+      // Validate all key values before saving to database
+      if (
+        typeof sma20 !== 'number' || isNaN(sma20) ||
+        typeof sma50 !== 'number' || isNaN(sma50) ||
+        typeof ema12 !== 'number' || isNaN(ema12) ||
+        typeof ema26 !== 'number' || isNaN(ema26) ||
+        typeof rsi14 !== 'number' || isNaN(rsi14) ||
+        !bollingerBands || 
+        typeof bollingerBands.upper !== 'number' || isNaN(bollingerBands.upper) ||
+        typeof bollingerBands.middle !== 'number' || isNaN(bollingerBands.middle) ||
+        typeof bollingerBands.lower !== 'number' || isNaN(bollingerBands.lower) ||
+        !trendLines ||
+        typeof trendLines.support !== 'number' || isNaN(trendLines.support) ||
+        typeof trendLines.resistance !== 'number' || isNaN(trendLines.resistance)
+      ) {
+        throw new Error('Invalid indicator values detected before database save');
+      }
+      
       // Store the analysis results
       if (processId && userId) {
-        await logAnalysis({
+        await safeLog({
           processId,
           userId,
           symbol,
@@ -912,9 +1134,10 @@ async function runTechnicalAnalysis(
         console.log(`Successfully saved technical analysis for ${symbol} with ID: ${technicalAnalysis.id}`);
       } catch (dbError) {
         console.error(`Error saving technical analysis for ${symbol} to database:`, dbError);
+        console.error('DB Save Error', JSON.stringify(dbError, null, 2));
         
         if (processId && userId) {
-          await logAnalysis({
+          await safeLog({
             processId,
             userId,
             symbol,
@@ -929,7 +1152,7 @@ async function runTechnicalAnalysis(
       }
       
       if (processId && userId) {
-        await logAnalysis({
+        await safeLog({
           processId,
           userId,
           symbol,
@@ -945,7 +1168,7 @@ async function runTechnicalAnalysis(
       console.error(`Error calculating basic indicators for ${symbol}:`, error);
       
       if (processId && userId) {
-        await logAnalysis({
+        await safeLog({
           processId,
           userId,
           symbol,

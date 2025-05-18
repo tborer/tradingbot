@@ -472,9 +472,25 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
               continue; // Skip to the next step if feature generation fails
             }
             
+            // Validate feature set before saving
+            if (!featureSet || typeof featureSet !== 'object') {
+              console.error(`Invalid feature set generated for ${crypto.symbol}`);
+              await schedulingLogger.log({
+                processId,
+                userId,
+                level: 'ERROR',
+                category: 'ANALYSIS',
+                operation: 'FEATURE_VALIDATION_ERROR',
+                symbol: crypto.symbol,
+                message: `Invalid feature set generated for ${crypto.symbol}`
+              });
+              continue; // Skip to the next step if feature set is invalid
+            }
+            
             // Save the feature set with error handling
             try {
-              await saveComprehensiveFeatureSet(crypto.symbol, featureSet);
+              // Pass processId and userId to the save function for better logging
+              await saveComprehensiveFeatureSet(crypto.symbol, featureSet, processId, userId);
               console.log(`Successfully saved comprehensive feature set for ${crypto.symbol}`);
             } catch (saveError) {
               console.error(`Error saving comprehensive feature set for ${crypto.symbol}:`, saveError);
@@ -907,9 +923,25 @@ export async function runAnalysisForSymbol(symbol: string, userId: string, proce
     const featureSet = await generateComprehensiveFeatureSet(symbol, 'hourly', new Date(), processId, userId);
     console.log(`Successfully generated comprehensive feature set for ${symbol}`);
     
+    // Validate feature set before saving
+    if (!featureSet || typeof featureSet !== 'object') {
+      console.error(`Invalid feature set generated for ${symbol}`);
+      await schedulingLogger.log({
+        processId,
+        userId,
+        level: 'ERROR',
+        category: 'ANALYSIS',
+        operation: 'FEATURE_VALIDATION_ERROR',
+        symbol,
+        message: `Invalid feature set generated for ${symbol}`
+      });
+      throw new Error(`Invalid feature set generated for ${symbol}`);
+    }
+    
     // Save the feature set
     try {
-      await saveComprehensiveFeatureSet(symbol, featureSet);
+      // Pass processId and userId to the save function for better logging
+      await saveComprehensiveFeatureSet(symbol, featureSet, processId, userId);
       console.log(`Successfully saved comprehensive feature set for ${symbol}`);
       
       // Log success
@@ -924,6 +956,7 @@ export async function runAnalysisForSymbol(symbol: string, userId: string, proce
       });
     } catch (saveError) {
       console.error(`Error saving comprehensive feature set for ${symbol}:`, saveError);
+      console.error('DB Save Error', JSON.stringify(saveError, null, 2));
       await schedulingLogger.log({
         processId,
         userId,

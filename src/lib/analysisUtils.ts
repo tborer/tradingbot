@@ -1,5 +1,12 @@
 import prisma from '@/lib/prisma';
 import { schedulingLogger } from '@/lib/schedulingLogger';
+import { 
+  enhancedLog, 
+  logCalculationResult, 
+  logStepCompletion, 
+  logProcessCompletion,
+  logProcessFailure
+} from '@/lib/enhancedSchedulingLogger';
 import { generateComprehensiveFeatureSet, saveComprehensiveFeatureSet } from '@/lib/comprehensiveFeatureUtils';
 import { runPredictionsForAllCryptos, updatePredictionOutcomes } from '@/lib/predictionModels/predictionRunner';
 import { generateTradingSignalsForAllCryptos } from '@/lib/tradingSignals/signalGenerator';
@@ -15,10 +22,11 @@ function logAnalysis(level: string, functionName: string, message: string, detai
 
 /**
  * Safe logging function that won't block the flow
+ * Uses the enhanced logger that also updates ProcessingStatus
  */
 async function safeLog(params: any): Promise<void> {
   try {
-    await schedulingLogger.log(params);
+    await enhancedLog(params);
   } catch (e) {
     console.error('Log operation failed:', e);
   }
@@ -666,7 +674,17 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
             type: 'ANALYSIS',
             totalItems: cryptos.length * 5, // 5 steps per crypto
             processedItems: 0,
-            startedAt: new Date()
+            startedAt: new Date(),
+            message: `Starting analysis process for ${cryptos.length} cryptocurrencies`,
+            details: {
+              cryptoCount: cryptos.length,
+              cryptoSymbols: cryptos.map(c => c.symbol),
+              stepsPerCrypto: 5,
+              startTime: new Date().toISOString(),
+              lastOperation: 'ANALYSIS_START',
+              lastMessage: `Starting analysis process for ${cryptos.length} cryptocurrencies`,
+              lastTimestamp: new Date().toISOString()
+            }
           },
           create: {
             processId,
@@ -675,7 +693,17 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
             type: 'ANALYSIS',
             totalItems: cryptos.length * 5, // 5 steps per crypto
             processedItems: 0,
-            startedAt: new Date()
+            startedAt: new Date(),
+            message: `Starting analysis process for ${cryptos.length} cryptocurrencies`,
+            details: {
+              cryptoCount: cryptos.length,
+              cryptoSymbols: cryptos.map(c => c.symbol),
+              stepsPerCrypto: 5,
+              startTime: new Date().toISOString(),
+              lastOperation: 'ANALYSIS_START',
+              lastMessage: `Starting analysis process for ${cryptos.length} cryptocurrencies`,
+              lastTimestamp: new Date().toISOString()
+            }
           }
         });
         break; // Success, exit the retry loop
@@ -719,14 +747,26 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
     // Update status every 5 seconds to show activity
     const statusUpdateInterval = setInterval(async () => {
       try {
+        const percentComplete = Math.round((processedItems / (cryptos.length * 5)) * 100);
         await prisma.processingStatus.update({
           where: { processId },
           data: {
             processedItems,
-            updatedAt: new Date()
+            updatedAt: new Date(),
+            message: `Processing analysis: ${processedItems} of ${cryptos.length * 5} steps completed (${percentComplete}%)`,
+            details: {
+              update: {
+                currentProgress: {
+                  processedItems,
+                  totalItems: cryptos.length * 5,
+                  percentComplete
+                },
+                lastUpdateTime: new Date().toISOString()
+              }
+            }
           }
         });
-        console.log(`Updated processing status: ${processedItems} items processed`);
+        console.log(`Updated processing status: ${processedItems} items processed (${percentComplete}%)`);
       } catch (error) {
         console.error('Error updating status in interval:', error);
       }
@@ -1527,17 +1567,8 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
       
       while (retryCount < maxRetries && !statusUpdateSuccess) {
         try {
-          await prisma.processingStatus.update({
-            where: {
-              processId
-            },
-            data: {
-              status: 'COMPLETED',
-              processedItems: processedItems, // Use actual processed items count
-              completedAt: new Date()
-            }
-          });
-          
+          // Use the enhanced logger to log process completion
+          await logProcessCompletion(processId, userId, successCount, errorCount, processedItems);
           statusUpdateSuccess = true;
           
           await safeLog({
@@ -1582,16 +1613,8 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
     
     while (retryCount < maxRetries && !statusUpdateSuccess) {
       try {
-        await prisma.processingStatus.update({
-          where: {
-            processId
-          },
-          data: {
-            status: 'FAILED',
-            completedAt: new Date(),
-            error: error instanceof Error ? error.message : 'Unknown error'
-          }
-        });
+        // Use the enhanced logger to log process failure
+        await logProcessFailure(processId, userId, error);
         
         statusUpdateSuccess = true;
         
@@ -1843,7 +1866,7 @@ export async function runAnalysisForSymbol(symbol: string, userId: string, proce
 }
 
 // Export technical analysis calculation functions
-export function calculateSMA(prices: number[], period: number): number {
+export function calculateSMA(prices: number[], period: number, processId?: string, userId?: string, symbol?: string): number {
   logAnalysis('INFO', 'calculateSMA', `Starting SMA calculation with period ${period}`, { 
     dataPoints: prices.length,
     period
@@ -1865,10 +1888,15 @@ export function calculateSMA(prices: number[], period: number): number {
     result
   });
   
+  // Log the calculation result to ProcessingStatus if we have the necessary info
+  if (processId && userId && symbol) {
+    logCalculationResult(processId, userId, symbol, `SMA${period}`, result);
+  }
+  
   return result;
 }
 
-export function calculateEMA(prices: number[], period: number): number {
+export function calculateEMA(prices: number[], period: number, processId?: string, userId?: string, symbol?: string): number {
   logAnalysis('INFO', 'calculateEMA', `Starting EMA calculation with period ${period}`, { 
     dataPoints: prices.length,
     period
@@ -1894,10 +1922,15 @@ export function calculateEMA(prices: number[], period: number): number {
     result: ema
   });
   
+  // Log the calculation result to ProcessingStatus if we have the necessary info
+  if (processId && userId && symbol) {
+    logCalculationResult(processId, userId, symbol, `EMA${period}`, ema);
+  }
+  
   return ema;
 }
 
-export function calculateRSI(prices: number[], period: number): number {
+export function calculateRSI(prices: number[], period: number, processId?: string, userId?: string, symbol?: string): number {
   logAnalysis('INFO', 'calculateRSI', `Starting RSI calculation with period ${period}`, { 
     dataPoints: prices.length,
     period
@@ -1939,10 +1972,22 @@ export function calculateRSI(prices: number[], period: number): number {
     rs
   });
   
+  // Log the calculation result to ProcessingStatus if we have the necessary info
+  if (processId && userId && symbol) {
+    logCalculationResult(processId, userId, symbol, `RSI${period}`, result);
+  }
+  
   return result;
 }
 
-export function calculateBollingerBands(prices: number[], period: number, multiplier: number): {
+export function calculateBollingerBands(
+  prices: number[], 
+  period: number, 
+  multiplier: number,
+  processId?: string, 
+  userId?: string, 
+  symbol?: string
+): {
   upper: number;
   middle: number;
   lower: number;
@@ -1966,10 +2011,16 @@ export function calculateBollingerBands(prices: number[], period: number, multip
     };
     
     logAnalysis('INFO', 'calculateBollingerBands', `Approximated Bollinger Bands`, result);
+    
+    // Log the calculation result to ProcessingStatus if we have the necessary info
+    if (processId && userId && symbol) {
+      logCalculationResult(processId, userId, symbol, 'BollingerBands', result);
+    }
+    
     return result;
   }
   
-  const sma = calculateSMA(prices, period);
+  const sma = calculateSMA(prices, period, processId, userId, symbol);
   
   // Calculate standard deviation
   const squaredDifferences = prices.slice(0, period).map(price => Math.pow(price - sma, 2));
@@ -1988,6 +2039,11 @@ export function calculateBollingerBands(prices: number[], period: number, multip
     standardDeviation,
     result
   });
+  
+  // Log the calculation result to ProcessingStatus if we have the necessary info
+  if (processId && userId && symbol) {
+    logCalculationResult(processId, userId, symbol, 'BollingerBands', result);
+  }
   
   return result;
 }

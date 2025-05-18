@@ -20,6 +20,7 @@ import {
   logScheduling,
   createOperationTimer
 } from '@/lib/schedulingLogger';
+import { logCalculationResult } from '@/lib/enhancedSchedulingLogger';
 
 // Constants for batch processing
 const BATCH_SIZE = 5; // Number of cryptos to process in parallel
@@ -708,10 +709,35 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
 
 /**
  * Create a safe logging function that won't block the flow
+ * and updates the ProcessingStatus table
  */
 async function safeLog(params: any): Promise<void> {
   try {
     await logAnalysis(params);
+    
+    // Also update the ProcessingStatus table with the current operation and message
+    if (params.processId && params.operation) {
+      try {
+        await prisma.processingStatus.update({
+          where: { processId: params.processId },
+          data: {
+            message: params.message,
+            details: {
+              update: {
+                lastOperation: params.operation,
+                lastMessage: params.message,
+                lastTimestamp: new Date().toISOString(),
+                ...(params.symbol ? { lastSymbol: params.symbol } : {}),
+                ...(params.details ? { lastDetails: params.details } : {})
+              }
+            },
+            updatedAt: new Date()
+          }
+        });
+      } catch (updateError) {
+        console.error('Failed to update ProcessingStatus with operation details:', updateError);
+      }
+    }
   } catch (e) {
     console.error('Log operation failed:', e);
   }
@@ -830,7 +856,7 @@ async function runTechnicalAnalysis(
       let sma20, sma50, ema12, ema26, rsi14, bollingerBands, trendLines;
       
       try {
-        sma20 = calculateSMA(prices, 20);
+        sma20 = calculateSMA(prices, 20, processId, userId, symbol);
         if (typeof sma20 !== 'number' || isNaN(sma20)) {
           console.warn(`Invalid SMA20 value for ${symbol}: ${sma20}`);
           sma20 = prices[0]; // Default to current price
@@ -841,7 +867,7 @@ async function runTechnicalAnalysis(
       }
       
       try {
-        sma50 = calculateSMA(prices, 50);
+        sma50 = calculateSMA(prices, 50, processId, userId, symbol);
         if (typeof sma50 !== 'number' || isNaN(sma50)) {
           console.warn(`Invalid SMA50 value for ${symbol}: ${sma50}`);
           sma50 = prices[0]; // Default to current price
@@ -852,7 +878,7 @@ async function runTechnicalAnalysis(
       }
       
       try {
-        ema12 = calculateEMA(prices, 12);
+        ema12 = calculateEMA(prices, 12, processId, userId, symbol);
         if (typeof ema12 !== 'number' || isNaN(ema12)) {
           console.warn(`Invalid EMA12 value for ${symbol}: ${ema12}`);
           ema12 = prices[0]; // Default to current price
@@ -863,7 +889,7 @@ async function runTechnicalAnalysis(
       }
       
       try {
-        ema26 = calculateEMA(prices, 26);
+        ema26 = calculateEMA(prices, 26, processId, userId, symbol);
         if (typeof ema26 !== 'number' || isNaN(ema26)) {
           console.warn(`Invalid EMA26 value for ${symbol}: ${ema26}`);
           ema26 = prices[0]; // Default to current price
@@ -874,7 +900,7 @@ async function runTechnicalAnalysis(
       }
       
       try {
-        rsi14 = calculateRSI(prices, 14);
+        rsi14 = calculateRSI(prices, 14, processId, userId, symbol);
         if (typeof rsi14 !== 'number' || isNaN(rsi14)) {
           console.warn(`Invalid RSI14 value for ${symbol}: ${rsi14}`);
           rsi14 = 50; // Default to neutral RSI
@@ -885,7 +911,7 @@ async function runTechnicalAnalysis(
       }
       
       try {
-        bollingerBands = calculateBollingerBands(prices, 20, 2);
+        bollingerBands = calculateBollingerBands(prices, 20, 2, processId, userId, symbol);
         if (!bollingerBands || 
             typeof bollingerBands.upper !== 'number' || isNaN(bollingerBands.upper) ||
             typeof bollingerBands.middle !== 'number' || isNaN(bollingerBands.middle) ||
@@ -917,6 +943,11 @@ async function runTechnicalAnalysis(
             resistance: prices[0] * 1.05
           };
         }
+        
+        // Log the trend lines to ProcessingStatus
+        if (processId && userId) {
+          logCalculationResult(processId, userId, symbol, 'TrendLines', trendLines);
+        }
       } catch (e) {
         console.error(`Error identifying Trend Lines for ${symbol}:`, e);
         trendLines = {
@@ -946,6 +977,11 @@ async function runTechnicalAnalysis(
             level100: lowPrice
           };
         }
+        
+        // Log the fibonacci levels to ProcessingStatus
+        if (processId && userId) {
+          logCalculationResult(processId, userId, symbol, 'FibonacciLevels', fibonacciLevels);
+        }
       } catch (e) {
         console.error(`Error calculating Fibonacci Retracements for ${symbol}:`, e);
         fibonacciLevels = {
@@ -972,6 +1008,11 @@ async function runTechnicalAnalysis(
             breakoutType: 'NONE',
             breakoutStrength: 0
           };
+        }
+        
+        // Log the breakout analysis to ProcessingStatus
+        if (processId && userId) {
+          logCalculationResult(processId, userId, symbol, 'BreakoutAnalysis', breakoutAnalysis);
         }
       } catch (e) {
         console.error(`Error detecting Breakout Patterns for ${symbol}:`, e);
@@ -1008,6 +1049,11 @@ async function runTechnicalAnalysis(
             confidence: 50,
             explanation: 'Default decision due to calculation error'
           };
+        }
+        
+        // Log the weighted decision to ProcessingStatus
+        if (processId && userId) {
+          logCalculationResult(processId, userId, symbol, 'WeightedDecision', decision);
         }
       } catch (e) {
         console.error(`Error calculating Weighted Decision for ${symbol}:`, e);
@@ -1093,7 +1139,21 @@ async function runTechnicalAnalysis(
           userId,
           symbol,
           operation: 'BASIC_INDICATORS_STORAGE_START',
-          analysisType: 'TECHNICAL'
+          analysisType: 'TECHNICAL',
+          details: {
+            indicators: {
+              sma20,
+              sma50,
+              ema12,
+              ema26,
+              rsi14,
+              bollingerBands,
+              trendLines,
+              fibonacciLevels,
+              breakoutAnalysis,
+              decision
+            }
+          }
         });
       }
       
@@ -1203,9 +1263,51 @@ async function runTechnicalAnalysis(
                   success: true,
                   details: { 
                     id: technicalAnalysis.id,
-                    timestamp: savedAnalysis.timestamp
+                    timestamp: savedAnalysis.timestamp,
+                    indicators: {
+                      sma20: savedAnalysis.sma20,
+                      sma50: savedAnalysis.sma50,
+                      ema12: savedAnalysis.ema12,
+                      ema26: savedAnalysis.ema26,
+                      rsi14: savedAnalysis.rsi14,
+                      bollingerBands: {
+                        upper: savedAnalysis.bollingerUpper,
+                        middle: savedAnalysis.bollingerMiddle,
+                        lower: savedAnalysis.bollingerLower
+                      },
+                      supportLevel: savedAnalysis.supportLevel,
+                      resistanceLevel: savedAnalysis.resistanceLevel,
+                      recommendation: savedAnalysis.recommendation,
+                      confidenceScore: savedAnalysis.confidenceScore
+                    }
                   }
                 });
+                
+                // Update the ProcessingStatus with the saved analysis details
+                try {
+                  await prisma.processingStatus.update({
+                    where: { processId },
+                    data: {
+                      message: `Saved technical analysis for ${symbol}`,
+                      details: {
+                        update: {
+                          [`${symbol}_technicalAnalysis`]: {
+                            id: technicalAnalysis.id,
+                            timestamp: savedAnalysis.timestamp.toISOString(),
+                            recommendation: savedAnalysis.recommendation,
+                            confidenceScore: savedAnalysis.confidenceScore
+                          },
+                          lastOperation: 'TECHNICAL_ANALYSIS_SAVED',
+                          lastSymbol: symbol,
+                          lastMessage: `Saved technical analysis for ${symbol}`,
+                          lastTimestamp: new Date().toISOString()
+                        }
+                      }
+                    }
+                  });
+                } catch (statusError) {
+                  console.error(`Error updating ProcessingStatus with saved analysis for ${symbol}:`, statusError);
+                }
               }
               
               saveSuccess = true;

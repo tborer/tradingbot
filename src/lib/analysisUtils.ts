@@ -1844,16 +1844,41 @@ export async function runAnalysisForSymbol(symbol: string, userId: string, proce
 
 // Export technical analysis calculation functions
 export function calculateSMA(prices: number[], period: number): number {
+  logAnalysis('INFO', 'calculateSMA', `Starting SMA calculation with period ${period}`, { 
+    dataPoints: prices.length,
+    period
+  });
+  
   if (prices.length < period) {
+    logAnalysis('WARNING', 'calculateSMA', `Not enough data points for SMA calculation, using current price`, {
+      required: period,
+      available: prices.length
+    });
     return prices[0]; // Return current price if not enough data
   }
   
   const sum = prices.slice(0, period).reduce((a, b) => a + b, 0);
-  return sum / period;
+  const result = sum / period;
+  
+  logAnalysis('INFO', 'calculateSMA', `SMA calculation completed`, {
+    period,
+    result
+  });
+  
+  return result;
 }
 
 export function calculateEMA(prices: number[], period: number): number {
+  logAnalysis('INFO', 'calculateEMA', `Starting EMA calculation with period ${period}`, { 
+    dataPoints: prices.length,
+    period
+  });
+  
   if (prices.length < period) {
+    logAnalysis('WARNING', 'calculateEMA', `Not enough data points for EMA calculation, using current price`, {
+      required: period,
+      available: prices.length
+    });
     return prices[0]; // Return current price if not enough data
   }
   
@@ -1864,11 +1889,25 @@ export function calculateEMA(prices: number[], period: number): number {
     ema = prices[i] * k + ema * (1 - k);
   }
   
+  logAnalysis('INFO', 'calculateEMA', `EMA calculation completed`, {
+    period,
+    result: ema
+  });
+  
   return ema;
 }
 
 export function calculateRSI(prices: number[], period: number): number {
+  logAnalysis('INFO', 'calculateRSI', `Starting RSI calculation with period ${period}`, { 
+    dataPoints: prices.length,
+    period
+  });
+  
   if (prices.length <= period) {
+    logAnalysis('WARNING', 'calculateRSI', `Not enough data points for RSI calculation, returning neutral value`, {
+      required: period + 1,
+      available: prices.length
+    });
     return 50; // Return neutral RSI if not enough data
   }
   
@@ -1884,10 +1923,23 @@ export function calculateRSI(prices: number[], period: number): number {
     }
   }
   
-  if (losses === 0) return 100; // All gains
+  if (losses === 0) {
+    logAnalysis('INFO', 'calculateRSI', `No losses in the period, returning maximum RSI value`);
+    return 100; // All gains
+  }
   
   const rs = gains / losses;
-  return 100 - (100 / (1 + rs));
+  const result = 100 - (100 / (1 + rs));
+  
+  logAnalysis('INFO', 'calculateRSI', `RSI calculation completed`, {
+    period,
+    result,
+    gains,
+    losses,
+    rs
+  });
+  
+  return result;
 }
 
 export function calculateBollingerBands(prices: number[], period: number, multiplier: number): {
@@ -1895,12 +1947,26 @@ export function calculateBollingerBands(prices: number[], period: number, multip
   middle: number;
   lower: number;
 } {
+  logAnalysis('INFO', 'calculateBollingerBands', `Starting Bollinger Bands calculation`, { 
+    dataPoints: prices.length,
+    period,
+    multiplier
+  });
+  
   if (prices.length < period) {
-    return {
+    logAnalysis('WARNING', 'calculateBollingerBands', `Not enough data points for Bollinger Bands calculation, using approximation`, {
+      required: period,
+      available: prices.length
+    });
+    
+    const result = {
       upper: prices[0] * 1.1,
       middle: prices[0],
       lower: prices[0] * 0.9
     };
+    
+    logAnalysis('INFO', 'calculateBollingerBands', `Approximated Bollinger Bands`, result);
+    return result;
   }
   
   const sma = calculateSMA(prices, period);
@@ -1910,22 +1976,43 @@ export function calculateBollingerBands(prices: number[], period: number, multip
   const variance = squaredDifferences.reduce((a, b) => a + b, 0) / period;
   const standardDeviation = Math.sqrt(variance);
   
-  return {
+  const result = {
     upper: sma + (standardDeviation * multiplier),
     middle: sma,
     lower: sma - (standardDeviation * multiplier)
   };
+  
+  logAnalysis('INFO', 'calculateBollingerBands', `Bollinger Bands calculation completed`, {
+    period,
+    multiplier,
+    standardDeviation,
+    result
+  });
+  
+  return result;
 }
 
 export function identifyTrendLines(prices: number[]): {
   support: number;
   resistance: number;
 } {
+  logAnalysis('INFO', 'identifyTrendLines', `Starting trend lines identification`, { 
+    dataPoints: prices.length
+  });
+  
   if (prices.length < 10) {
-    return {
+    logAnalysis('WARNING', 'identifyTrendLines', `Not enough data points for trend line identification, using approximation`, {
+      required: 10,
+      available: prices.length
+    });
+    
+    const result = {
       support: prices[0] * 0.95,
       resistance: prices[0] * 1.05
     };
+    
+    logAnalysis('INFO', 'identifyTrendLines', `Approximated trend lines`, result);
+    return result;
   }
   
   // Simple implementation - find local minimums and maximums
@@ -1937,10 +2024,17 @@ export function identifyTrendLines(prices: number[]): {
     if (prices[i] > maxPrice) maxPrice = prices[i];
   }
   
-  return {
+  const result = {
     support: minPrice,
     resistance: maxPrice
   };
+  
+  logAnalysis('INFO', 'identifyTrendLines', `Trend lines identification completed`, {
+    dataPointsUsed: Math.min(prices.length, 20),
+    result
+  });
+  
+  return result;
 }
 
 export function calculateFibonacciRetracements(highPrice: number, lowPrice: number): {
@@ -1951,9 +2045,14 @@ export function calculateFibonacciRetracements(highPrice: number, lowPrice: numb
   level61_8: number;
   level100: number;
 } {
+  logAnalysis('INFO', 'calculateFibonacciRetracements', `Starting Fibonacci retracements calculation`, { 
+    highPrice,
+    lowPrice
+  });
+  
   const diff = highPrice - lowPrice;
   
-  return {
+  const result = {
     level0: highPrice,
     level23_6: highPrice - diff * 0.236,
     level38_2: highPrice - diff * 0.382,
@@ -1961,6 +2060,13 @@ export function calculateFibonacciRetracements(highPrice: number, lowPrice: numb
     level61_8: highPrice - diff * 0.618,
     level100: lowPrice
   };
+  
+  logAnalysis('INFO', 'calculateFibonacciRetracements', `Fibonacci retracements calculation completed`, {
+    priceDifference: diff,
+    result
+  });
+  
+  return result;
 }
 
 export function detectBreakoutPatterns(
@@ -1972,47 +2078,69 @@ export function detectBreakoutPatterns(
   breakoutType: string;
   breakoutStrength: number;
 } {
+  logAnalysis('INFO', 'detectBreakoutPatterns', `Starting breakout pattern detection`, { 
+    currentPrice: prices[0],
+    previousPrice: prices[1] || prices[0],
+    trendLines,
+    bollingerBands
+  });
+  
   const currentPrice = prices[0];
   const previousPrice = prices[1] || currentPrice;
   
   // Check for breakouts
   if (currentPrice > trendLines.resistance && previousPrice <= trendLines.resistance) {
-    return {
+    const result = {
       breakoutDetected: true,
       breakoutType: 'RESISTANCE_BREAKOUT',
       breakoutStrength: (currentPrice - trendLines.resistance) / trendLines.resistance * 100
     };
+    
+    logAnalysis('INFO', 'detectBreakoutPatterns', `Resistance breakout detected`, result);
+    return result;
   }
   
   if (currentPrice < trendLines.support && previousPrice >= trendLines.support) {
-    return {
+    const result = {
       breakoutDetected: true,
       breakoutType: 'SUPPORT_BREAKDOWN',
       breakoutStrength: (trendLines.support - currentPrice) / trendLines.support * 100
     };
+    
+    logAnalysis('INFO', 'detectBreakoutPatterns', `Support breakdown detected`, result);
+    return result;
   }
   
   if (currentPrice > bollingerBands.upper && previousPrice <= bollingerBands.upper) {
-    return {
+    const result = {
       breakoutDetected: true,
       breakoutType: 'BOLLINGER_UPPER_BREAKOUT',
       breakoutStrength: (currentPrice - bollingerBands.upper) / bollingerBands.upper * 100
     };
+    
+    logAnalysis('INFO', 'detectBreakoutPatterns', `Bollinger upper band breakout detected`, result);
+    return result;
   }
   
   if (currentPrice < bollingerBands.lower && previousPrice >= bollingerBands.lower) {
-    return {
+    const result = {
       breakoutDetected: true,
       breakoutType: 'BOLLINGER_LOWER_BREAKDOWN',
       breakoutStrength: (bollingerBands.lower - currentPrice) / bollingerBands.lower * 100
     };
+    
+    logAnalysis('INFO', 'detectBreakoutPatterns', `Bollinger lower band breakdown detected`, result);
+    return result;
   }
   
-  return {
+  const result = {
     breakoutDetected: false,
     breakoutType: 'NONE',
     breakoutStrength: 0
   };
+  
+  logAnalysis('INFO', 'detectBreakoutPatterns', `No breakout patterns detected`, result);
+  return result;
 }
 
 export function calculateWeightedDecision(
@@ -2030,6 +2158,16 @@ export function calculateWeightedDecision(
   confidence: number;
   explanation: string;
 } {
+  logAnalysis('INFO', 'calculateWeightedDecision', `Starting weighted decision calculation`, { 
+    currentPrice,
+    ema12,
+    ema26,
+    rsi14,
+    bollingerBands,
+    trendLines,
+    sma20,
+    breakoutAnalysis
+  });
   let bullishFactors = 0;
   let bearishFactors = 0;
   let neutralFactors = 0;
@@ -2136,9 +2274,22 @@ export function calculateWeightedDecision(
     confidence = neutralPercentage * 100;
   }
   
-  return {
+  const result = {
     decision,
     confidence,
     explanation: explanation.join(". ")
   };
+  
+  logAnalysis('INFO', 'calculateWeightedDecision', `Weighted decision calculation completed`, {
+    decision: result.decision,
+    confidence: result.confidence,
+    factorCounts: {
+      bullish: bullishFactors,
+      bearish: bearishFactors,
+      neutral: neutralPercentage,
+      total: totalFactors
+    }
+  });
+  
+  return result;
 }

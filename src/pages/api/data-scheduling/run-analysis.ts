@@ -7,7 +7,8 @@ import { runAnalysisProcess } from '@/lib/analysisUtils';
 
 // Function to log API events
 async function logApiEvent(level: string, message: string, details?: any) {
-  console.log(`[RUN-ANALYSIS][${level}] ${message}`, details || '');
+  const timestamp = new Date().toISOString();
+  console.log(`[RUN-ANALYSIS][${timestamp}][${level}] ${message}`, details || '');
   try {
     await schedulingLogger.log({
       processId: `api-run-analysis-${Date.now()}`,
@@ -111,12 +112,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await logApiEvent('INFO', 'Starting analysis process in background', { processId, userId: user.id });
     runAnalysisProcess(processId, user.id)
       .then(() => {
-        logApiEvent('INFO', `Analysis process completed successfully`, { processId, userId: user.id });
+        logApiEvent('INFO', `Analysis process completed successfully`, { 
+          processId, 
+          userId: user.id,
+          timestamp: new Date().toISOString(),
+          duration: `${(Date.now() - new Date(processId.split('-')[1]).getTime()) / 1000} seconds`
+        });
       })
       .catch(error => {
         logApiEvent('ERROR', `Error in analysis process`, { 
           processId, 
           userId: user.id,
+          timestamp: new Date().toISOString(),
+          duration: `${(Date.now() - new Date(processId.split('-')[1]).getTime()) / 1000} seconds`,
           error: error instanceof Error ? error.message : String(error),
           stack: error instanceof Error ? error.stack : undefined
         });

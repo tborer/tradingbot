@@ -6,22 +6,41 @@ import { generateTradingSignalsForAllCryptos } from '@/lib/tradingSignals/signal
 import { runTechnicalAnalysis as runTechnicalAnalysisFromData } from '@/lib/dataSchedulingService';
 
 /**
+ * Enhanced logging function for analysis utilities
+ */
+function logAnalysis(level: string, functionName: string, message: string, details?: any) {
+  const logPrefix = `[ANALYSIS][${functionName}][${level}]`;
+  console.log(`${logPrefix} ${message}`, details || '');
+}
+
+/**
+ * Safe logging function that won't block the flow
+ */
+async function safeLog(params: any): Promise<void> {
+  try {
+    await schedulingLogger.log(params);
+  } catch (e) {
+    console.error('Log operation failed:', e);
+  }
+}
+
+/**
  * Extract historical prices from formatted data
  * @param data Formatted historical data
  * @returns Array of closing prices (newest to oldest)
  */
 export function extractHistoricalPrices(data: any): number[] {
-  console.log('Extracting historical prices from formatted data');
+  logAnalysis('INFO', 'extractHistoricalPrices', 'Starting extraction of historical prices from formatted data');
   
   if (!data) {
-    console.error('No data provided to extractHistoricalPrices');
+    logAnalysis('ERROR', 'extractHistoricalPrices', 'No data provided to extractHistoricalPrices');
     return [];
   }
   
   // Handle AlphaVantage or formatted CoinDesk data
   if (data['Time Series (Digital Currency Daily)']) {
     const timeSeries = data['Time Series (Digital Currency Daily)'];
-    console.log(`Found ${Object.keys(timeSeries).length} time series entries`);
+    logAnalysis('INFO', 'extractHistoricalPrices', `Found ${Object.keys(timeSeries).length} time series entries in AlphaVantage format`);
     
     // Convert the time series object to an array of [date, price] pairs
     const priceArray = Object.entries(timeSeries).map(([date, values]: [string, any]) => {
@@ -40,7 +59,7 @@ export function extractHistoricalPrices(data: any): number[] {
       
       // If we couldn't find a close price, log the values for debugging
       if (closePrice === null || isNaN(closePrice)) {
-        console.warn(`Could not extract close price for date ${date}:`, values);
+        logAnalysis('WARNING', 'extractHistoricalPrices', `Could not extract close price for date ${date}`, values);
         return { date, price: null };
       }
       
@@ -51,7 +70,7 @@ export function extractHistoricalPrices(data: any): number[] {
     const validPriceArray = priceArray.filter(item => item.price !== null);
     
     if (validPriceArray.length < priceArray.length) {
-      console.warn(`Filtered out ${priceArray.length - validPriceArray.length} invalid price entries`);
+      logAnalysis('WARNING', 'extractHistoricalPrices', `Filtered out ${priceArray.length - validPriceArray.length} invalid price entries`);
     }
     
     // Sort by date (newest first)
@@ -64,9 +83,12 @@ export function extractHistoricalPrices(data: any): number[] {
     if (prices.length > 0) {
       const sampleStart = prices.slice(0, Math.min(3, prices.length));
       const sampleEnd = prices.slice(Math.max(0, prices.length - 3));
-      console.log(`Extracted ${prices.length} prices - Sample Start: ${JSON.stringify(sampleStart)}, Sample End: ${JSON.stringify(sampleEnd)}`);
+      logAnalysis('INFO', 'extractHistoricalPrices', `Extracted ${prices.length} prices from AlphaVantage format`, {
+        sampleStart,
+        sampleEnd
+      });
     } else {
-      console.warn('No valid prices extracted from time series data');
+      logAnalysis('WARNING', 'extractHistoricalPrices', 'No valid prices extracted from time series data');
     }
     
     return prices;
@@ -74,7 +96,7 @@ export function extractHistoricalPrices(data: any): number[] {
   
   // Handle CoinDesk API direct response with Data array
   if (data.Data && Array.isArray(data.Data) && data.Data.length > 0) {
-    console.log('Extracting prices from CoinDesk Data array');
+    logAnalysis('INFO', 'extractHistoricalPrices', 'Extracting prices from CoinDesk Data array format');
     
     // Sort by timestamp (newest first)
     const sortedData = [...data.Data].sort((a, b) => b.TIMESTAMP - a.TIMESTAMP);
@@ -82,13 +104,13 @@ export function extractHistoricalPrices(data: any): number[] {
     // Extract close prices
     const prices = sortedData.map(entry => entry.CLOSE);
     
-    console.log(`Extracted ${prices.length} prices from CoinDesk Data array`);
+    logAnalysis('INFO', 'extractHistoricalPrices', `Extracted ${prices.length} prices from CoinDesk Data array format`);
     return prices;
   }
   
   // Handle nested data.Data array
   if (data.data && data.data.Data && Array.isArray(data.data.Data) && data.data.Data.length > 0) {
-    console.log('Extracting prices from nested data.Data array');
+    logAnalysis('INFO', 'extractHistoricalPrices', 'Extracting prices from nested data.Data array format');
     
     // Sort by timestamp (newest first)
     const sortedData = [...data.data.Data].sort((a, b) => b.TIMESTAMP - a.TIMESTAMP);
@@ -96,13 +118,13 @@ export function extractHistoricalPrices(data: any): number[] {
     // Extract close prices
     const prices = sortedData.map(entry => entry.CLOSE);
     
-    console.log(`Extracted ${prices.length} prices from nested data.Data array`);
+    logAnalysis('INFO', 'extractHistoricalPrices', `Extracted ${prices.length} prices from nested data.Data array format`);
     return prices;
   }
   
   // Handle original format with entries array
   if (data.data && data.data.entries && Array.isArray(data.data.entries) && data.data.entries.length > 0) {
-    console.log('Extracting prices from data.entries array');
+    logAnalysis('INFO', 'extractHistoricalPrices', 'Extracting prices from data.entries array format');
     
     // Sort by date (newest first)
     const sortedEntries = [...data.data.entries].sort(
@@ -112,12 +134,12 @@ export function extractHistoricalPrices(data: any): number[] {
     // Extract values
     const prices = sortedEntries.map(entry => entry.value);
     
-    console.log(`Extracted ${prices.length} prices from data.entries array`);
+    logAnalysis('INFO', 'extractHistoricalPrices', `Extracted ${prices.length} prices from data.entries array format`);
     return prices;
   }
   
   // If we couldn't extract prices using any of the known formats, try a more generic approach
-  console.warn('Unknown data format, attempting to extract any price data');
+  logAnalysis('WARNING', 'extractHistoricalPrices', 'Unknown data format, attempting to extract any price data using generic approach');
   
   // Function to recursively search for price data in the object
   const extractPriceData = (obj: any): number[] => {
@@ -175,11 +197,13 @@ export function extractHistoricalPrices(data: any): number[] {
   const prices = extractPriceData(data);
   
   if (prices.length > 0) {
-    console.log(`Extracted ${prices.length} prices using generic extraction`);
+    logAnalysis('INFO', 'extractHistoricalPrices', `Extracted ${prices.length} prices using generic extraction approach`);
     return prices;
   }
   
-  console.error('Failed to extract any prices from the provided data');
+  logAnalysis('ERROR', 'extractHistoricalPrices', 'Failed to extract any prices from the provided data', {
+    dataKeys: Object.keys(data || {})
+  });
   return [];
 }
 
@@ -188,12 +212,12 @@ export function extractHistoricalPrices(data: any): number[] {
  * This function is used by the runAnalysisProcess function
  */
 export async function runTechnicalAnalysis(userId: string, processId: string): Promise<void> {
-  console.log(`Starting technical analysis for user ${userId}, process ${processId}`);
+  logAnalysis('INFO', 'runTechnicalAnalysis', `Starting technical analysis`, { userId, processId });
   
   try {
     // Validate inputs
     if (!userId || !processId) {
-      console.error("Invalid inputs to runTechnicalAnalysis:", { userId, processId });
+      logAnalysis('ERROR', 'runTechnicalAnalysis', "Invalid inputs to runTechnicalAnalysis", { userId, processId });
       await schedulingLogger.log({
         processId: processId || 'unknown',
         userId: userId || 'unknown',
@@ -207,7 +231,7 @@ export async function runTechnicalAnalysis(userId: string, processId: string): P
     
     // Check if prisma is defined
     if (!prisma) {
-      console.error("Prisma client is undefined in runTechnicalAnalysis");
+      logAnalysis('ERROR', 'runTechnicalAnalysis', "Prisma client is undefined in runTechnicalAnalysis");
       await schedulingLogger.log({
         processId,
         userId,
@@ -531,12 +555,12 @@ async function safeLog(params: any): Promise<void> {
  * Implements a sequential approach to ensure each step completes before moving to the next
  */
 export async function runAnalysisProcess(processId: string, userId: string): Promise<void> {
-  console.log(`Starting analysis process ${processId} for user ${userId}`);
+  logAnalysis('INFO', 'runAnalysisProcess', `Starting analysis process`, { processId, userId });
   
   try {
     // Validate inputs
     if (!processId || !userId) {
-      console.error("Invalid inputs to runAnalysisProcess:", { processId, userId });
+      logAnalysis('ERROR', 'runAnalysisProcess', "Invalid inputs to runAnalysisProcess", { processId, userId });
       await safeLog({
         processId: processId || 'unknown',
         userId: userId || 'unknown',
@@ -550,7 +574,7 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
     
     // Check if prisma is defined
     if (!prisma) {
-      console.error("Prisma client is undefined in runAnalysisProcess");
+      logAnalysis('ERROR', 'runAnalysisProcess', "Prisma client is undefined in runAnalysisProcess");
       await safeLog({
         processId,
         userId,
@@ -1611,12 +1635,12 @@ export async function runAnalysisProcess(processId: string, userId: string): Pro
  * This function is used by the runAnalysisProcess function
  */
 export async function runAnalysisForSymbol(symbol: string, userId: string, processId: string): Promise<void> {
-  console.log(`Starting analysis for symbol ${symbol}, user ${userId}, process ${processId}`);
+  logAnalysis('INFO', 'runAnalysisForSymbol', `Starting analysis for symbol`, { symbol, userId, processId });
   
   try {
     // Validate inputs
     if (!symbol || !userId || !processId) {
-      console.error("Invalid inputs to runAnalysisForSymbol:", { symbol, userId, processId });
+      logAnalysis('ERROR', 'runAnalysisForSymbol', "Invalid inputs to runAnalysisForSymbol", { symbol, userId, processId });
       await safeLog({
         processId: processId || 'unknown',
         userId: userId || 'unknown',
@@ -1631,7 +1655,7 @@ export async function runAnalysisForSymbol(symbol: string, userId: string, proce
     
     // Check if prisma is defined
     if (!prisma) {
-      console.error("Prisma client is undefined in runAnalysisForSymbol");
+      logAnalysis('ERROR', 'runAnalysisForSymbol', "Prisma client is undefined in runAnalysisForSymbol");
       await safeLog({
         processId,
         userId,

@@ -1,16 +1,22 @@
-# Codev Template
+# Cryptocurrency Portfolio Management Web Application
 
-This is a Codev template project that includes:
-
-1. Next.js with Pages Router
-2. Tailwind CSS Framework
-3. Context for global state management
+A comprehensive web application for cryptocurrency portfolio management with AI-powered trading recommendations and automated data scheduling.
 
 ## Features
 
-- **Next.js Pages Router**: Utilizes the traditional routing system of Next.js for easy navigation and page management.
-- **Tailwind CSS**: A utility-first CSS framework that provides low-level utility classes to build custom designs quickly and efficiently.
-- **Context API**: Implements React's Context API for efficient global state management.
+- **Portfolio Management**: Track and manage your cryptocurrency investments
+- **AI-Powered Trading Recommendations**: Get intelligent trading suggestions based on market analysis
+- **Automated Data Scheduling**: Regular data collection and analysis for up-to-date insights
+- **Technical Analysis**: Calculate and visualize key technical indicators
+- **Research Tools**: Advanced research capabilities for informed decision-making
+
+## Scheduled Data Fetching
+
+The application uses Supabase cron jobs to automatically fetch cryptocurrency data daily at 11:45 PM. This ensures that the latest data is available for analysis and trading recommendations.
+
+### Supabase Cron Job Setup
+
+The cron job is configured in the `supabase/functions/scheduled-data-fetch` directory. See the [Supabase README](./supabase/README.md) for deployment instructions.
 
 ## Getting Started
 
@@ -19,25 +25,20 @@ This is a Codev template project that includes:
    ```
    npm install
    ```
-3. Run the development server:
+3. Set up the required environment variables (see `.env.example`)
+4. Run the development server:
    ```
    npm run dev
    ```
-4. Open [http://localhost:3000](http://localhost:3000) in your browser to see the result.
+5. Open [http://localhost:3000](http://localhost:3000) in your browser to see the result.
 
 ## Project Structure
 
 - `pages/`: Contains all the pages of the application
 - `components/`: Reusable React components
 - `contexts/`: Global state management using Context API
+- `lib/`: Core functionality and services
 - `hooks/`: Custom React hooks
-- `styles/`: Global style (global.css)
-- `utils/`: Utility functions and helpers
-
-## Learn More
-
-To learn more about the technologies used in this template, check out the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
-- [React Context API](https://reactjs.org/docs/context.html)
+- `styles/`: Global styles
+- `util/`: Utility functions and helpers
+- `supabase/`: Supabase functions and cron job configurations

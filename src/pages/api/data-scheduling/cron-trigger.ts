@@ -35,19 +35,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   });
   
-  // For Vercel cron jobs, we don't need to verify authorization as they're triggered internally
+  // For Vercel or Supabase cron jobs, we don't need to verify authorization as they're triggered internally
   // But we'll keep a simple check for when the endpoint is called from elsewhere
   const authHeader = req.headers.authorization;
   const isVercelCron = req.headers['x-vercel-cron'] === 'true';
+  const isSupabaseCron = req.headers['x-supabase-cron'] === 'true';
   
   await logCronEvent('INFO', 'Validating cron trigger authorization', {
     requestId,
     isVercelCron,
+    isSupabaseCron,
     hasAuthHeader: !!authHeader
   });
   
-  // Skip auth check if it's a Vercel cron job
-  if (!isVercelCron && (!authHeader || authHeader !== `Bearer ${process.env.CRON_SECRET}`)) {
+  // Skip auth check if it's a Vercel or Supabase cron job
+  if (!isVercelCron && !isSupabaseCron && (!authHeader || authHeader !== `Bearer ${process.env.CRON_SECRET}`)) {
     await logCronEvent('ERROR', 'Unauthorized cron trigger attempt', {
       requestId,
       isVercelCron,

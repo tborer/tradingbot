@@ -61,23 +61,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       source: isSupabaseCron ? 'supabase' : isVercelCron ? 'vercel' : 'direct',
       timestamp: new Date().toISOString()
     });
+
+    // Accept force param from body or query
+    let force = false;
+    if (typeof req.body === 'object' && req.body !== null && 'force' in req.body) {
+      force = Boolean(req.body.force);
+    } else if (typeof req.query.force !== 'undefined') {
+      force = req.query.force === 'true' || req.query.force === '1';
+    }
+
+    if (force) {
+      await logCronEvent('INFO', 'CRON_FORCE_RUN', 'Force run parameter detected, will run all scheduled tasks regardless of time', { requestId, force });
+    }
     
     // Run the scheduled tasks check
     const tasksTimer = createCronTimer(
       'SCHEDULED_TASKS',
       'Running scheduled tasks',
-      { requestId }
+      { requestId, force }
     );
     
     try {
-      await runScheduledTasks();
+      await runScheduledTasks(force);
       await tasksTimer.end({ success: true });
     } catch (tasksError) {
       await logCronError(
         'SCHEDULED_TASKS',
         'Error running scheduled tasks',
         tasksError,
-        { requestId }
+        { requestId, force }
       );
       throw tasksError; // Re-throw to be caught by the outer catch
     }
@@ -88,7 +100,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       success: true,
       message: 'Scheduled tasks check completed',
       timestamp: new Date().toISOString(),
-      source: isSupabaseCron ? 'supabase' : isVercelCron ? 'vercel' : 'direct'
+      source: isSupabaseCron ? 'supabase' : isVercelCron ? 'vercel' : 'direct',
+      force
     });
   } catch (error) {
     await logCronError(

@@ -125,7 +125,7 @@ export function shouldRunScheduledTask(configuredTime: string, timeZone: string)
 /**
  * Runs scheduled tasks for all users who have configured data scheduling
  */
-export async function runScheduledTasks(): Promise<void> {
+export async function runScheduledTasks(force: boolean = false): Promise<void> {
   const cronRunId = `cron-run-${Date.now()}`;
   
   try {
@@ -230,7 +230,8 @@ export async function runScheduledTasks(): Promise<void> {
           dailyRunTime: settings.dailyRunTime,
           timeZone: settings.timeZone,
           userId: settings.userId,
-          cronRunId
+          cronRunId,
+          force
         };
         
         await Promise.all([
@@ -238,20 +239,28 @@ export async function runScheduledTasks(): Promise<void> {
             processId: cronRunId,
             userId: settings.userId,
             operation: 'SCHEDULED_TASK_CHECK',
-            message: `Checking if it's time to run scheduled task for user ${settings.userId}`,
+            message: `Checking if it's time to run scheduled task for user ${settings.userId}${force ? ' (force run enabled)' : ''}`,
             details: userCheckDetails
           }),
           logCronEvent(
             'INFO',
             'SCHEDULED_TASK_CHECK',
-            `Checking if it's time to run scheduled task for user ${settings.userId}`,
+            `Checking if it's time to run scheduled task for user ${settings.userId}${force ? ' (force run enabled)' : ''}`,
             userCheckDetails
           )
         ]).catch(err => console.error('Error logging task check:', err));
         
-        // Check if it's time to run the scheduled task
-        if (shouldRunScheduledTask(settings.dailyRunTime, settings.timeZone)) {
-          console.log(`Running scheduled task for user ${settings.userId} at ${settings.dailyRunTime} ${settings.timeZone}`);
+        // Check if it's time to run the scheduled task, or force is enabled
+        if (force || shouldRunScheduledTask(settings.dailyRunTime, settings.timeZone)) {
+          if (force) {
+            await logCronEvent(
+              'INFO',
+              'SCHEDULED_TASK_FORCE_RUN',
+              `Force run enabled: running scheduled task for user ${settings.userId} regardless of time`,
+              { userId: settings.userId, cronRunId }
+            );
+          }
+          console.log(`Running scheduled task for user ${settings.userId} at ${settings.dailyRunTime} ${settings.timeZone}${force ? ' (force run)' : ''}`);
           
           // Check if there's already a recent run for this user (within the last 10 minutes)
           const recentRun = await prisma.processingStatus.findFirst({

@@ -21,6 +21,7 @@ import {
   createOperationTimer
 } from '@/lib/schedulingLogger';
 import { logCalculationResult } from '@/lib/enhancedSchedulingLogger';
+import { logCronDebug } from '@/lib/cronDebugger';
 
 // Constants for batch processing
 const BATCH_SIZE = 5; // Number of cryptos to process in parallel
@@ -28,7 +29,7 @@ const FETCH_TIMEOUT = 30000; // 30 seconds timeout for API fetch
 const ANALYSIS_TIMEOUT = 60000; // 60 seconds timeout for analysis
 
 /**
- * Helper function to fetch with timeout and logging
+ * Helper function to fetch with timeout and enhanced logging
  */
 async function fetchWithTimeout(
   url: string, 
@@ -54,6 +55,25 @@ async function fetchWithTimeout(
       headers: options.headers,
       requestBody: options.body ? JSON.parse(options.body.toString()) : undefined
     });
+    
+    // Enhanced debug logging
+    await logCronDebug(
+      'API_FETCH_ATTEMPT',
+      `Attempting to fetch data from ${url}`,
+      {
+        url,
+        method: options.method || 'GET',
+        headers: options.headers ? { 
+          ...options.headers,
+          Authorization: options.headers.Authorization ? 'Bearer [REDACTED]' : undefined
+        } : undefined,
+        timeout,
+        processId: logParams.processId,
+        userId: logParams.userId,
+        symbol: logParams.symbol
+      },
+      logParams.userId
+    );
   }
   
   try {

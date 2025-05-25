@@ -1,8 +1,9 @@
 import prisma from '@/lib/prisma';
-import { fetchAndStoreHourlyCryptoData, cleanupOldData, cleanupStaleProcessingStatuses } from '@/lib/dataSchedulingService';
+import { cleanupOldData, cleanupStaleProcessingStatuses } from '@/lib/dataSchedulingService';
 import { logScheduling } from '@/lib/schedulingLogger';
 import { runAnalysisProcess } from '@/lib/analysisUtils';
 import { logCronEvent, logCronError } from '@/lib/cronLogger';
+import { enhancedFetchAndStoreHourlyCryptoData } from '@/lib/enhancedFetchDebugger';
 
 /**
  * Checks if a scheduled task should run based on the current time and configured run time
@@ -432,7 +433,7 @@ export async function runScheduledTasks(force: boolean = false): Promise<void> {
               { processId, cronRunId }
             );
 
-            const fetchResult = await fetchAndStoreHourlyCryptoData(settings.userId);
+            const fetchResult = await enhancedFetchAndStoreHourlyCryptoData(settings.userId);
 
             const fetchCompleteDetails = {
               success: fetchResult.success,

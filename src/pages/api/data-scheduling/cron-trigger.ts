@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { runScheduledTasks } from '@/lib/schedulerCron';
 import { logCronEvent, createCronTimer, logCronError } from '@/lib/cronLogger';
+import { runComprehensiveDebug } from '@/lib/cronDebugger';
 
 /**
  * This endpoint is designed to be called by a cron job every minute
@@ -61,6 +62,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       source: isSupabaseCron ? 'supabase' : isVercelCron ? 'vercel' : 'direct',
       timestamp: new Date().toISOString()
     });
+
+    // Run comprehensive debug to gather system state information
+    await runComprehensiveDebug();
+    await logCronEvent('INFO', 'CRON_DEBUG_COMPLETE', 'Comprehensive debug completed, results in SchedulingProcessLog', { requestId });
 
     // Accept force param from body or query
     let force = false;

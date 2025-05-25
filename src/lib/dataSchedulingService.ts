@@ -733,8 +733,22 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
       processId
     };
   } catch (error) {
-    console.error('Error in fetchAndStoreHourlyCryptoData:', error);
-    
+    // Enhanced error logging and serialization
+    let errorString: string;
+    if (error instanceof Error) {
+      errorString = error.message + (error.stack ? `\nStack: ${error.stack}` : '');
+    } else if (typeof error === 'object') {
+      try {
+        errorString = JSON.stringify(error, null, 2);
+      } catch (e) {
+        errorString = String(error);
+      }
+    } else {
+      errorString = String(error);
+    }
+
+    console.error('Error in fetchAndStoreHourlyCryptoData:', errorString);
+
     // Update processing status to failed
     const processId = `data-fetch-${Date.now()}`;
     try {
@@ -742,7 +756,7 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
         where: { processId },
         update: {
           status: 'FAILED',
-          error: error instanceof Error ? error.message : String(error),
+          error: errorString,
           completedAt: new Date()
         },
         create: {
@@ -755,17 +769,17 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
           details: {},
           startedAt: new Date(),
           completedAt: new Date(),
-          error: error instanceof Error ? error.message : String(error)
+          error: errorString
         }
       });
     } catch (statusError) {
       console.error('Error updating processing status:', statusError);
     }
-    
+
     return {
       success: false,
-      message: 'Failed to fetch and store hourly crypto data',
-      error: error instanceof Error ? error.message : String(error),
+      message: `Failed to fetch and store hourly crypto data for user ${userId}`,
+      error: errorString,
       processId
     };
   }

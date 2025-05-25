@@ -293,9 +293,83 @@ export async function runScheduledTasks(): Promise<void> {
             continue;
           }
           
-          // Create a process ID for this scheduled run
+          // Enhanced: Validate data scheduling settings, crypto portfolio, and API credentials before processing
           const processId = `scheduled-${Date.now()}`;
-          
+
+          // Fetch full data scheduling settings for the user
+          const schedulingSettingsFull = await prisma.dataScheduling.findUnique({
+            where: { userId: settings.userId }
+          });
+
+          if (!schedulingSettingsFull) {
+            const missingSettingsMsg = `Data scheduling settings not found for user ${settings.userId}`;
+            await Promise.all([
+              logScheduling({
+                processId,
+                userId: settings.userId,
+                operation: 'SCHEDULED_TASK_SETTINGS_MISSING',
+                message: missingSettingsMsg,
+                error: new Error(missingSettingsMsg),
+                details: { cronRunId }
+              }),
+              logCronError(
+                'SCHEDULED_TASK_SETTINGS_MISSING',
+                missingSettingsMsg,
+                new Error(missingSettingsMsg),
+                { cronRunId }
+              )
+            ]);
+            continue;
+          }
+
+          // Check for required API credentials
+          if (!schedulingSettingsFull.apiUrl || !schedulingSettingsFull.apiToken) {
+            const missingApiMsg = `API credentials missing for user ${settings.userId}: apiUrl=${schedulingSettingsFull.apiUrl}, apiToken=${!!schedulingSettingsFull.apiToken}`;
+            await Promise.all([
+              logScheduling({
+                processId,
+                userId: settings.userId,
+                operation: 'SCHEDULED_TASK_API_CREDENTIALS_MISSING',
+                message: missingApiMsg,
+                error: new Error(missingApiMsg),
+                details: { cronRunId }
+              }),
+              logCronError(
+                'SCHEDULED_TASK_API_CREDENTIALS_MISSING',
+                missingApiMsg,
+                new Error(missingApiMsg),
+                { cronRunId }
+              )
+            ]);
+            continue;
+          }
+
+          // Check for crypto portfolio
+          const userCryptos = await prisma.crypto.findMany({
+            where: { userId: settings.userId },
+            select: { symbol: true }
+          });
+          if (!userCryptos || userCryptos.length === 0) {
+            const missingCryptosMsg = `No cryptocurrencies found in portfolio for user ${settings.userId}`;
+            await Promise.all([
+              logScheduling({
+                processId,
+                userId: settings.userId,
+                operation: 'SCHEDULED_TASK_CRYPTOS_MISSING',
+                message: missingCryptosMsg,
+                error: new Error(missingCryptosMsg),
+                details: { cronRunId }
+              }),
+              logCronError(
+                'SCHEDULED_TASK_CRYPTOS_MISSING',
+                missingCryptosMsg,
+                new Error(missingCryptosMsg),
+                { cronRunId }
+              )
+            ]);
+            continue;
+          }
+
           // Create a processing status record
           await prisma.processingStatus.create({
             data: {
@@ -303,7 +377,7 @@ export async function runScheduledTasks(): Promise<void> {
               userId: settings.userId,
               status: 'RUNNING',
               type: 'DATA_SCHEDULING',
-              totalItems: 100, // Will be updated later
+              totalItems: userCryptos.length,
               processedItems: 0,
               startedAt: new Date(),
               details: {
@@ -316,14 +390,14 @@ export async function runScheduledTasks(): Promise<void> {
               }
             }
           });
-          
+
           const startDetails = {
             processId,
             dailyRunTime: settings.dailyRunTime,
             timeZone: settings.timeZone,
             cronRunId
           };
-          
+
           await Promise.all([
             logScheduling({
               processId,
@@ -339,7 +413,7 @@ export async function runScheduledTasks(): Promise<void> {
               startDetails
             )
           ]).catch(err => console.error('Error logging task start:', err));
-          
+
           // Run data fetch operation
           try {
             await logCronEvent(
@@ -348,9 +422,9 @@ export async function runScheduledTasks(): Promise<void> {
               `Starting data fetch for user ${settings.userId}`,
               { processId, cronRunId }
             );
-            
+
             const fetchResult = await fetchAndStoreHourlyCryptoData(settings.userId);
-            
+
             const fetchCompleteDetails = {
               success: fetchResult.success,
               message: fetchResult.message,
@@ -358,7 +432,7 @@ export async function runScheduledTasks(): Promise<void> {
               processId,
               cronRunId
             };
-            
+
             await Promise.all([
               logScheduling({
                 processId,
@@ -383,7 +457,7 @@ export async function runScheduledTasks(): Promise<void> {
               processId,
               cronRunId
             };
-            
+
             await Promise.all([
               logScheduling({
                 processId,

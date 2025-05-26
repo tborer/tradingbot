@@ -769,14 +769,31 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
 
     console.error('Error in fetchAndStoreHourlyCryptoData:', errorString);
 
+    // Log the error to SchedulingProcessLog directly
+    try {
+      await prisma.schedulingProcessLog.create({
+        data: {
+          processId,
+          userId,
+          level: 'ERROR',
+          category: 'DATA_PROCESSING',
+          operation: 'FETCH_ERROR',
+          message: `Failed to fetch and store hourly crypto data: ${errorString.substring(0, 200)}`,
+          details: { error: errorString },
+          timestamp: new Date()
+        }
+      });
+    } catch (logError) {
+      console.error('Failed to log error to SchedulingProcessLog:', logError);
+    }
+
     // Update processing status to failed
-    const processId = `data-fetch-${Date.now()}`;
     try {
       await prisma.processingStatus.upsert({
         where: { processId },
         update: {
           status: 'FAILED',
-          error: errorString,
+          error: errorString.substring(0, 1000), // Limit error length to avoid DB issues
           completedAt: new Date()
         },
         create: {
@@ -786,10 +803,10 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
           type: 'DATA_SCHEDULING',
           totalItems: 0,
           processedItems: 0,
-          details: {},
+          details: { error: errorString.substring(0, 1000) },
           startedAt: new Date(),
           completedAt: new Date(),
-          error: errorString
+          error: errorString.substring(0, 1000)
         }
       });
     } catch (statusError) {

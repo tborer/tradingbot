@@ -19,45 +19,49 @@ export async function logCronEvent(
   console.log(`[CRON][${level}][${operation}] ${message}`, details || '');
   
   try {
-    // First, ensure there's a ProcessingStatus record for this cron event
-    // This is important because schedulingLogger.log requires a valid processId
-    const existingStatus = await prisma.processingStatus.findUnique({
-      where: { processId }
-    });
-    
-    if (!existingStatus) {
-      // Create a new ProcessingStatus record if one doesn't exist
-      await prisma.processingStatus.create({
-        data: {
-          processId,
-          userId,
-          status: 'RUNNING',
-          type: 'CRON',
-          totalItems: 1,
-          processedItems: 0,
-          startedAt: new Date(timestamp),
-          details: {
-            cronOperation: operation,
-            initialMessage: message,
-            timestamp: new Date(timestamp).toISOString()
-          }
-        }
-      });
-    }
-    
-    // Now log the event to the SchedulingProcessLog table
+    // Log directly to the SchedulingProcessLog table without requiring a ProcessingStatus record
     await prisma.schedulingProcessLog.create({
       data: {
         processId,
         userId,
         level,
-        category: 'SCHEDULING',
+        category: 'CRON_DEBUG', // Use CRON_DEBUG category to distinguish these logs
         operation,
         message,
         details: details ? details : undefined,
         timestamp: new Date(timestamp)
       }
     });
+    
+    // Try to find or create a ProcessingStatus record for this cron event
+    try {
+      const existingStatus = await prisma.processingStatus.findUnique({
+        where: { processId }
+      });
+      
+      if (!existingStatus) {
+        // Create a new ProcessingStatus record if one doesn't exist
+        await prisma.processingStatus.create({
+          data: {
+            processId,
+            userId,
+            status: 'RUNNING',
+            type: 'CRON',
+            totalItems: 1,
+            processedItems: 0,
+            startedAt: new Date(timestamp),
+            details: {
+              cronOperation: operation,
+              initialMessage: message,
+              timestamp: new Date(timestamp).toISOString()
+            }
+          }
+        });
+      }
+    } catch (statusError) {
+      // If we can't create the ProcessingStatus, at least we've already logged to SchedulingProcessLog
+      console.error('Failed to create ProcessingStatus record:', statusError);
+    }
     
     // If this is an error or the operation is complete, update the ProcessingStatus
     if (level === 'ERROR' || operation.includes('COMPLETE') || operation.includes('FAILED')) {

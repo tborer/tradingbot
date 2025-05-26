@@ -57,15 +57,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   
   try {
-    await logCronEvent('INFO', 'CRON_AUTHORIZED', 'Cron trigger authorized, checking for scheduled tasks', { 
-      requestId,
-      source: isSupabaseCron ? 'supabase' : isVercelCron ? 'vercel' : 'direct',
-      timestamp: new Date().toISOString()
+    // Log authorization success
+    await prisma.schedulingProcessLog.create({
+      data: {
+        processId: requestId,
+        userId: 'system',
+        level: 'INFO',
+        category: 'CRON_DEBUG',
+        operation: 'CRON_AUTHORIZED',
+        message: 'Cron trigger authorized, checking for scheduled tasks',
+        details: { 
+          requestId,
+          source: isSupabaseCron ? 'supabase' : isVercelCron ? 'vercel' : 'direct',
+          timestamp: new Date().toISOString()
+        },
+        timestamp: new Date()
+      }
     });
-
-    // Run comprehensive debug to gather system state information
-    await runComprehensiveDebug();
-    await logCronEvent('INFO', 'CRON_DEBUG_COMPLETE', 'Comprehensive debug completed, results in SchedulingProcessLog', { requestId });
 
     // Accept force param from body or query
     let force = false;
@@ -76,26 +84,116 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (force) {
-      await logCronEvent('INFO', 'CRON_FORCE_RUN', 'Force run parameter detected, will run all scheduled tasks regardless of time', { requestId, force });
+      // Log force run directly to database
+      await prisma.schedulingProcessLog.create({
+        data: {
+          processId: requestId,
+          userId: 'system',
+          level: 'INFO',
+          category: 'CRON_DEBUG',
+          operation: 'CRON_FORCE_RUN',
+          message: 'Force run parameter detected, will run all scheduled tasks regardless of time',
+          details: { requestId, force },
+          timestamp: new Date()
+        }
+      });
     }
     
-    // Run the scheduled tasks check
-    const tasksTimer = createCronTimer(
-      'SCHEDULED_TASKS',
-      'Running scheduled tasks',
-      { requestId, force }
-    );
-    
+    // Run the scheduled tasks check with simplified error handling
     try {
+      // Run comprehensive debug to gather system state information
+      try {
+        await runComprehensiveDebug();
+        
+        // Log debug completion directly to database
+        await prisma.schedulingProcessLog.create({
+          data: {
+            processId: requestId,
+            userId: 'system',
+            level: 'INFO',
+            category: 'CRON_DEBUG',
+            operation: 'CRON_DEBUG_COMPLETE',
+            message: 'Comprehensive debug completed, results in SchedulingProcessLog',
+            details: { requestId },
+            timestamp: new Date()
+          }
+        });
+      } catch (debugError) {
+        console.error('Error running comprehensive debug:', debugError);
+        
+        // Log debug error directly to database
+        await prisma.schedulingProcessLog.create({
+          data: {
+            processId: requestId,
+            userId: 'system',
+            level: 'ERROR',
+            category: 'CRON_DEBUG',
+            operation: 'CRON_DEBUG_ERROR',
+            message: `Error running comprehensive debug: ${debugError instanceof Error ? debugError.message : 'Unknown error'}`,
+            details: { 
+              requestId,
+              error: debugError instanceof Error ? debugError.message : 'Unknown error',
+              stack: debugError instanceof Error ? debugError.stack : undefined
+            },
+            timestamp: new Date()
+          }
+        });
+        
+        // Continue despite debug error
+      }
+      
+      // Log tasks start directly to database
+      await prisma.schedulingProcessLog.create({
+        data: {
+          processId: requestId,
+          userId: 'system',
+          level: 'INFO',
+          category: 'CRON_DEBUG',
+          operation: 'SCHEDULED_TASKS_START',
+          message: 'Running scheduled tasks',
+          details: { requestId, force },
+          timestamp: new Date()
+        }
+      });
+      
+      // Run the scheduled tasks
       await runScheduledTasks(force);
-      await tasksTimer.end({ success: true });
+      
+      // Log tasks completion directly to database
+      await prisma.schedulingProcessLog.create({
+        data: {
+          processId: requestId,
+          userId: 'system',
+          level: 'INFO',
+          category: 'CRON_DEBUG',
+          operation: 'SCHEDULED_TASKS_COMPLETE',
+          message: 'Scheduled tasks completed successfully',
+          details: { requestId, force, success: true },
+          timestamp: new Date()
+        }
+      });
     } catch (tasksError) {
-      await logCronError(
-        'SCHEDULED_TASKS',
-        'Error running scheduled tasks',
-        tasksError,
-        { requestId, force }
-      );
+      console.error('Error running scheduled tasks:', tasksError);
+      
+      // Log tasks error directly to database
+      await prisma.schedulingProcessLog.create({
+        data: {
+          processId: requestId,
+          userId: 'system',
+          level: 'ERROR',
+          category: 'CRON_DEBUG',
+          operation: 'SCHEDULED_TASKS_ERROR',
+          message: `Error running scheduled tasks: ${tasksError instanceof Error ? tasksError.message : 'Unknown error'}`,
+          details: { 
+            requestId, 
+            force,
+            error: tasksError instanceof Error ? tasksError.message : 'Unknown error',
+            stack: tasksError instanceof Error ? tasksError.stack : undefined
+          },
+          timestamp: new Date()
+        }
+      });
+      
       throw tasksError; // Re-throw to be caught by the outer catch
     }
     

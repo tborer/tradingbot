@@ -14,9 +14,10 @@ export async function enhancedLog(params: any): Promise<void> {
     // This helps track progress in the UI
     if (params.processId && params.operation) {
       try {
-        await prisma.processingStatus.update({
+        // Use upsert instead of update to handle cases where the record doesn't exist
+        await prisma.processingStatus.upsert({
           where: { processId: params.processId },
-          data: {
+          update: {
             details: {
               update: {
                 lastOperation: params.operation,
@@ -27,6 +28,23 @@ export async function enhancedLog(params: any): Promise<void> {
               }
             },
             updatedAt: new Date()
+          },
+          create: {
+            processId: params.processId,
+            userId: params.userId,
+            status: 'RUNNING',
+            type: params.category === 'SCHEDULING' ? 'DATA_SCHEDULING' : 'CRON',
+            totalItems: 1,
+            processedItems: 0,
+            startedAt: new Date(),
+            details: {
+              lastOperation: params.operation,
+              lastMessage: params.message,
+              lastTimestamp: new Date().toISOString(),
+              ...(params.symbol ? { lastSymbol: params.symbol } : {}),
+              ...(params.details ? { lastDetails: params.details } : {}),
+              createdByEnhancedLogger: true
+            }
           }
         });
       } catch (updateError) {
@@ -49,9 +67,10 @@ export async function logCalculationResult(
   result: any
 ): Promise<void> {
   try {
-    await prisma.processingStatus.update({
+    // Use upsert instead of update to handle cases where the record doesn't exist
+    await prisma.processingStatus.upsert({
       where: { processId },
-      data: {
+      update: {
         details: {
           update: {
             [`${symbol}_calculations`]: {
@@ -68,6 +87,28 @@ export async function logCalculationResult(
           }
         },
         updatedAt: new Date()
+      },
+      create: {
+        processId,
+        userId,
+        status: 'RUNNING',
+        type: 'DATA_SCHEDULING',
+        totalItems: 1,
+        processedItems: 0,
+        startedAt: new Date(),
+        details: {
+          [`${symbol}_calculations`]: {
+            [calculationType]: {
+              result,
+              timestamp: new Date().toISOString()
+            }
+          },
+          lastOperation: 'CALCULATION_COMPLETED',
+          lastSymbol: symbol,
+          lastCalculation: calculationType,
+          lastTimestamp: new Date().toISOString(),
+          createdByCalculationLogger: true
+        }
       }
     });
   } catch (error) {

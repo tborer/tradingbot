@@ -39,29 +39,53 @@ export async function logSchedulingProcess({
   duration
 }: LogEntryParams): Promise<void> {
   try {
-    // Check if processId exists in ProcessingStatus table first
-    const existingProcess = await prisma.processingStatus.findUnique({
-      where: { processId }
+    // Always create the log entry regardless of whether the process exists
+    await prisma.schedulingProcessLog.create({
+      data: {
+        processId,
+        userId,
+        level,
+        category,
+        operation,
+        symbol,
+        message,
+        details: details ? details : undefined,
+        duration,
+        timestamp: new Date() // Ensure timestamp is set
+      }
     });
-
-    if (existingProcess) {
-      // If process exists, create the log
-      await prisma.schedulingProcessLog.create({
-        data: {
-          processId,
-          userId,
-          level,
-          category,
-          operation,
-          symbol,
-          message,
-          details: details ? details : undefined,
-          duration
-        }
+    
+    // Log to console as well for visibility
+    console.log(`[LOG][${level}][${category}][${operation}] ${message} (processId: ${processId})`);
+    
+    // Optionally try to create a ProcessingStatus if it doesn't exist
+    try {
+      const existingProcess = await prisma.processingStatus.findUnique({
+        where: { processId }
       });
-    } else {
-      // If process doesn't exist, log to console only
-      console.log(`[LOG][${level}][${category}][${operation}] ${message} (processId: ${processId} not found in database)`);
+      
+      if (!existingProcess) {
+        // Create a minimal ProcessingStatus record to link logs
+        await prisma.processingStatus.create({
+          data: {
+            processId,
+            userId,
+            status: 'RUNNING',
+            type: category === 'SCHEDULING' ? 'DATA_SCHEDULING' : 'CRON',
+            totalItems: 1,
+            processedItems: 0,
+            startedAt: new Date(),
+            details: {
+              initialOperation: operation,
+              initialMessage: message,
+              createdForLogging: true
+            }
+          }
+        });
+      }
+    } catch (processError) {
+      // If we can't create the ProcessingStatus, that's ok - we've already logged the event
+      console.warn(`Could not create ProcessingStatus for ${processId}:`, processError);
     }
   } catch (error) {
     // Don't let logging errors disrupt the main process

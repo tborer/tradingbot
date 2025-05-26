@@ -19,7 +19,7 @@ export async function logCronDebug(
   console.log(`[CRON_DEBUG][${operation}] ${message}`, details || '');
   
   try {
-    // Create a new SchedulingProcessLog entry
+    // Create a new SchedulingProcessLog entry with explicit timestamp
     await prisma.schedulingProcessLog.create({
       data: {
         processId,
@@ -32,6 +32,35 @@ export async function logCronDebug(
         timestamp: new Date(timestamp)
       }
     });
+    
+    // Try to create a ProcessingStatus record if it doesn't exist
+    try {
+      const existingStatus = await prisma.processingStatus.findUnique({
+        where: { processId }
+      });
+      
+      if (!existingStatus) {
+        await prisma.processingStatus.create({
+          data: {
+            processId,
+            userId,
+            status: 'RUNNING',
+            type: 'CRON',
+            totalItems: 1,
+            processedItems: 0,
+            startedAt: new Date(timestamp),
+            details: {
+              debugOperation: operation,
+              debugMessage: message,
+              timestamp: new Date(timestamp).toISOString()
+            }
+          }
+        });
+      }
+    } catch (statusError) {
+      // If we can't create the ProcessingStatus, that's ok - we've already logged the event
+      console.warn(`Could not create ProcessingStatus for ${processId}:`, statusError);
+    }
   } catch (loggingError) {
     // If logging to the database fails, at least log to the console
     console.error('Failed to log cron debug event to database:', loggingError);

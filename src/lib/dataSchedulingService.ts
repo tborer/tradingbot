@@ -579,6 +579,23 @@ async function processCryptoBatch(
 }
 
 /**
+ * Helper to serialize errors for logging and returning
+ */
+function serializeError(err: any): any {
+  if (err instanceof Error) {
+    return { message: err.message, stack: err.stack };
+  }
+  if (typeof err === 'object' && err !== null) {
+    try {
+      return JSON.parse(JSON.stringify(err));
+    } catch {
+      return String(err);
+    }
+  }
+  return String(err);
+}
+
+/**
  * Fetches data from the configured API and stores it in the database
  * Uses batch processing to handle multiple cryptocurrencies efficiently
  */
@@ -663,7 +680,6 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
     }
 
     // Create a processing status record
-    const processId = `data-fetch-${Date.now()}`;
     await prisma.processingStatus.create({
       data: {
         processId,
@@ -724,50 +740,66 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
 
     const successCount = results.filter(r => r.success).length;
     const totalCount = results.length;
+    const failed = results.filter(r => !r.success);
+    const failedSummary = failed.length > 0
+      ? failed.map(r => `${r.symbol}: ${r.error || r.message}`).join('; ')
+      : null;
 
     // Update processing status to completed
     await prisma.processingStatus.upsert({
       where: { processId },
       update: {
-        status: 'COMPLETED',
+        status: failed.length === 0 ? 'COMPLETED' : (successCount > 0 ? 'PARTIAL' : 'FAILED'),
         processedItems: totalCount,
-        completedAt: new Date()
+        completedAt: new Date(),
+        details: {
+          update: {
+            failedSymbols: failed.map(r => r.symbol),
+            failedDetails: failedSummary
+          }
+        }
       },
       create: {
         processId,
         userId,
-        status: 'COMPLETED',
+        status: failed.length === 0 ? 'COMPLETED' : (successCount > 0 ? 'PARTIAL' : 'FAILED'),
         type: 'DATA_SCHEDULING',
         totalItems: totalCount,
         processedItems: totalCount,
-        details: {},
+        details: {
+          failedSymbols: failed.map(r => r.symbol),
+          failedDetails: failedSummary
+        },
         startedAt: new Date(),
         completedAt: new Date()
       }
     });
 
+    // Log a summary if there were failures
+    if (failed.length > 0) {
+      await logScheduling({
+        processId,
+        userId,
+        operation: 'FETCH_PARTIAL_OR_FAILED',
+        message: `Processed ${successCount} of ${totalCount} cryptos. Failed: ${failedSummary}`,
+        error: failedSummary
+      });
+    }
+
     return {
       success: successCount > 0,
-      message: `Successfully processed ${successCount} of ${totalCount} cryptocurrencies`,
+      message: failed.length === 0
+        ? `Successfully processed all ${totalCount} cryptocurrencies`
+        : `Processed ${successCount} of ${totalCount} cryptocurrencies. Failed: ${failedSummary}`,
       data: results,
+      error: failed.length > 0 ? failedSummary : undefined,
       processId
     };
   } catch (error) {
     // Enhanced error logging and serialization
-    let errorString: string;
-    if (error instanceof Error) {
-      errorString = error.message + (error.stack ? `\nStack: ${error.stack}` : '');
-    } else if (typeof error === 'object') {
-      try {
-        errorString = JSON.stringify(error, null, 2);
-      } catch (e) {
-        errorString = String(error);
-      }
-    } else {
-      errorString = String(error);
-    }
+    const errorObj = serializeError(error);
 
-    console.error('Error in fetchAndStoreHourlyCryptoData:', errorString);
+    console.error('Error in fetchAndStoreHourlyCryptoData:', errorObj);
 
     // Log the error to SchedulingProcessLog directly
     try {
@@ -778,8 +810,8 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
           level: 'ERROR',
           category: 'DATA_PROCESSING',
           operation: 'FETCH_ERROR',
-          message: `Failed to fetch and store hourly crypto data: ${errorString.substring(0, 200)}`,
-          details: { error: errorString },
+          message: `Failed to fetch and store hourly crypto data: ${errorObj.message || JSON.stringify(errorObj).substring(0, 200)}`,
+          details: { error: errorObj },
           timestamp: new Date()
         }
       });
@@ -793,7 +825,7 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
         where: { processId },
         update: {
           status: 'FAILED',
-          error: errorString.substring(0, 1000), // Limit error length to avoid DB issues
+          error: errorObj.message || JSON.stringify(errorObj).substring(0, 1000),
           completedAt: new Date()
         },
         create: {
@@ -803,10 +835,10 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
           type: 'DATA_SCHEDULING',
           totalItems: 0,
           processedItems: 0,
-          details: { error: errorString.substring(0, 1000) },
+          details: { error: errorObj },
           startedAt: new Date(),
           completedAt: new Date(),
-          error: errorString.substring(0, 1000)
+          error: errorObj.message || JSON.stringify(errorObj).substring(0, 1000)
         }
       });
     } catch (statusError) {
@@ -816,7 +848,7 @@ export async function fetchAndStoreHourlyCryptoData(userId: string): Promise<{
     return {
       success: false,
       message: `Failed to fetch and store hourly crypto data for user ${userId}`,
-      error: errorString,
+      error: errorObj,
       processId
     };
   }

@@ -7,14 +7,10 @@ import { schedulingLogger } from '@/lib/schedulingLogger';
  */
 export async function enhancedLog(params: any): Promise<void> {
   try {
-    // First log to the SchedulingProcessLog table using the existing logger
-    await schedulingLogger.log(params);
-    
-    // Then update the ProcessingStatus table with the current operation and message
-    // This helps track progress in the UI
+    // First ensure ProcessingStatus exists and is updated with operation details
     if (params.processId && params.operation) {
       try {
-        // Use upsert instead of update to handle cases where the record doesn't exist
+        // Use upsert to handle cases where the record doesn't exist
         await prisma.processingStatus.upsert({
           where: { processId: params.processId },
           update: {
@@ -51,6 +47,9 @@ export async function enhancedLog(params: any): Promise<void> {
         console.error('Failed to update ProcessingStatus with operation details:', updateError);
       }
     }
+
+    // Now log to the SchedulingProcessLog table using the existing logger
+    await schedulingLogger.log(params);
   } catch (e) {
     console.error('Log operation failed:', e);
   }
@@ -150,10 +149,10 @@ export async function logStepCompletion(
 ): Promise<void> {
   try {
     const percentComplete = Math.round((processedItems / totalItems) * 100);
-    
-    await prisma.processingStatus.update({
+
+    await prisma.processingStatus.upsert({
       where: { processId },
-      data: {
+      update: {
         processedItems,
         details: {
           update: {
@@ -173,6 +172,31 @@ export async function logStepCompletion(
           }
         },
         updatedAt: new Date()
+      },
+      create: {
+        processId,
+        userId,
+        status: 'RUNNING',
+        type: 'DATA_SCHEDULING',
+        totalItems,
+        processedItems,
+        startedAt: new Date(),
+        details: {
+          [`${symbol}_${step}`]: {
+            completed: true,
+            timestamp: new Date().toISOString()
+          },
+          currentProgress: {
+            processedItems,
+            totalItems,
+            percentComplete
+          },
+          lastOperation: `${step.toUpperCase()}_COMPLETED`,
+          lastSymbol: symbol,
+          lastMessage: `Completed ${step} for ${symbol}`,
+          lastTimestamp: new Date().toISOString(),
+          createdByStepLogger: true
+        }
       }
     });
   } catch (error) {
@@ -193,10 +217,10 @@ export async function logProcessCompletion(
   try {
     const startTime = new Date(parseInt(processId.split('-')[1]));
     const duration = Math.round((new Date().getTime() - startTime.getTime()) / 1000);
-    
-    await prisma.processingStatus.update({
+
+    await prisma.processingStatus.upsert({
       where: { processId },
-      data: {
+      update: {
         status: 'COMPLETED',
         processedItems,
         completedAt: new Date(),
@@ -214,6 +238,29 @@ export async function logProcessCompletion(
             lastTimestamp: new Date().toISOString()
           }
         }
+      },
+      create: {
+        processId,
+        userId,
+        status: 'COMPLETED',
+        type: 'DATA_SCHEDULING',
+        totalItems: successCount + errorCount,
+        processedItems,
+        startedAt: new Date(),
+        completedAt: new Date(),
+        details: {
+          finalStatus: {
+            successCount,
+            errorCount,
+            totalProcessed: successCount + errorCount,
+            completionTime: new Date().toISOString(),
+            duration: `${duration} seconds`
+          },
+          lastOperation: 'ANALYSIS_COMPLETE',
+          lastMessage: `Analysis process completed with ${successCount} successful and ${errorCount} failed cryptocurrencies`,
+          lastTimestamp: new Date().toISOString(),
+          createdByCompletionLogger: true
+        }
       }
     });
   } catch (error) {
@@ -230,9 +277,9 @@ export async function logProcessFailure(
   error: any
 ): Promise<void> {
   try {
-    await prisma.processingStatus.update({
+    await prisma.processingStatus.upsert({
       where: { processId },
-      data: {
+      update: {
         status: 'FAILED',
         completedAt: new Date(),
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -247,6 +294,28 @@ export async function logProcessFailure(
             lastMessage: `Analysis process failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
             lastTimestamp: new Date().toISOString()
           }
+        }
+      },
+      create: {
+        processId,
+        userId,
+        status: 'FAILED',
+        type: 'DATA_SCHEDULING',
+        totalItems: 0,
+        processedItems: 0,
+        startedAt: new Date(),
+        completedAt: new Date(),
+        error: error instanceof Error ? error.message : 'Unknown error',
+        details: {
+          errorDetails: {
+            message: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined,
+            timestamp: new Date().toISOString()
+          },
+          lastOperation: 'ANALYSIS_FAILED',
+          lastMessage: `Analysis process failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          lastTimestamp: new Date().toISOString(),
+          createdByFailureLogger: true
         }
       }
     });

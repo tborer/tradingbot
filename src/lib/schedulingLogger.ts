@@ -39,33 +39,14 @@ export async function logSchedulingProcess({
   duration
 }: LogEntryParams): Promise<void> {
   try {
-    // Always create the log entry regardless of whether the process exists
-    await prisma.schedulingProcessLog.create({
-      data: {
-        processId,
-        userId,
-        level,
-        category,
-        operation,
-        symbol,
-        message,
-        details: details ? details : undefined,
-        duration,
-        timestamp: new Date() // Ensure timestamp is set
-      }
+    // Ensure ProcessingStatus exists before creating the log entry
+    const existingProcess = await prisma.processingStatus.findUnique({
+      where: { processId }
     });
-    
-    // Log to console as well for visibility
-    console.log(`[LOG][${level}][${category}][${operation}] ${message} (processId: ${processId})`);
-    
-    // Optionally try to create a ProcessingStatus if it doesn't exist
-    try {
-      const existingProcess = await prisma.processingStatus.findUnique({
-        where: { processId }
-      });
-      
-      if (!existingProcess) {
-        // Create a minimal ProcessingStatus record to link logs
+
+    if (!existingProcess) {
+      // Create a minimal ProcessingStatus record to link logs
+      try {
         await prisma.processingStatus.create({
           data: {
             processId,
@@ -82,11 +63,30 @@ export async function logSchedulingProcess({
             }
           }
         });
+      } catch (processError) {
+        // If we can't create the ProcessingStatus, log and continue
+        console.warn(`Could not create ProcessingStatus for ${processId}:`, processError);
       }
-    } catch (processError) {
-      // If we can't create the ProcessingStatus, that's ok - we've already logged the event
-      console.warn(`Could not create ProcessingStatus for ${processId}:`, processError);
     }
+
+    // Now create the log entry
+    await prisma.schedulingProcessLog.create({
+      data: {
+        processId,
+        userId,
+        level,
+        category,
+        operation,
+        symbol,
+        message,
+        details: details ? details : undefined,
+        duration,
+        timestamp: new Date() // Ensure timestamp is set
+      }
+    });
+
+    // Log to console as well for visibility
+    console.log(`[LOG][${level}][${category}][${operation}] ${message} (processId: ${processId})`);
   } catch (error) {
     // Don't let logging errors disrupt the main process
     console.error('Error creating scheduling process log:', error);

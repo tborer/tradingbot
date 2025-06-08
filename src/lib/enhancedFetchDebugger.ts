@@ -66,17 +66,47 @@ export async function enhancedFetchAndStoreHourlyCryptoData(userId: string): Pro
     
     // Call the original function
     const result = await originalFetchAndStore(userId);
-    
-    // Log the result
+
+    // If there are partial failures, log them specifically
+    if (
+      result &&
+      typeof result === 'object' &&
+      Array.isArray(result.failedSymbols) &&
+      result.failedSymbols.length > 0
+    ) {
+      await logCronDebug(
+        'ENHANCED_FETCH_PARTIAL',
+        `Fetch and store completed with partial failures: ${result.message}`,
+        {
+          userId,
+          debugProcessId,
+          success: false,
+          message: result.message,
+          failedSymbols: result.failedSymbols,
+          failedDetails: result.failedDetails,
+          error: result.error,
+          processId: result.processId
+        },
+        userId
+      );
+    }
+
+    // Log the result (success, error, or partial)
     await logCronDebug(
-      result.success ? 'ENHANCED_FETCH_SUCCESS' : 'ENHANCED_FETCH_ERROR',
-      `Fetch and store ${result.success ? 'completed successfully' : 'failed'}: ${result.message}`,
+      result.success
+        ? 'ENHANCED_FETCH_SUCCESS'
+        : (Array.isArray(result.failedSymbols) && result.failedSymbols.length > 0)
+          ? 'ENHANCED_FETCH_PARTIAL'
+          : 'ENHANCED_FETCH_ERROR',
+      `Fetch and store ${result.success ? 'completed successfully' : (Array.isArray(result.failedSymbols) && result.failedSymbols.length > 0) ? 'partially failed' : 'failed'}: ${result.message}`,
       {
         userId,
         debugProcessId,
         success: result.success,
         message: result.message,
         error: result.error,
+        failedSymbols: result.failedSymbols,
+        failedDetails: result.failedDetails,
         processId: result.processId
       },
       userId

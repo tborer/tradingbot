@@ -12,73 +12,63 @@ export async function logCronEvent(
   details?: any,
   userId: string = 'system'
 ): Promise<void> {
-  // Generate a consistent processId for cron events
-  const timestamp = Date.now();
-  const processId = `cron-${timestamp}`;
-  
+  const timestamp = new Date();
+  // Make processId more unique, especially when a userId is involved
+  const processId = `cron-${userId}-${timestamp.getTime()}`;
+
   console.log(`[CRON][${level}][${operation}] ${message}`, details || '');
-  
+
   try {
-    // Log directly to the SchedulingProcessLog table without requiring a ProcessingStatus record
+    // First, ensure the ProcessingStatus record exists using an atomic upsert.
+    // This prevents foreign key violations when creating the log entry.
+    await prisma.processingStatus.upsert({
+      where: { processId },
+      update: {}, // Don't update if it already exists at this stage
+      create: {
+        processId,
+        userId,
+        status: 'RUNNING',
+        type: 'CRON',
+        totalItems: 1,
+        processedItems: 0,
+        startedAt: timestamp,
+        details: {
+          cronOperation: operation,
+          initialMessage: message,
+          timestamp: timestamp.toISOString(),
+        },
+      },
+    });
+
+    // Now that the parent record is guaranteed to exist, create the log entry.
     await prisma.schedulingProcessLog.create({
       data: {
         processId,
         userId,
         level,
-        category: 'CRON_DEBUG', // Use CRON_DEBUG category to distinguish these logs
+        category: 'CRON_DEBUG',
         operation,
         message,
         details: details ? details : undefined,
-        timestamp: new Date(timestamp)
-      }
+        timestamp,
+      },
     });
-    
-    // Try to find or create a ProcessingStatus record for this cron event
-    try {
-      const existingStatus = await prisma.processingStatus.findUnique({
-        where: { processId }
-      });
-      
-      if (!existingStatus) {
-        // Create a new ProcessingStatus record if one doesn't exist
-        await prisma.processingStatus.create({
-          data: {
-            processId,
-            userId,
-            status: 'RUNNING',
-            type: 'CRON',
-            totalItems: 1,
-            processedItems: 0,
-            startedAt: new Date(timestamp),
-            details: {
-              cronOperation: operation,
-              initialMessage: message,
-              timestamp: new Date(timestamp).toISOString()
-            }
-          }
-        });
-      }
-    } catch (statusError) {
-      // If we can't create the ProcessingStatus, at least we've already logged to SchedulingProcessLog
-      console.error('Failed to create ProcessingStatus record:', statusError);
-    }
-    
-    // If this is an error or the operation is complete, update the ProcessingStatus
+
+    // If this is a terminal event (error, completion), update the ProcessingStatus.
     if (level === 'ERROR' || operation.includes('COMPLETE') || operation.includes('FAILED')) {
+      const finalStatus = level === 'ERROR' || operation.includes('FAILED') ? 'FAILED' : 'COMPLETED';
       await prisma.processingStatus.update({
         where: { processId },
         data: {
-          status: level === 'ERROR' || operation.includes('FAILED') ? 'FAILED' : 'COMPLETED',
+          status: finalStatus,
           completedAt: new Date(),
-          error: level === 'ERROR' ? message : undefined,
           details: {
-            update: {
-              finalMessage: message,
-              finalTimestamp: new Date().toISOString(),
-              ...(details ? { finalDetails: details } : {})
-            }
-          }
-        }
+            ...(details || {}),
+            finalStatus,
+            finalMessage: message,
+            finalTimestamp: new Date().toISOString(),
+          },
+        },
       });
     }
   } catch (loggingError) {

@@ -224,163 +224,61 @@ export async function runScheduledTasks(force: boolean = false): Promise<void> {
       return;
     }
     
-    // Process each user's scheduled tasks
+    // Process each user's scheduled tasks sequentially to avoid overwhelming the database
     for (const settings of schedulingSettings) {
+      const processId = `scheduled-${settings.userId}-${Date.now()}`;
+      
       try {
         const userCheckDetails = {
           dailyRunTime: settings.dailyRunTime,
           timeZone: settings.timeZone,
           userId: settings.userId,
           cronRunId,
-          force
+          force,
         };
-        
-        await Promise.all([
-          logScheduling({
-            processId: cronRunId,
-            userId: settings.userId,
-            operation: 'SCHEDULED_TASK_CHECK',
-            message: `Checking if it's time to run scheduled task for user ${settings.userId}${force ? ' (force run enabled)' : ''}`,
-            details: userCheckDetails
-          }),
-          logCronEvent(
+
+        await logCronEvent(
+          'INFO',
+          'SCHEDULED_TASK_CHECK',
+          `Checking if it's time to run scheduled task for user ${settings.userId}${force ? ' (force run enabled)' : ''}`,
+          userCheckDetails
+        );
+
+        if (!force && !shouldRunScheduledTask(settings.dailyRunTime, settings.timeZone)) {
+          await logCronEvent(
             'INFO',
-            'SCHEDULED_TASK_CHECK',
-            `Checking if it's time to run scheduled task for user ${settings.userId}${force ? ' (force run enabled)' : ''}`,
+            'SCHEDULED_TASK_NOT_DUE',
+            `Not time to run scheduled task for user ${settings.userId}`,
             userCheckDetails
-          )
-        ]).catch(err => console.error('Error logging task check:', err));
+          );
+          continue; // Skip to the next user
+        }
+
+        if (force) {
+          await logCronEvent(
+            'INFO',
+            'SCHEDULED_TASK_FORCE_RUN',
+            `Force run enabled: running scheduled task for user ${settings.userId} regardless of time`,
+            { userId: settings.userId, cronRunId }
+          );
+        }
         
-        // Check if it's time to run the scheduled task, or force is enabled
-        if (force || shouldRunScheduledTask(settings.dailyRunTime, settings.timeZone)) {
-          if (force) {
-            await logCronEvent(
-              'INFO',
-              'SCHEDULED_TASK_FORCE_RUN',
-              `Force run enabled: running scheduled task for user ${settings.userId} regardless of time`,
-              { userId: settings.userId, cronRunId }
-            );
-          }
-          console.log(`Running scheduled task for user ${settings.userId} at ${settings.dailyRunTime} ${settings.timeZone}${force ? ' (force run)' : ''}`);
-          
-          // Check if there's already a recent run for this user (within the last 10 minutes)
-          const recentRun = await prisma.processingStatus.findFirst({
-            where: {
-              userId: settings.userId,
-              type: 'DATA_SCHEDULING',
-              startedAt: {
-                gte: new Date(Date.now() - 10 * 60 * 1000) // 10 minutes ago
-              }
-            },
-            orderBy: {
-              startedAt: 'desc'
-            }
-          });
-          
-          if (recentRun) {
-            const skipDetails = {
-              recentRunId: recentRun.processId,
-              recentRunTime: recentRun.startedAt.toISOString(),
-              userId: settings.userId,
-              cronRunId
-            };
-            
-            await Promise.all([
-              logScheduling({
-                processId: cronRunId,
-                userId: settings.userId,
-                operation: 'SCHEDULED_TASK_SKIP',
-                message: `Skipping scheduled task for user ${settings.userId} as it was run recently`,
-                details: skipDetails
-              }),
-              logCronEvent(
-                'INFO',
-                'SCHEDULED_TASK_SKIP',
-                `Skipping scheduled task for user ${settings.userId} as it was run recently`,
-                skipDetails
-              )
-            ]).catch(err => console.error('Error logging task skip:', err));
-            continue;
-          }
-          
-          // Enhanced: Validate data scheduling settings, crypto portfolio, and API credentials before processing
-          const processId = `scheduled-${Date.now()}`;
+        console.log(`Running scheduled task for user ${settings.userId} at ${settings.dailyRunTime} ${settings.timeZone}${force ? ' (force run)' : ''}`);
 
-          // Fetch full data scheduling settings for the user
-          const schedulingSettingsFull = await prisma.dataScheduling.findUnique({
-            where: { userId: settings.userId }
-          });
-
-          if (!schedulingSettingsFull) {
-            const missingSettingsMsg = `Data scheduling settings not found for user ${settings.userId}`;
-            await Promise.all([
-              logScheduling({
-                processId,
-                userId: settings.userId,
-                operation: 'SCHEDULED_TASK_SETTINGS_MISSING',
-                message: missingSettingsMsg,
-                error: new Error(missingSettingsMsg),
-                details: { cronRunId }
-              }),
-              logCronError(
-                'SCHEDULED_TASK_SETTINGS_MISSING',
-                missingSettingsMsg,
-                new Error(missingSettingsMsg),
-                { cronRunId }
-              )
-            ]);
-            continue;
+        // Create the ProcessingStatus record first to prevent foreign key violations
+        // This also helps in validating settings and portfolio before proceeding
+        let userCryptos;
+        try {
+          const schedulingSettingsFull = await prisma.dataScheduling.findUnique({ where: { userId: settings.userId } });
+          if (!schedulingSettingsFull || !schedulingSettingsFull.apiUrl || !schedulingSettingsFull.apiToken) {
+            throw new Error(`API credentials or scheduling settings are missing for user ${settings.userId}`);
           }
 
-          // Check for required API credentials
-          if (!schedulingSettingsFull.apiUrl || !schedulingSettingsFull.apiToken) {
-            const missingApiMsg = `API credentials missing for user ${settings.userId}: apiUrl=${schedulingSettingsFull.apiUrl}, apiToken=${!!schedulingSettingsFull.apiToken}`;
-            await Promise.all([
-              logScheduling({
-                processId,
-                userId: settings.userId,
-                operation: 'SCHEDULED_TASK_API_CREDENTIALS_MISSING',
-                message: missingApiMsg,
-                error: new Error(missingApiMsg),
-                details: { cronRunId }
-              }),
-              logCronError(
-                'SCHEDULED_TASK_API_CREDENTIALS_MISSING',
-                missingApiMsg,
-                new Error(missingApiMsg),
-                { cronRunId }
-              )
-            ]);
-            continue;
-          }
-
-          // Check for crypto portfolio
-          const userCryptos = await prisma.crypto.findMany({
-            where: { userId: settings.userId },
-            select: { symbol: true }
-          });
+          userCryptos = await prisma.crypto.findMany({ where: { userId: settings.userId }, select: { symbol: true } });
           if (!userCryptos || userCryptos.length === 0) {
-            const missingCryptosMsg = `No cryptocurrencies found in portfolio for user ${settings.userId}`;
-            await Promise.all([
-              logScheduling({
-                processId,
-                userId: settings.userId,
-                operation: 'SCHEDULED_TASK_CRYPTOS_MISSING',
-                message: missingCryptosMsg,
-                error: new Error(missingCryptosMsg),
-                details: { cronRunId }
-              }),
-              logCronError(
-                'SCHEDULED_TASK_CRYPTOS_MISSING',
-                missingCryptosMsg,
-                new Error(missingCryptosMsg),
-                { cronRunId }
-              )
-            ]);
-            continue;
+            throw new Error(`No cryptocurrencies found in portfolio for user ${settings.userId}`);
           }
 
-          // Create a processing status record
           await prisma.processingStatus.create({
             data: {
               processId,
@@ -393,339 +291,134 @@ export async function runScheduledTasks(force: boolean = false): Promise<void> {
               details: {
                 initiatedBy: 'CRON',
                 cronRunId,
+                force,
                 dailyRunTime: settings.dailyRunTime,
                 timeZone: settings.timeZone,
                 runTechnicalAnalysis: settings.runTechnicalAnalysis,
-                cleanupEnabled: settings.cleanupEnabled
-              }
-            }
+                cleanupEnabled: settings.cleanupEnabled,
+              },
+            },
           });
+        } catch (validationError) {
+          await logCronError(
+            'SCHEDULED_TASK_VALIDATION_FAILED',
+            `Validation failed for user ${settings.userId}: ${validationError instanceof Error ? validationError.message : 'Unknown error'}`,
+            validationError,
+            { userId: settings.userId, cronRunId }
+          );
+          continue; // Skip to the next user
+        }
 
-          const startDetails = {
+        await logScheduling({
+          processId,
+          userId: settings.userId,
+          operation: 'SCHEDULED_TASK_START',
+          message: `Starting scheduled task at ${settings.dailyRunTime} ${settings.timeZone}`,
+          details: { cronRunId },
+        });
+
+        // Run data fetch operation
+        try {
+          await logScheduling({ processId, userId: settings.userId, operation: 'SCHEDULED_FETCH_START', message: 'Starting data fetch' });
+          const fetchResult = await enhancedFetchAndStoreHourlyCryptoData(settings.userId);
+          await logScheduling({
             processId,
-            dailyRunTime: settings.dailyRunTime,
-            timeZone: settings.timeZone,
-            cronRunId
-          };
+            userId: settings.userId,
+            operation: 'SCHEDULED_FETCH_COMPLETE',
+            message: fetchResult.message,
+            success: fetchResult.success,
+            error: fetchResult.error,
+            details: { failedSymbols: fetchResult.failedSymbols, failedDetails: fetchResult.failedDetails },
+          });
+        } catch (fetchError) {
+          await logScheduling({
+            processId,
+            userId: settings.userId,
+            operation: 'SCHEDULED_FETCH_ERROR',
+            message: `Error fetching data: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}`,
+            error: fetchError,
+          });
+        }
 
-          await Promise.all([
-            logScheduling({
+        // Run analysis after fetching data
+        if (settings.runTechnicalAnalysis) {
+          try {
+            await logScheduling({ processId, userId: settings.userId, operation: 'SCHEDULED_ANALYSIS_START', message: 'Starting scheduled analysis' });
+            const analysisProcessId = `analysis-${processId}`;
+            await runAnalysisProcess(analysisProcessId, settings.userId);
+            await logScheduling({ processId, userId: settings.userId, operation: 'SCHEDULED_ANALYSIS_COMPLETE', message: 'Scheduled analysis completed', details: { analysisProcessId } });
+          } catch (analysisError) {
+            await logScheduling({
               processId,
               userId: settings.userId,
-              operation: 'SCHEDULED_TASK_START',
-              message: `Starting scheduled task at ${settings.dailyRunTime} ${settings.timeZone}`,
-              details: startDetails
-            }),
-            logCronEvent(
-              'INFO',
-              'SCHEDULED_TASK_START',
-              `Starting scheduled task at ${settings.dailyRunTime} ${settings.timeZone}`,
-              startDetails
-            )
-          ]).catch(err => console.error('Error logging task start:', err));
-
-          // Run data fetch operation
-          try {
-            await logCronEvent(
-              'INFO',
-              'SCHEDULED_FETCH_START',
-              `Starting data fetch for user ${settings.userId}`,
-              { processId, cronRunId }
-            );
-
-            const fetchResult = await enhancedFetchAndStoreHourlyCryptoData(settings.userId);
-
-            const fetchCompleteDetails = {
-              success: fetchResult.success,
-              message: fetchResult.message,
-              error: fetchResult.error,
-              processId,
-              cronRunId
-            };
-
-            await Promise.all([
-              logScheduling({
-                processId,
-                userId: settings.userId,
-                operation: 'SCHEDULED_FETCH_COMPLETE',
-                message: fetchResult.message,
-                success: fetchResult.success,
-                error: fetchResult.error,
-                details: fetchCompleteDetails
-              }),
-              logCronEvent(
-                fetchResult.success ? 'INFO' : 'ERROR',
-                'SCHEDULED_FETCH_COMPLETE',
-                fetchResult.message,
-                fetchCompleteDetails
-              )
-            ]).catch(err => console.error('Error logging fetch complete:', err));
-          } catch (fetchError) {
-            const fetchErrorDetails = {
-              error: fetchError instanceof Error ? fetchError.message : String(fetchError),
-              stack: fetchError instanceof Error ? fetchError.stack : undefined,
-              processId,
-              cronRunId
-            };
-
-            await Promise.all([
-              logScheduling({
-                processId,
-                userId: settings.userId,
-                operation: 'SCHEDULED_FETCH_ERROR',
-                message: `Error fetching data: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}`,
-                error: fetchError,
-                details: fetchErrorDetails
-              }),
-              logCronError(
-                'SCHEDULED_FETCH',
-                `Error fetching data for user ${settings.userId}`,
-                fetchError,
-                fetchErrorDetails
-              )
-            ]).catch(err => console.error('Error logging fetch error:', err));
-          }
-          
-          // Run analysis after fetching data
-          if (settings.runTechnicalAnalysis) {
-            try {
-              const analysisStartDetails = {
-                processId,
-                cronRunId
-              };
-              
-              await Promise.all([
-                logScheduling({
-                  processId,
-                  userId: settings.userId,
-                  operation: 'SCHEDULED_ANALYSIS_START',
-                  message: 'Starting scheduled analysis',
-                  details: analysisStartDetails
-                }),
-                logCronEvent(
-                  'INFO',
-                  'SCHEDULED_ANALYSIS_START',
-                  `Starting scheduled analysis for user ${settings.userId}`,
-                  analysisStartDetails
-                )
-              ]).catch(err => console.error('Error logging analysis start:', err));
-              
-              // Create a new analysis process ID
-              const analysisProcessId = `analysis-${Date.now()}`;
-              
-              // Start the analysis process
-              await runAnalysisProcess(analysisProcessId, settings.userId);
-              
-              const analysisCompleteDetails = {
-                processId,
-                analysisProcessId,
-                cronRunId
-              };
-              
-              await Promise.all([
-                logScheduling({
-                  processId,
-                  userId: settings.userId,
-                  operation: 'SCHEDULED_ANALYSIS_COMPLETE',
-                  message: 'Scheduled analysis completed',
-                  details: analysisCompleteDetails
-                }),
-                logCronEvent(
-                  'INFO',
-                  'SCHEDULED_ANALYSIS_COMPLETE',
-                  `Scheduled analysis completed for user ${settings.userId}`,
-                  analysisCompleteDetails
-                )
-              ]).catch(err => console.error('Error logging analysis complete:', err));
-            } catch (analysisError) {
-              const analysisErrorDetails = {
-                error: analysisError instanceof Error ? analysisError.message : String(analysisError),
-                stack: analysisError instanceof Error ? analysisError.stack : undefined,
-                processId,
-                cronRunId
-              };
-              
-              await Promise.all([
-                logScheduling({
-                  processId,
-                  userId: settings.userId,
-                  operation: 'SCHEDULED_ANALYSIS_ERROR',
-                  message: `Scheduled analysis error: ${analysisError instanceof Error ? analysisError.message : 'Unknown error'}`,
-                  error: analysisError,
-                  details: analysisErrorDetails
-                }),
-                logCronError(
-                  'SCHEDULED_ANALYSIS',
-                  `Error running analysis for user ${settings.userId}`,
-                  analysisError,
-                  analysisErrorDetails
-                )
-              ]).catch(err => console.error('Error logging analysis error:', err));
-            }
-          }
-          
-          // Run cleanup if enabled
-          if (settings.cleanupEnabled) {
-            try {
-              await logCronEvent(
-                'INFO',
-                'SCHEDULED_CLEANUP_START',
-                `Starting data cleanup for user ${settings.userId}`,
-                { processId, cronRunId }
-              );
-              
-              const cleanupResult = await cleanupOldData(settings.userId);
-              
-              const cleanupCompleteDetails = {
-                success: cleanupResult.success,
-                message: cleanupResult.message,
-                error: cleanupResult.error,
-                count: cleanupResult.count,
-                processId,
-                cronRunId
-              };
-              
-              await Promise.all([
-                logScheduling({
-                  processId,
-                  userId: settings.userId,
-                  operation: 'SCHEDULED_CLEANUP_COMPLETE',
-                  message: cleanupResult.message,
-                  success: cleanupResult.success,
-                  error: cleanupResult.error,
-                  details: cleanupCompleteDetails
-                }),
-                logCronEvent(
-                  cleanupResult.success ? 'INFO' : 'ERROR',
-                  'SCHEDULED_CLEANUP_COMPLETE',
-                  cleanupResult.message,
-                  cleanupCompleteDetails
-                )
-              ]).catch(err => console.error('Error logging cleanup complete:', err));
-            } catch (cleanupError) {
-              const cleanupErrorDetails = {
-                error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
-                stack: cleanupError instanceof Error ? cleanupError.stack : undefined,
-                processId,
-                cronRunId
-              };
-              
-              await Promise.all([
-                logScheduling({
-                  processId,
-                  userId: settings.userId,
-                  operation: 'SCHEDULED_CLEANUP_ERROR',
-                  message: `Error cleaning up data: ${cleanupError instanceof Error ? cleanupError.message : 'Unknown error'}`,
-                  error: cleanupError,
-                  details: cleanupErrorDetails
-                }),
-                logCronError(
-                  'SCHEDULED_CLEANUP',
-                  `Error cleaning up data for user ${settings.userId}`,
-                  cleanupError,
-                  cleanupErrorDetails
-                )
-              ]).catch(err => console.error('Error logging cleanup error:', err));
-            }
-          }
-          
-          // Update processing status to completed
-          try {
-            await prisma.processingStatus.update({
-              where: { processId },
-              data: {
-                status: 'COMPLETED',
-                completedAt: new Date(),
-                details: {
-                  update: {
-                    finalStatus: 'COMPLETED',
-                    completionTime: new Date().toISOString()
-                  }
-                }
-              }
+              operation: 'SCHEDULED_ANALYSIS_ERROR',
+              message: `Scheduled analysis error: ${analysisError instanceof Error ? analysisError.message : 'Unknown error'}`,
+              error: analysisError,
             });
-            
-            const taskCompleteDetails = {
-              processId,
-              cronRunId,
-              completedAt: new Date().toISOString()
-            };
-            
-            await Promise.all([
-              logScheduling({
-                processId,
-                userId: settings.userId,
-                operation: 'SCHEDULED_TASK_COMPLETE',
-                message: 'Scheduled task completed',
-                details: taskCompleteDetails
-              }),
-              logCronEvent(
-                'INFO',
-                'SCHEDULED_TASK_COMPLETE',
-                `Scheduled task completed for user ${settings.userId}`,
-                taskCompleteDetails
-              )
-            ]).catch(err => console.error('Error logging task complete:', err));
-          } catch (statusUpdateError) {
-            console.error(`Error updating processing status for user ${settings.userId}:`, statusUpdateError);
-            
-            await logCronError(
-              'PROCESSING_STATUS_UPDATE',
-              `Error updating processing status for user ${settings.userId}`,
-              statusUpdateError,
-              { processId, cronRunId }
-            );
           }
-        } else {
-          const notDueDetails = {
-            dailyRunTime: settings.dailyRunTime,
-            timeZone: settings.timeZone,
-            currentTime: new Date().toISOString(),
-            cronRunId
-          };
-          
-          await Promise.all([
-            logScheduling({
-              processId: cronRunId,
+        }
+
+        // Run cleanup if enabled
+        if (settings.cleanupEnabled) {
+          try {
+            await logScheduling({ processId, userId: settings.userId, operation: 'SCHEDULED_CLEANUP_START', message: 'Starting data cleanup' });
+            const cleanupResult = await cleanupOldData(settings.userId);
+            await logScheduling({
+              processId,
               userId: settings.userId,
-              operation: 'SCHEDULED_TASK_NOT_DUE',
-              message: `Not time to run scheduled task for user ${settings.userId}`,
-              details: notDueDetails
-            }),
-            logCronEvent(
-              'INFO',
-              'SCHEDULED_TASK_NOT_DUE',
-              `Not time to run scheduled task for user ${settings.userId}`,
-              notDueDetails
-            )
-          ]).catch(err => console.error('Error logging task not due:', err));
+              operation: 'SCHEDULED_CLEANUP_COMPLETE',
+              message: cleanupResult.message,
+              success: cleanupResult.success,
+              error: cleanupResult.error,
+              details: { count: cleanupResult.count },
+            });
+          } catch (cleanupError) {
+            await logScheduling({
+              processId,
+              userId: settings.userId,
+              operation: 'SCHEDULED_CLEANUP_ERROR',
+              message: `Error cleaning up data: ${cleanupError instanceof Error ? cleanupError.message : 'Unknown error'}`,
+              error: cleanupError,
+            });
+          }
+        }
+
+        // Update processing status to completed
+        try {
+          await prisma.processingStatus.update({
+            where: { processId },
+            data: {
+              status: 'COMPLETED',
+              completedAt: new Date(),
+            },
+          });
+          await logScheduling({ processId, userId: settings.userId, operation: 'SCHEDULED_TASK_COMPLETE', message: 'Scheduled task completed' });
+        } catch (statusUpdateError) {
+          await logScheduling({
+            processId,
+            userId: settings.userId,
+            operation: 'PROCESSING_STATUS_UPDATE_ERROR',
+            message: `Error updating processing status to COMPLETED`,
+            error: statusUpdateError,
+          });
         }
       } catch (userError) {
         console.error(`Error processing scheduled task for user ${settings.userId}:`, userError);
-        
-        const userErrorDetails = {
-          error: userError instanceof Error ? userError.message : String(userError),
-          stack: userError instanceof Error ? userError.stack : undefined,
-          userId: settings.userId,
-          cronRunId
-        };
-        
-        await Promise.all([
-          logScheduling({
-            processId: cronRunId,
-            userId: settings.userId,
-            operation: 'SCHEDULED_TASK_ERROR',
-            message: `Error processing scheduled task for user ${settings.userId}: ${userError instanceof Error ? userError.message : 'Unknown error'}`,
-            error: userError,
-            details: userErrorDetails
-          }),
-          logCronError(
-            'SCHEDULED_TASK',
-            `Error processing scheduled task for user ${settings.userId}`,
-            userError,
-            userErrorDetails
-          )
-        ]).catch(err => console.error('Error logging user error:', err));
+        await logCronError(
+          'SCHEDULED_TASK_USER_ERROR',
+          `Unhandled error processing task for user ${settings.userId}`,
+          userError,
+          { userId: settings.userId, cronRunId, processId }
+        );
+        // Attempt to mark the process as failed if it was created
+        try {
+          await prisma.processingStatus.update({
+            where: { processId },
+            data: { status: 'FAILED', completedAt: new Date() },
+          });
+        } catch (finalStatusError) {
+          // Ignore if this fails, we already logged the main error
+        }
       }
     }
     

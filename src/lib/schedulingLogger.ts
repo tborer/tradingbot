@@ -39,34 +39,31 @@ export async function logSchedulingProcess({
   duration
 }: LogEntryParams): Promise<void> {
   try {
-    // Ensure ProcessingStatus exists before creating the log entry
-    const existingProcess = await prisma.processingStatus.findUnique({
-      where: { processId }
-    });
-
-    if (!existingProcess) {
-      // Create a minimal ProcessingStatus record to link logs
-      try {
-        await prisma.processingStatus.create({
-          data: {
-            processId,
-            userId,
-            status: 'RUNNING',
-            type: category === 'SCHEDULING' ? 'DATA_SCHEDULING' : 'CRON',
-            totalItems: 1,
-            processedItems: 0,
-            startedAt: new Date(),
-            details: {
-              initialOperation: operation,
-              initialMessage: message,
-              createdForLogging: true
-            }
-          }
-        });
-      } catch (processError) {
-        // If we can't create the ProcessingStatus, log and continue
-        console.warn(`Could not create ProcessingStatus for ${processId}:`, processError);
-      }
+    // Atomically ensure the ProcessingStatus record exists before logging against it.
+    // This prevents race conditions and foreign key constraint errors.
+    try {
+      await prisma.processingStatus.upsert({
+        where: { processId },
+        update: {}, // No update needed if it exists
+        create: {
+          processId,
+          userId,
+          status: 'RUNNING', // Default status
+          type: category === 'SCHEDULING' ? 'DATA_SCHEDULING' : 'CRON',
+          totalItems: 0, // Will be updated by the main process
+          processedItems: 0,
+          startedAt: new Date(),
+          details: {
+            initialOperation: operation,
+            initialMessage: message,
+            createdForLogging: true, // Flag to indicate it was auto-created
+          },
+        },
+      });
+    } catch (upsertError) {
+      // If even the upsert fails (e.g., DB connection issue), log it but don't stop the process.
+      console.error(`Failed to upsert ProcessingStatus for ${processId}:`, upsertError);
+      // We still attempt to write the log, though it may fail.
     }
 
     // Now create the log entry

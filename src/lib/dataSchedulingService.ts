@@ -1832,14 +1832,14 @@ export { processCryptoBatch, runTechnicalAnalysis };
  */
 export async function cleanupStaleProcessingStatuses(userId?: string): Promise<void> {
   try {
-    // Find all statuses that have been "RUNNING" for more than 30 minutes
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    // Find all statuses that have been "RUNNING" for more than 2 hours
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
     
     // Build the where clause based on whether userId is provided
     const whereClause: any = {
       status: 'RUNNING',
       updatedAt: {
-        lt: thirtyMinutesAgo
+        lt: twoHoursAgo
       }
     };
     

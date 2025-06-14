@@ -11,116 +11,50 @@ import { enhancedFetchAndStoreHourlyCryptoData } from '@/lib/enhancedFetchDebugg
  * @param timeZone - The time zone for the configured time
  * @returns boolean - Whether the task should run
  */
-export function shouldRunScheduledTask(configuredTime: string, timeZone: string): boolean {
-  const checkId = `time-check-${Date.now()}`;
-  
-  try {
-    // Parse the configured time
-    const [configHours, configMinutes] = configuredTime.split(':').map(Number);
-    
-    // Get the current time in the configured time zone
-    const now = new Date();
-    const options: Intl.DateTimeFormatOptions = { 
-      timeZone,
-      hour: 'numeric', 
-      minute: 'numeric',
-      hour12: false
-    };
-    
-    // Format the current time in the specified time zone
-    const formatter = new Intl.DateTimeFormat('en-US', options);
-    const zonedTimeStr = formatter.format(now);
-    
-    // Parse the current time in the time zone
-    const [currentHours, currentMinutes] = zonedTimeStr
-      .replace(/\u202F/g, ' ') // Replace non-breaking space if present
-      .split(':')
-      .map(part => parseInt(part.trim(), 10));
-    
-    console.log(`Checking scheduled task: Configured time ${configHours}:${configMinutes} vs Current time ${currentHours}:${currentMinutes} (${timeZone})`);
-    
-    // Log this check to both logging systems for better diagnostics
-    const timeCheckDetails = {
-      configuredTime,
-      currentTime: `${currentHours}:${currentMinutes}`,
-      timeZone,
-      currentDate: now.toISOString(),
-      checkId
-    };
-    
-    // Log to the scheduling logger
-    logScheduling({
-      processId: `cron-check-${Date.now()}`,
-      userId: 'system',
-      operation: 'SCHEDULE_TIME_CHECK',
-      message: `Checking scheduled task time: Configured ${configHours}:${configMinutes} vs Current ${currentHours}:${currentMinutes} (${timeZone})`,
-      details: timeCheckDetails
-    }).catch(err => console.error('Error logging schedule check:', err));
-    
-    // Also log to the cron logger
-    logCronEvent(
-      'INFO',
-      'SCHEDULE_TIME_CHECK',
-      `Checking scheduled task time: Configured ${configHours}:${configMinutes} vs Current ${currentHours}:${currentMinutes} (${timeZone})`,
-      timeCheckDetails
-    ).catch(err => console.error('Error logging to cron logger:', err));
-    
-    // Check if the current time matches the configured time
-    const shouldRun = currentHours === configHours && currentMinutes === configMinutes;
-    
-    if (shouldRun) {
-      const matchDetails = {
-        configuredTime,
-        currentTime: `${currentHours}:${currentMinutes}`,
-        timeZone,
-        checkId
-      };
-      
-      // Log to both systems that a match was found
-      logScheduling({
-        processId: `cron-trigger-${Date.now()}`,
-        userId: 'system',
-        operation: 'SCHEDULE_TIME_MATCH',
-        message: `Time match found! Task should run now.`,
-        details: matchDetails
-      }).catch(err => console.error('Error logging schedule match:', err));
-      
-      logCronEvent(
-        'INFO',
-        'SCHEDULE_TIME_MATCH',
-        `Time match found! Task should run now.`,
-        matchDetails
-      ).catch(err => console.error('Error logging to cron logger:', err));
+export function shouldRunScheduledTask(configuredTime: string, timeZone: string): { shouldRun: boolean; details: object } {
+    const defaultResponse = { shouldRun: false, details: {} };
+    if (!configuredTime || !timeZone) {
+        defaultResponse.details = { reason: "Missing dailyRunTime or timeZone." };
+        return defaultResponse;
     }
-    
-    return shouldRun;
-  } catch (error) {
-    console.error('Error checking scheduled task time:', error);
-    
-    // Log the error to both systems
-    const errorDetails = {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      checkId
-    };
-    
-    logScheduling({
-      processId: `cron-error-${Date.now()}`,
-      userId: 'system',
-      operation: 'SCHEDULE_TIME_ERROR',
-      message: `Error checking scheduled task time: ${error instanceof Error ? error.message : String(error)}`,
-      error: error
-    }).catch(err => console.error('Error logging schedule error:', err));
-    
-    logCronError(
-      'SCHEDULE_TIME_CHECK',
-      `Error checking scheduled task time`,
-      error,
-      { checkId }
-    ).catch(err => console.error('Error logging to cron logger:', err));
-    
-    return false;
-  }
+
+    try {
+        const now = new Date();
+        
+        // Get current time in target timezone
+        const zonedTime = new Date(now.toLocaleString('en-US', { timeZone }));
+
+        const [hours, minutes] = configuredTime.split(':').map(Number);
+        
+        const scheduledTime = new Date(zonedTime);
+        scheduledTime.setHours(hours, minutes, 0, 0);
+
+        const diff = Math.abs(zonedTime.getTime() - scheduledTime.getTime());
+        const tolerance = 5 * 60 * 1000; // 5 minutes tolerance
+        const shouldRun = diff < tolerance;
+
+        const details = {
+            currentTimeUTC: now.toISOString(),
+            targetTimeZone: timeZone,
+            currentTimeInZone: zonedTime.toISOString(),
+            scheduledTimeInZone: scheduledTime.toISOString(),
+            timeDifferenceMs: diff,
+            toleranceMs: tolerance,
+            shouldRun,
+            reason: shouldRun ? "Within time tolerance." : "Outside time tolerance."
+        };
+
+        return { shouldRun, details };
+    } catch (error: any) {
+        console.error('Error in shouldRunScheduledTask:', error);
+        return {
+            shouldRun: false,
+            details: {
+                error: "Failed to process time zone or scheduling information.",
+                errorMessage: error.message,
+            }
+        };
+    }
 }
 
 /**
@@ -244,14 +178,24 @@ export async function runScheduledTasks(force: boolean = false): Promise<void> {
           userCheckDetails
         );
 
-        if (!force && !shouldRunScheduledTask(settings.dailyRunTime, settings.timeZone)) {
-          await logCronEvent(
-            'INFO',
-            'SCHEDULED_TASK_NOT_DUE',
-            `Not time to run scheduled task for user ${settings.userId}`,
-            userCheckDetails
-          );
-          continue; // Skip to the next user
+        const { shouldRun, details: runCheckDetails } = shouldRunScheduledTask(settings.dailyRunTime, settings.timeZone);
+
+        if (!force && !shouldRun) {
+            await logCronEvent(
+                'INFO',
+                'SCHEDULED_TASK_NOT_DUE',
+                `Not time to run scheduled task for user ${settings.userId}`,
+                { ...userCheckDetails, ...runCheckDetails }
+            );
+            // Also log to scheduling log for easier debugging from the UI
+            await logScheduling({
+                processId,
+                userId: settings.userId,
+                operation: 'SCHEDULED_TASK_SKIPPED',
+                message: `Skipped task for user ${settings.userId}: Not scheduled time.`,
+                details: runCheckDetails,
+            });
+            continue; // Skip to the next user
         }
 
         if (force) {

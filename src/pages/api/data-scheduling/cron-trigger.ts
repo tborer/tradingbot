@@ -2,16 +2,65 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { runScheduledTasks } from '@/lib/schedulerCron';
 import { logCronEvent, createCronTimer, logCronError } from '@/lib/cronLogger';
 import { runComprehensiveDebug } from '@/lib/cronDebugger';
+import prisma from '@/lib/prisma';
 
 /**
  * This endpoint is designed to be called by a cron job every minute
  * to check if any scheduled tasks need to be run.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const requestId = Date.now().toString();
+  const requestId = `cron-request-${Date.now()}`;
+  const startTime = new Date();
+  
+  // Log the incoming request immediately to console and database
+  console.log(`[CRON-TRIGGER] ${startTime.toISOString()} - Cron trigger endpoint called`, {
+    requestId,
+    method: req.method,
+    url: req.url,
+    headers: {
+      'x-vercel-cron': req.headers['x-vercel-cron'],
+      'x-supabase-cron': req.headers['x-supabase-cron'],
+      'user-agent': req.headers['user-agent'],
+      'authorization': req.headers.authorization ? 'Bearer ***' : 'none'
+    },
+    body: req.body,
+    query: req.query
+  });
+
+  // Log to database immediately
+  try {
+    await prisma.schedulingProcessLog.create({
+      data: {
+        processId: requestId,
+        userId: 'system',
+        level: 'INFO',
+        category: 'CRON_DEBUG',
+        operation: 'CRON_REQUEST_RECEIVED',
+        message: `Cron trigger endpoint called via ${req.method}`,
+        details: { 
+          requestId,
+          method: req.method,
+          url: req.url,
+          timestamp: startTime.toISOString(),
+          headers: {
+            'x-vercel-cron': req.headers['x-vercel-cron'],
+            'x-supabase-cron': req.headers['x-supabase-cron'],
+            'user-agent': req.headers['user-agent'],
+            'authorization': req.headers.authorization ? 'Bearer ***' : 'none'
+          },
+          body: req.body,
+          query: req.query
+        },
+        timestamp: startTime
+      }
+    });
+  } catch (logError) {
+    console.error('[CRON-TRIGGER] Failed to log request to database:', logError);
+  }
+
   const requestTimer = createCronTimer(
     'CRON_TRIGGER',
-    'Cron trigger endpoint called',
+    'Cron trigger endpoint processing',
     { 
       requestId,
       method: req.method,
@@ -58,6 +107,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   
   try {
     // Log authorization success
+    console.log(`[CRON-TRIGGER] ${requestId} - Authorization successful`, {
+      source: isSupabaseCron ? 'supabase' : isVercelCron ? 'vercel' : 'direct',
+      isVercelCron,
+      isSupabaseCron,
+      hasAuthHeader: !!authHeader
+    });
+
     await prisma.schedulingProcessLog.create({
       data: {
         processId: requestId,
@@ -69,7 +125,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         details: { 
           requestId,
           source: isSupabaseCron ? 'supabase' : isVercelCron ? 'vercel' : 'direct',
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          isVercelCron,
+          isSupabaseCron,
+          hasAuthHeader: !!authHeader
         },
         timestamp: new Date()
       }
@@ -82,6 +141,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } else if (typeof req.query.force !== 'undefined') {
       force = req.query.force === 'true' || req.query.force === '1';
     }
+
+    console.log(`[CRON-TRIGGER] ${requestId} - Force parameter: ${force}`);
 
     if (force) {
       // Log force run directly to database

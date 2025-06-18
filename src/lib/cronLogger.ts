@@ -36,6 +36,7 @@ export async function logCronEvent(
         details: {
           cronOperation: operation,
           initialMessage: message,
+          prefix: 'cron',
           timestamp: timestamp.toISOString(),
         },
       },

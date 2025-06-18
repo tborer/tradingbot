@@ -49,6 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         startedAt: startTime,
         details: {
           source: 'cron-trigger-endpoint',
+          prefix: 'cron-request',
           method: req.method,
           timestamp: startTime.toISOString(),
           step: 'initial-processing-status-creation'

@@ -8,17 +8,19 @@ export function generateUUID(): string {
 }
 
 /**
- * Generates a process ID with a prefix and UUID
+ * Generates a process ID - returns a pure UUID since the database expects UUID format
+ * The prefix is stored in the details field instead
  */
 export function generateProcessId(prefix: string = 'process'): string {
-  return `${prefix}-${generateUUID()}`;
+  return generateUUID();
 }
 
 /**
- * Generates a cron-specific process ID
+ * Generates a cron-specific process ID - returns a pure UUID
+ * The cron context is stored in the details field instead
  */
 export function generateCronProcessId(userId: string = 'system'): string {
-  return `cron-${userId}-${generateUUID()}`;
+  return generateUUID();
 }
 
 /**

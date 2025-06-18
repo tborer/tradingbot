@@ -23,6 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         startedAt: new Date(),
         details: {
           testType: 'manual-cron-test',
+          prefix: 'test-cron',
           timestamp: new Date().toISOString(),
         },
       },

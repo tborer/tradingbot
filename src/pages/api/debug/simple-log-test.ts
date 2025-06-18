@@ -25,6 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         startedAt: timestamp,
         details: {
           testType: 'simple-database-logging-test',
+          prefix: 'simple-test',
           timestamp: timestamp.toISOString(),
         },
       },

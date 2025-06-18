@@ -13,8 +13,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const requestId = generateProcessId('cron-request');
   const startTime = new Date();
   
-  // Log the incoming request immediately to console and database
-  console.log(`[CRON-TRIGGER] ${startTime.toISOString()} - Cron trigger endpoint called`, {
+  // IMMEDIATE CONSOLE LOGGING - This should always appear
+  console.log(`\n=== CRON TRIGGER ENDPOINT CALLED ===`);
+  console.log(`[CRON-TRIGGER] ${startTime.toISOString()} - REQUEST RECEIVED`, {
     requestId,
     method: req.method,
     url: req.url,
@@ -27,9 +28,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     body: req.body,
     query: req.query
   });
+  console.log(`=== END CRON TRIGGER HEADER ===\n`);
 
-  // Create ProcessingStatus record first, then log to database
+  // IMMEDIATE DATABASE LOGGING - Create ProcessingStatus and Log records
+  let processingStatusCreated = false;
+  let initialLogCreated = false;
+  
   try {
+    console.log(`[CRON-TRIGGER] ${requestId} - STEP 1: Creating ProcessingStatus record`);
+    
     // Create the ProcessingStatus record first to avoid foreign key constraint violations
     await prisma.processingStatus.create({
       data: {
@@ -44,10 +51,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           source: 'cron-trigger-endpoint',
           method: req.method,
           timestamp: startTime.toISOString(),
+          step: 'initial-processing-status-creation'
         },
       },
     });
+    processingStatusCreated = true;
+    console.log(`[CRON-TRIGGER] ${requestId} - STEP 1: ProcessingStatus record created successfully`);
 
+    console.log(`[CRON-TRIGGER] ${requestId} - STEP 2: Creating initial SchedulingProcessLog record`);
     await prisma.schedulingProcessLog.create({
       data: {
         processId: requestId,
@@ -55,7 +66,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         level: 'INFO',
         category: 'CRON_DEBUG',
         operation: 'CRON_REQUEST_RECEIVED',
-        message: `Cron trigger endpoint called via ${req.method}`,
+        message: `CRON TRIGGER ENDPOINT CALLED - ${req.method} request received at ${startTime.toISOString()}`,
         details: { 
           requestId,
           method: req.method,
@@ -68,13 +79,53 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             'authorization': req.headers.authorization ? 'Bearer ***' : 'none'
           },
           body: req.body,
-          query: req.query
+          query: req.query,
+          step: 'initial-log-creation'
         },
         timestamp: startTime
       }
     });
+    initialLogCreated = true;
+    console.log(`[CRON-TRIGGER] ${requestId} - STEP 2: Initial SchedulingProcessLog record created successfully`);
+    
+    // Verify the records were created by querying them back
+    console.log(`[CRON-TRIGGER] ${requestId} - STEP 3: Verifying records were created`);
+    const statusCheck = await prisma.processingStatus.findUnique({
+      where: { processId: requestId }
+    });
+    const logCheck = await prisma.schedulingProcessLog.findMany({
+      where: { processId: requestId }
+    });
+    console.log(`[CRON-TRIGGER] ${requestId} - STEP 3: Verification - ProcessingStatus exists: ${!!statusCheck}, Logs count: ${logCheck.length}`);
+    
   } catch (logError) {
-    console.error('[CRON-TRIGGER] Failed to log request to database:', logError);
+    console.error(`[CRON-TRIGGER] ${requestId} - CRITICAL ERROR: Failed to create initial database records:`, logError);
+    console.error(`[CRON-TRIGGER] ${requestId} - ProcessingStatus created: ${processingStatusCreated}, Initial log created: ${initialLogCreated}`);
+    
+    // Try to create a minimal log entry if possible
+    if (processingStatusCreated && !initialLogCreated) {
+      try {
+        await prisma.schedulingProcessLog.create({
+          data: {
+            processId: requestId,
+            userId: 'system',
+            level: 'ERROR',
+            category: 'CRON_DEBUG',
+            operation: 'CRON_INITIAL_LOG_ERROR',
+            message: `Failed to create initial log: ${logError instanceof Error ? logError.message : 'Unknown error'}`,
+            details: { 
+              requestId,
+              error: logError instanceof Error ? logError.message : String(logError),
+              step: 'error-recovery-log'
+            },
+            timestamp: new Date()
+          }
+        });
+        console.log(`[CRON-TRIGGER] ${requestId} - Error recovery log created`);
+      } catch (recoveryError) {
+        console.error(`[CRON-TRIGGER] ${requestId} - Failed to create error recovery log:`, recoveryError);
+      }
+    }
   }
 
   const requestTimer = createCronTimer(

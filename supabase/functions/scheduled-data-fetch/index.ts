@@ -17,21 +17,45 @@ serve(async (req) => {
   }
 
   const startTime = new Date()
+  console.log(`\n=== SUPABASE CRON FUNCTION TRIGGERED ===`)
   console.log(`[SUPABASE-CRON] ${startTime.toISOString()} - Scheduled data fetch function triggered`)
+  console.log(`[SUPABASE-CRON] Request method: ${req.method}`)
+  console.log(`[SUPABASE-CRON] Request URL: ${req.url}`)
+  console.log(`[SUPABASE-CRON] Environment check - NEXT_API_URL: ${NEXT_API_URL}`)
+  console.log(`[SUPABASE-CRON] Environment check - CRON_SECRET exists: ${!!CRON_SECRET}`)
+  console.log(`=== END SUPABASE CRON HEADER ===\n`)
 
   try {
     if (!CRON_SECRET) {
-      throw new Error("CRON_SECRET environment variable is not set")
+      const errorMsg = "CRON_SECRET environment variable is not set"
+      console.error(`[SUPABASE-CRON] CRITICAL ERROR: ${errorMsg}`)
+      throw new Error(errorMsg)
     }
 
-    console.log(`[SUPABASE-CRON] Calling cron-trigger endpoint: ${NEXT_API_URL}/api/data-scheduling/cron-trigger`)
+    const targetUrl = `${NEXT_API_URL}/api/data-scheduling/cron-trigger`
+    console.log(`[SUPABASE-CRON] STEP 1: Preparing to call cron-trigger endpoint: ${targetUrl}`)
+    console.log(`[SUPABASE-CRON] STEP 1: Request headers will include:`, {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer [REDACTED]',
+      'x-supabase-cron': 'true'
+    })
+    console.log(`[SUPABASE-CRON] STEP 1: Request body will be:`, {
+      source: "supabase-cron",
+      timestamp: startTime.toISOString(),
+      force: false
+    })
     
     // Call the existing cron-trigger API endpoint with increased timeout
     // Use AbortController to handle timeout gracefully
+    console.log(`[SUPABASE-CRON] STEP 2: Setting up fetch request with 30 second timeout`)
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+    const timeoutId = setTimeout(() => {
+      console.log(`[SUPABASE-CRON] TIMEOUT: Request timed out after 30 seconds`)
+      controller.abort()
+    }, 30000) // 30 second timeout
     
-    const response = await fetch(`${NEXT_API_URL}/api/data-scheduling/cron-trigger`, {
+    console.log(`[SUPABASE-CRON] STEP 3: Making fetch request to ${targetUrl}`)
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -47,13 +71,17 @@ serve(async (req) => {
     })
 
     clearTimeout(timeoutId)
+    console.log(`[SUPABASE-CRON] STEP 4: Fetch request completed with status: ${response.status}`)
+    console.log(`[SUPABASE-CRON] STEP 4: Response headers:`, Object.fromEntries(response.headers.entries()))
 
     let result
     try {
+      console.log(`[SUPABASE-CRON] STEP 5: Reading response text`)
       result = await response.text()
-      console.log(`[SUPABASE-CRON] Cron job response (${response.status}):`, result)
+      console.log(`[SUPABASE-CRON] STEP 5: Response text length: ${result.length}`)
+      console.log(`[SUPABASE-CRON] STEP 5: Response content:`, result)
     } catch (textError) {
-      console.error(`[SUPABASE-CRON] Error reading response text:`, textError)
+      console.error(`[SUPABASE-CRON] STEP 5: Error reading response text:`, textError)
       result = `Error reading response: ${textError.message}`
     }
 

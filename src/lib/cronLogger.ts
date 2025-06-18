@@ -1,5 +1,5 @@
 import prisma from '@/lib/prisma';
-import { schedulingLogger } from '@/lib/schedulingLogger';
+import { generateCronProcessId, generateUUID } from '@/lib/uuidGenerator';
 
 /**
  * Specialized logger for cron-related events that ensures logs are written to the SchedulingProcessLog table
@@ -10,11 +10,12 @@ export async function logCronEvent(
   operation: string,
   message: string,
   details?: any,
-  userId: string = 'system'
-): Promise<void> {
+  userId: string = 'system',
+  processId?: string
+): Promise<string> {
   const timestamp = new Date();
-  // Make processId more unique, especially when a userId is involved
-  const processId = `cron-${userId}-${timestamp.getTime()}`;
+  // Use provided processId or generate a new UUID-based one
+  const finalProcessId = processId || generateCronProcessId(userId);
 
   console.log(`[CRON][${level}][${operation}] ${message}`, details || '');
 
@@ -22,10 +23,10 @@ export async function logCronEvent(
     // First, ensure the ProcessingStatus record exists using an atomic upsert.
     // This prevents foreign key violations when creating the log entry.
     await prisma.processingStatus.upsert({
-      where: { processId },
+      where: { processId: finalProcessId },
       update: {}, // Don't update if it already exists at this stage
       create: {
-        processId,
+        processId: finalProcessId,
         userId,
         status: 'RUNNING',
         type: 'CRON',
@@ -43,7 +44,7 @@ export async function logCronEvent(
     // Now that the parent record is guaranteed to exist, create the log entry.
     await prisma.schedulingProcessLog.create({
       data: {
-        processId,
+        processId: finalProcessId,
         userId,
         level,
         category: 'CRON_DEBUG',
@@ -58,7 +59,7 @@ export async function logCronEvent(
     if (level === 'ERROR' || operation.includes('COMPLETE') || operation.includes('FAILED')) {
       const finalStatus = level === 'ERROR' || operation.includes('FAILED') ? 'FAILED' : 'COMPLETED';
       await prisma.processingStatus.update({
-        where: { processId },
+        where: { processId: finalProcessId },
         data: {
           status: finalStatus,
           completedAt: new Date(),
@@ -71,10 +72,13 @@ export async function logCronEvent(
         },
       });
     }
+
+    return finalProcessId;
   } catch (loggingError) {
     // If logging to the database fails, at least log to the console
     console.error('Failed to log cron event to database:', loggingError);
     console.error('Original event:', { level, operation, message, details });
+    return finalProcessId;
   }
 }
 

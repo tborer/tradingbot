@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { runScheduledTasks } from '@/lib/schedulerCron';
 import { logCronEvent, createCronTimer, logCronError } from '@/lib/cronLogger';
 import { runComprehensiveDebug } from '@/lib/cronDebugger';
+import { generateProcessId } from '@/lib/uuidGenerator';
 import prisma from '@/lib/prisma';
 
 /**
@@ -9,7 +10,7 @@ import prisma from '@/lib/prisma';
  * to check if any scheduled tasks need to be run.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const requestId = `cron-request-${Date.now()}`;
+  const requestId = generateProcessId('cron-request');
   const startTime = new Date();
   
   // Log the incoming request immediately to console and database
@@ -27,8 +28,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     query: req.query
   });
 
-  // Log to database immediately
+  // Create ProcessingStatus record first, then log to database
   try {
+    // Create the ProcessingStatus record first to avoid foreign key constraint violations
+    await prisma.processingStatus.create({
+      data: {
+        processId: requestId,
+        userId: 'system',
+        status: 'RUNNING',
+        type: 'CRON_TRIGGER',
+        totalItems: 1,
+        processedItems: 0,
+        startedAt: startTime,
+        details: {
+          source: 'cron-trigger-endpoint',
+          method: req.method,
+          timestamp: startTime.toISOString(),
+        },
+      },
+    });
+
     await prisma.schedulingProcessLog.create({
       data: {
         processId: requestId,

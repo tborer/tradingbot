@@ -4,6 +4,7 @@ import { logScheduling } from '@/lib/schedulingLogger';
 import { runAnalysisProcess } from '@/lib/analysisUtils';
 import { logCronEvent, logCronError } from '@/lib/cronLogger';
 import { enhancedFetchAndStoreHourlyCryptoData } from '@/lib/enhancedFetchDebugger';
+import { generateProcessId } from '@/lib/uuidGenerator';
 
 /**
  * Checks if a scheduled task should run based on the current time and configured run time
@@ -61,7 +62,7 @@ export function shouldRunScheduledTask(configuredTime: string, timeZone: string)
  * Runs scheduled tasks for all users who have configured data scheduling
  */
 export async function runScheduledTasks(force: boolean = false): Promise<void> {
-  const cronRunId = `cron-run-${Date.now()}`;
+  const cronRunId = generateProcessId('cron-run');
   
   try {
     // First, clean up any stale processing statuses
@@ -160,7 +161,7 @@ export async function runScheduledTasks(force: boolean = false): Promise<void> {
     
     // Process each user's scheduled tasks sequentially to avoid overwhelming the database
     for (const settings of schedulingSettings) {
-      const processId = `scheduled-${settings.userId}-${Date.now()}`;
+      const processId = generateProcessId(`scheduled-${settings.userId}`);
       
       try {
         const userCheckDetails = {

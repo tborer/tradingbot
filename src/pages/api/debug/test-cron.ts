@@ -1,14 +1,32 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import prisma from '@/lib/prisma';
+import { generateProcessId } from '@/lib/uuidGenerator';
 
 /**
  * Test endpoint to manually trigger the cron job and check logs
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const testId = `test-cron-${Date.now()}`;
+  const testId = generateProcessId('test-cron');
   
   try {
     console.log(`[TEST-CRON] ${testId} - Starting manual cron test`);
+    
+    // Create ProcessingStatus record first to avoid foreign key constraint violations
+    await prisma.processingStatus.create({
+      data: {
+        processId: testId,
+        userId: 'system',
+        status: 'RUNNING',
+        type: 'TEST_CRON',
+        totalItems: 1,
+        processedItems: 0,
+        startedAt: new Date(),
+        details: {
+          testType: 'manual-cron-test',
+          timestamp: new Date().toISOString(),
+        },
+      },
+    });
     
     // Log the test start
     await prisma.schedulingProcessLog.create({

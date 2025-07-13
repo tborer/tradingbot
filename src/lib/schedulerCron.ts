@@ -7,55 +7,38 @@ import { enhancedFetchAndStoreHourlyCryptoData } from '@/lib/enhancedFetchDebugg
 import { generateProcessId } from '@/lib/uuidGenerator';
 
 /**
- * Checks if a scheduled task should run based on the current time and configured run time
- * @param configuredTime - The configured time in HH:MM format (24-hour)
- * @param timeZone - The time zone for the configured time
- * @returns boolean - Whether the task should run
+ * Checks if a user has already had a successful run today
+ * @param userId - The user ID to check
+ * @returns Promise with hasRun boolean and details
  */
-export function shouldRunScheduledTask(configuredTime: string, timeZone: string): { shouldRun: boolean; details: object } {
-    const defaultResponse = { shouldRun: false, details: {} };
-    if (!configuredTime || !timeZone) {
-        defaultResponse.details = { reason: "Missing dailyRunTime or timeZone." };
-        return defaultResponse;
-    }
-
-    try {
-        const now = new Date();
-        
-        // Get current time in target timezone
-        const zonedTime = new Date(now.toLocaleString('en-US', { timeZone }));
-
-        const [hours, minutes] = configuredTime.split(':').map(Number);
-        
-        const scheduledTime = new Date(zonedTime);
-        scheduledTime.setHours(hours, minutes, 0, 0);
-
-        const diff = Math.abs(zonedTime.getTime() - scheduledTime.getTime());
-        const tolerance = 5 * 60 * 1000; // 5 minutes tolerance
-        const shouldRun = diff < tolerance;
-
-        const details = {
-            currentTimeUTC: now.toISOString(),
-            targetTimeZone: timeZone,
-            currentTimeInZone: zonedTime.toISOString(),
-            scheduledTimeInZone: scheduledTime.toISOString(),
-            timeDifferenceMs: diff,
-            toleranceMs: tolerance,
-            shouldRun,
-            reason: shouldRun ? "Within time tolerance." : "Outside time tolerance."
-        };
-
-        return { shouldRun, details };
-    } catch (error: any) {
-        console.error('Error in shouldRunScheduledTask:', error);
-        return {
-            shouldRun: false,
-            details: {
-                error: "Failed to process time zone or scheduling information.",
-                errorMessage: error.message,
+async function hasSuccessfulRunToday(userId: string): Promise<{ hasRun: boolean; details: any }> {
+    // Get start of today in UTC
+    const startOfToday = new Date();
+    startOfToday.setUTCHours(0, 0, 0, 0);
+    
+    const recentRun = await prisma.processingStatus.findFirst({
+        where: {
+            userId: userId,
+            type: 'DATA_SCHEDULING',
+            status: 'COMPLETED',
+            createdAt: {
+                gte: startOfToday
             }
-        };
-    }
+        },
+        orderBy: {
+            createdAt: 'desc'
+        }
+    });
+    
+    return {
+        hasRun: !!recentRun,
+        details: {
+            startOfToday: startOfToday.toISOString(),
+            lastSuccessfulRun: recentRun?.createdAt?.toISOString() || null,
+            processId: recentRun?.processId || null,
+            reason: recentRun ? "Already completed today" : "No successful run today"
+        }
+    };
 }
 
 /**
@@ -165,8 +148,6 @@ export async function runScheduledTasks(force: boolean = false): Promise<void> {
       
       try {
         const userCheckDetails = {
-          dailyRunTime: settings.dailyRunTime,
-          timeZone: settings.timeZone,
           userId: settings.userId,
           cronRunId,
           force,
@@ -175,40 +156,48 @@ export async function runScheduledTasks(force: boolean = false): Promise<void> {
         await logCronEvent(
           'INFO',
           'SCHEDULED_TASK_CHECK',
-          `Checking if it's time to run scheduled task for user ${settings.userId}${force ? ' (force run enabled)' : ''}`,
+          `Checking if user ${settings.userId} needs a scheduled task run${force ? ' (force run enabled)' : ''}`,
           userCheckDetails
         );
 
-        const { shouldRun, details: runCheckDetails } = shouldRunScheduledTask(settings.dailyRunTime, settings.timeZone);
-
-        if (!force && !shouldRun) {
+        // Check if user already had a successful run today (unless force is enabled)
+        if (!force) {
+            const { hasRun, details: runCheckDetails } = await hasSuccessfulRunToday(settings.userId);
+            
+            if (hasRun) {
+                await logCronEvent(
+                    'INFO',
+                    'SCHEDULED_TASK_ALREADY_COMPLETED',
+                    `User ${settings.userId} already has a successful run today`,
+                    { ...userCheckDetails, ...runCheckDetails }
+                );
+                // Also log to scheduling log for easier debugging from the UI
+                await logScheduling({
+                    processId,
+                    userId: settings.userId,
+                    operation: 'SCHEDULED_TASK_SKIPPED',
+                    message: `Skipped task for user ${settings.userId}: Already completed today.`,
+                    details: runCheckDetails,
+                });
+                continue; // Skip to the next user
+            }
+            
             await logCronEvent(
                 'INFO',
-                'SCHEDULED_TASK_NOT_DUE',
-                `Not time to run scheduled task for user ${settings.userId}`,
+                'SCHEDULED_TASK_NEEDED',
+                `User ${settings.userId} needs a scheduled task run`,
                 { ...userCheckDetails, ...runCheckDetails }
             );
-            // Also log to scheduling log for easier debugging from the UI
-            await logScheduling({
-                processId,
-                userId: settings.userId,
-                operation: 'SCHEDULED_TASK_SKIPPED',
-                message: `Skipped task for user ${settings.userId}: Not scheduled time.`,
-                details: runCheckDetails,
-            });
-            continue; // Skip to the next user
-        }
-
-        if (force) {
-          await logCronEvent(
-            'INFO',
-            'SCHEDULED_TASK_FORCE_RUN',
-            `Force run enabled: running scheduled task for user ${settings.userId} regardless of time`,
-            { userId: settings.userId, cronRunId }
-          );
+        } else {
+            await logCronEvent(
+                'INFO',
+                'SCHEDULED_TASK_FORCE_RUN',
+                `Force run enabled: running scheduled task for user ${settings.userId} regardless of previous runs`,
+                { userId: settings.userId, cronRunId }
+            );
         }
         
-        console.log(`Running scheduled task for user ${settings.userId} at ${settings.dailyRunTime} ${settings.timeZone}${force ? ' (force run)' : ''}`);
+        console.log(`Running scheduled task for user ${settings.userId}${force ? ' (force run)' : ''}`);
 
         // Create the ProcessingStatus record first to prevent foreign key violations
         // This also helps in validating settings and portfolio before proceeding
@@ -258,7 +247,7 @@ export async function runScheduledTasks(force: boolean = false): Promise<void> {
           processId,
           userId: settings.userId,
           operation: 'SCHEDULED_TASK_START',
-          message: `Starting scheduled task at ${settings.dailyRunTime} ${settings.timeZone}`,
+          message: `Starting scheduled task for user ${settings.userId}`,
           details: { cronRunId },
         });
 
